@@ -56,6 +56,7 @@ from chcode.config import (
     load_workplace,
     save_workplace,
     configure_new_model,
+    first_run_configure,
     edit_current_model,
     switch_model,
     ensure_config_dir,
@@ -230,47 +231,21 @@ class ChatREPL:
 
     async def initialize(self) -> bool:
         """初始化：加载配置、设置工作目录、构建 agent"""
-        console.print("[dim]初始化中...[/dim]")
-
         ensure_config_dir()
 
-        # 加载工作目录
-        wp = load_workplace()
-        if wp:
-            self.workplace_path = wp
-        else:
-            # 选择工作目录
-            result = await text(
-                "输入工作目录路径 (留空使用当前目录):", default=str(Path.cwd())
-            )
-            if result:
-                self.workplace_path = Path(result)
-            else:
-                self.workplace_path = Path.cwd()
-
-        if not self.workplace_path or not self.workplace_path.exists():
-            console.print("[red]工作目录无效[/red]")
-            return False
-
+        self.workplace_path = Path.cwd()
         os.chdir(self.workplace_path)
 
-        # 创建子目录
         chat_dir = self.workplace_path / ".chat"
         chat_dir.mkdir(exist_ok=True)
         (chat_dir / "sessions").mkdir(exist_ok=True)
         (chat_dir / "skills").mkdir(exist_ok=True)
 
-        # 保存工作目录
-        save_workplace(self.workplace_path)
-
-        # 初始化会话管理
         self.session_mgr = SessionManager(self.workplace_path)
 
-        # 加载模型配置
         self.model_config = get_default_model_config() or {}
         if not self.model_config:
-            console.print("[yellow]未检测到模型配置[/yellow]")
-            config = await configure_new_model()
+            config = await first_run_configure()
             if config is None:
                 return False
             self.model_config = config

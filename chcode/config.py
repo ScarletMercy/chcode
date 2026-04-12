@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,40 @@ console = Console()
 CONFIG_DIR = Path.home() / ".chat"
 MODEL_JSON = CONFIG_DIR / "model.json"
 SETTING_JSON = CONFIG_DIR / "chagent.json"
+
+
+ENV_TO_CONFIG: dict[str, dict[str, str | list[str]]] = {
+    "BIGMODEL_API_KEY": {
+        "name": "智谱 GLM",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "models": ["glm-4-plus", "glm-4-flash"],
+    },
+    "OPENAI_API_KEY": {
+        "name": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "models": ["gpt-4o", "gpt-4o-mini"],
+    },
+    "DEEPSEEK_API_KEY": {
+        "name": "DeepSeek",
+        "base_url": "https://api.deepseek.com/v1",
+        "models": ["deepseek-chat"],
+    },
+    "DASHSCOPE_API_KEY": {
+        "name": "通义千问",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "models": ["qwen-plus", "qwen-turbo"],
+    },
+    "ModelScopeToken": {
+        "name": "ModelScope",
+        "base_url": "https://api-inference.modelscope.cn/v1",
+        "models": ["Qwen/Qwen3-235B-A22B-Thinking-2507"],
+    },
+    "ANTHROPIC_API_KEY": {
+        "name": "Anthropic Claude",
+        "base_url": "https://api.anthropic.com/v1",
+        "models": ["claude-sonnet-4-20250514"],
+    },
+}
 
 
 def ensure_config_dir() -> Path:
@@ -37,7 +72,9 @@ def load_model_json() -> dict:
 
 
 def save_model_json(data: dict) -> None:
-    MODEL_JSON.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
+    MODEL_JSON.write_text(
+        json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 def get_default_model_config() -> dict | None:
@@ -52,6 +89,89 @@ def get_fallback_models() -> dict[str, dict]:
     return data.get("fallback", {})
 
 
+def detect_env_api_keys() -> list[dict]:
+    """检测环境变量中的 API Key，返回推荐配置列表"""
+    results = []
+    for var, cfg in ENV_TO_CONFIG.items():
+        key = os.getenv(var, "")
+        if key:
+            results.append({"env_var": var, "api_key": key, **cfg})
+    return results
+
+
+async def first_run_configure() -> dict | None:
+    """首次运行配置引导"""
+    console.print()
+    console.print(
+        Panel(
+            "[bold]ChCode[/bold] — 终端 AI 编程助手\n\n"
+            "首次运行需要配置 AI 模型连接。\n"
+            "设置环境变量后可自动检测（推荐），或手动填写配置。",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
+    detected = detect_env_api_keys()
+
+    if detected:
+        choices = [f"{d['name']} (检测到 {d['env_var']})" for d in detected]
+        choices.append("手动配置...")
+        choices.append("退出")
+
+        result = await select("选择配置方式:", choices)
+        if result is None or "退出" in result:
+            console.print(
+                "[dim]设置环境变量后重新运行，或执行 chcode config new 手动配置[/dim]"
+            )
+            return None
+
+        if "手动" in result:
+            return await configure_new_model()
+
+        idx = choices.index(result)
+        chosen = detected[idx]
+
+        model_list = chosen["models"]
+        model = await select("选择模型:", model_list)
+        if model is None:
+            return None
+
+        config: dict[str, Any] = {
+            "model": model,
+            "base_url": chosen["base_url"],
+            "api_key": chosen["api_key"],
+            "stream_usage": True,
+        }
+
+        console.print("[yellow]测试连接中...[/yellow]")
+        try:
+            from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
+            model_inst = EnhancedChatOpenAI(**config)
+            await asyncio.to_thread(model_inst.invoke, "你好")
+        except Exception as e:
+            if "null value" not in str(e):
+                console.print(f"[red]连接失败: {e}[/red]")
+                return None
+
+        data = {"default": config, "fallback": {}}
+        save_model_json(data)
+        console.print(f"[green]配置完成: {model}[/green]")
+        return config
+    else:
+        console.print("[yellow]未检测到环境变量中的 API Key[/yellow]")
+        choices = ["手动配置...", "退出"]
+        result = await select("选择:", choices)
+        if result is None or "退出" in result:
+            console.print("[dim]提示: 在环境变量中设置 API Key 后重新运行，例如:[/dim]")
+            console.print("[dim]  set BIGMODEL_API_KEY=your_key[/dim]")
+            console.print("[dim]或执行 chcode config new 手动配置[/dim]")
+            return None
+        return await configure_new_model()
+
+
 async def configure_new_model() -> dict | None:
     """新建模型配置（交互式表单）"""
     ensure_config_dir()
@@ -63,6 +183,7 @@ async def configure_new_model() -> dict | None:
     console.print("[yellow]测试连接中...[/yellow]")
     try:
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
         model = EnhancedChatOpenAI(**config)
         await asyncio.to_thread(model.invoke, "你好")
     except Exception as e:
@@ -107,6 +228,7 @@ async def edit_current_model() -> dict | None:
     console.print("[yellow]测试连接中...[/yellow]")
     try:
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
         model = EnhancedChatOpenAI(**config)
         await asyncio.to_thread(model.invoke, "你好")
     except Exception as e:
@@ -186,7 +308,9 @@ def save_workplace(path: Path) -> None:
         except Exception:
             pass
     data["workplace_path"] = str(path)
-    SETTING_JSON.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
+    SETTING_JSON.write_text(
+        json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 def load_setting(key: str, default=None):
