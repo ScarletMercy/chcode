@@ -27,6 +27,7 @@ from charset_normalizer import from_bytes
 from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.text import Text
+from chcode.display import render_tool_call
 
 from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
 from chcode.utils.skill_loader import SkillAgentContext
@@ -69,6 +70,7 @@ def load_skill(skill_name: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
         skill_name: Name of the skill to load (e.g., 'news-extractor')
     """
     loader = runtime.context.skill_loader
+    render_tool_call("load_skill", skill_name)
 
     # 尝试加载 skill
     skill_content = loader.load_skill(skill_name)
@@ -158,6 +160,7 @@ def bash(
     Uses Git Bash on Windows, sh on Linux/Mac.
     """
     cwd = str(runtime.context.working_directory)
+    render_tool_call("bash", command)
     system_encoding = locale.getpreferredencoding() or "utf-8"
 
     def robust_decode(data: bytes) -> str:
@@ -248,6 +251,7 @@ def read_file(file_path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
         file_path: Path to the file (absolute or relative to working directory)
     """
     path = resolve_path(file_path, runtime.context.working_directory)
+    render_tool_call("read_file", file_path)
 
     if not path.exists():
         return f"read:\n[FAILED] File not found: {file_path}"
@@ -294,6 +298,7 @@ def write_file(
         content: Content to write to the file
     """
     path = resolve_path(file_path, runtime.context.working_directory)
+    render_tool_call("write_file", file_path)
 
     try:
         # 确保父目录存在
@@ -320,6 +325,7 @@ def glob(pattern: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
         pattern: Glob pattern (e.g., "**/*.py", "src/**/*.ts", "*.md")
     """
     cwd = runtime.context.working_directory
+    render_tool_call("glob", pattern)
 
     try:
         # 使用 Path.glob 进行匹配
@@ -364,6 +370,7 @@ def grep(pattern: str, path: str, runtime: ToolRuntime[SkillAgentContext]) -> st
         path: File or directory path to search in (use "." for current directory)
     """
     cwd = runtime.context.working_directory
+    render_tool_call("grep", pattern)
     search_path = resolve_path(path, cwd)
 
     try:
@@ -454,6 +461,7 @@ def edit(
         new_string: The text to replace it with
     """
     path = resolve_path(file_path, runtime.context.working_directory)
+    render_tool_call("edit", file_path)
 
     if not path.exists():
         return f"edit:\n[FAILED] File not found: {file_path}"
@@ -500,6 +508,7 @@ def list_dir(path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
         path: Directory path (use "." for current directory)
     """
     dir_path = resolve_path(path, runtime.context.working_directory)
+    render_tool_call("list_dir", path)
 
     if not dir_path.exists():
         return f"ls:\n[FAILED] Directory not found: {path}"
@@ -547,6 +556,7 @@ def web_search(
     include_raw_content: bool = False,
 ):
     """Run a web search"""
+    render_tool_call("web_search", query)
     return tavily_client.search(
         query,
         max_results=max_results,
@@ -606,6 +616,7 @@ def _is_binary_content_type(content_type: str) -> bool:
 @tool
 def web_fetch(url: str) -> dict:
     """Fetches content from a specified URL and converts it to text. """
+    render_tool_call("web_fetch", url)
     start = time.time()
 
     if len(url) > MAX_URL_LENGTH:
@@ -715,12 +726,8 @@ def web_fetch(url: str) -> dict:
 
 def _select_with_other(question: str, options: list[str]) -> str | None:
     """
-    下拉选择 + 「其它」行内输入。
-
-    UX:
-      - 上下键选择选项，Enter 确认
-      - 「其它」行始终显示输入框: 其它: [自定义输入]
-      - 选中「其它」时，输入直接写入右侧输入框
+    下拉选择 + 「其它」行内输入（同步版本 - 用于非 async 上下文）。
+    异步版本见 _select_with_other_async()
     """
     from prompt_toolkit import Application
     from prompt_toolkit.buffer import Buffer
@@ -787,7 +794,7 @@ def _select_with_other(question: str, options: list[str]) -> str | None:
                 # 光标在"其它"输入框内
                 # 关键：用 len() 而非 get_cwidth() 计算前缀宽度
                 # 因为其他选项可能含 emoji，但"其它: "前缀是纯文本，宽度固定
-                prefix_width = len(other_prefix)
+                prefix_width = get_cwidth(other_prefix)
                 cursor_x = prefix_width + self.buffer.cursor_position
                 cursor_pos = Point(x=cursor_x, y=other_idx)
 
@@ -892,6 +899,155 @@ def _select_with_other(question: str, options: list[str]) -> str | None:
     return app.run()
 
 
+async def _select_with_other_async(question: str, options: list[str]) -> str | None:
+    """
+    异步版本 - 用于 async 上下文中（如 ChatREPL 的 /edit, /fork 命令）
+    """
+    # 调用同步实现，但在 async 上下文中使用 run_async
+    from prompt_toolkit import Application
+    from prompt_toolkit.buffer import Buffer
+    from prompt_toolkit.data_structures import Point
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout, UIContent
+    from prompt_toolkit.layout.controls import FormattedTextControl, UIControl
+    from prompt_toolkit.layout.containers import HSplit, Window
+    from prompt_toolkit.keys import Keys
+    from prompt_toolkit.utils import get_cwidth
+
+    class _SelectWithOtherControl(UIControl):
+        def __init__(self, opts: list[str]):
+            self.opts = opts
+            self.all_opts = opts + ["\u5176\u5b83"]
+            self.selected = 0
+            self.buffer = Buffer()
+
+        def is_focusable(self) -> bool:
+            return True
+
+        def get_invalidate_events(self):
+            yield self.buffer.on_text_changed
+
+        def preferred_height(self, width, max_available_height, wrap_lines, get_line_prefix):
+            return len(self.all_opts)
+
+        def create_content(self, width: int, height: int) -> UIContent:
+            lines = []
+            other_idx = len(self.all_opts) - 1
+            other_prefix = "  \u276f \u5176\u5b83: "
+
+            for i, opt in enumerate(self.all_opts):
+                prefix = "  \u276f " if i == self.selected else "    "
+                if opt == "\u5176\u5b83":
+                    if self.buffer.text:
+                        input_display = self.buffer.text
+                    else:
+                        input_display = "[\u81ea\u5b9a\u4e49\u8f93\u5165]"
+                    line = f"{prefix}{opt}: {input_display}"
+                else:
+                    line = f"{prefix}{opt}"
+                if i == self.selected:
+                    lines.append([("bold", line)])
+                else:
+                    lines.append([("", line)])
+
+            def get_line(i):
+                if i < len(lines):
+                    return lines[i]
+                return [("", "")]
+
+            cursor_pos = None
+            if self.selected == other_idx:
+                prefix_width = get_cwidth(other_prefix)
+                cursor_x = prefix_width + self.buffer.cursor_position
+                cursor_pos = Point(x=cursor_x, y=other_idx)
+
+            return UIContent(
+                get_line=get_line,
+                line_count=len(lines),
+                show_cursor=True,
+                cursor_position=cursor_pos,
+            )
+
+    control = _SelectWithOtherControl(options)
+    question_text = f"? {question}"
+    question_window = Window(height=1, content=FormattedTextControl(text=question_text))
+    control_window = Window(content=control)
+
+    kb = KeyBindings()
+    _exiting = False
+
+    @kb.add("up")
+    def _up(e):
+        nonlocal _exiting
+        if _exiting:
+            return
+        control.selected = max(0, control.selected - 1)
+        e.app.invalidate()
+
+    @kb.add("down")
+    def _down(e):
+        nonlocal _exiting
+        if _exiting:
+            return
+        control.selected = min(len(control.all_opts) - 1, control.selected + 1)
+        e.app.invalidate()
+
+    @kb.add("tab")
+    def _tab(e):
+        nonlocal _exiting
+        if _exiting:
+            return
+        control.selected = (control.selected + 1) % len(control.all_opts)
+        e.app.invalidate()
+
+    @kb.add("enter")
+    def _enter(e):
+        nonlocal _exiting
+        _exiting = True
+        chosen = control.all_opts[control.selected]
+        if chosen == "\u5176\u5b83":
+            text = control.buffer.text.strip()
+            if text:
+                e.app.exit(result=text)
+            else:
+                _exiting = False
+        else:
+            e.app.exit(result=chosen)
+
+    @kb.add("escape")
+    def _esc(e):
+        e.app.exit(result=None)
+
+    @kb.add("c-c")
+    def _cancel(e):
+        e.app.exit(result=None)
+
+    @kb.add(Keys.Any)
+    def _any(e):
+        nonlocal _exiting
+        if _exiting:
+            return
+        other_idx = len(control.all_opts) - 1
+        if control.selected != other_idx:
+            return
+        data = e.data
+        if data == "\r":
+            return
+        buf = control.buffer
+        if data == "\x7f" or data == "\x08":
+            if buf.cursor_position > 0:
+                buf.delete_before_cursor()
+            e.app.invalidate()
+            return
+        if len(data) == 1 and data >= " ":
+            buf.insert_text(data)
+            e.app.invalidate()
+
+    layout = Layout(HSplit([question_window, control_window]))
+    app = Application(layout=layout, key_bindings=kb, full_screen=False)
+    return await app.run_async()
+
+
 @tool
 def ask_user(
     question: str,
@@ -911,7 +1067,7 @@ def ask_user(
     """
     import questionary
 
-    console.print(Text(f"\n[ask_user] {question}", style="bold yellow"))
+    render_tool_call("ask_user", question)
 
     if not options:
         answer = questionary.text("请输入: ").ask()
@@ -929,7 +1085,12 @@ def ask_user(
                 return "user_answer:\n(用户取消)"
             result = ", ".join(selected)
         else:
-            answer = _select_with_other(question, options)
+            import asyncio
+            try:
+                answer = asyncio.run(_select_with_other_async(question, options))
+            except RuntimeError:
+                # Already in event loop (shouldn't happen for tool calls)
+                answer = None
             if answer is None:
                 return "user_answer:\n(用户取消)"
             result = answer

@@ -19,8 +19,14 @@ class GitManager:
         # self.checkpoint_dict = {}
         self.current_id = 0
 
-    def _run(self, args: list, timeout: int = 30) -> subprocess.CompletedProcess:
-        """执行Git命令"""
+    def _run(self, args: list, timeout: int = 30, silent: bool = True) -> subprocess.CompletedProcess:
+        """执行Git命令
+        
+        Args:
+            args: Git 命令参数
+            timeout: 超时时间（秒）
+            silent: 是否静默输出（默认 True，不打印调试信息）
+        """
         try:
             result = subprocess.run(
                 [self.git_cmd] + args,
@@ -31,7 +37,7 @@ class GitManager:
                 timeout=timeout,
             )
 
-            if result.returncode != 0:
+            if result.returncode != 0 and not silent:
                 print(f"Git命令返回码: {result.returncode}")
                 if result.stderr:
                     print(f" STDERR: {result.stderr.strip()}")
@@ -71,10 +77,9 @@ class GitManager:
         """添加文件并提交"""
         # 添加文件
         if self._run(["add"] + files).returncode != 0:
-            print("添加文件失败")
             return False
+        
         # 提交
-        print("提交中...")
         commit_msg = f"{message_ids} (CP#{self.current_id + 1})"
         commit_result = self._run(["commit", "-m", commit_msg])
 
@@ -95,10 +100,8 @@ class GitManager:
                     json.dumps(checkpoint_dict, indent=4), encoding="utf-8"
                 )
 
-                print(f"提交成功! 提交ID: {commit_id}")
                 self.current_id += 1
                 return count
-            return False
         return False
 
     def rollback(self, message_ids: list[str], all_ids: list[str]) -> bool | int:
@@ -110,7 +113,6 @@ class GitManager:
         前有提交后无提交：不回溯，返回当前计数
         """
         if not self.checkpoints_file.exists():
-            print("ERROR: 请先初始化Git仓库")
             return False
 
         json_data = self.checkpoints_file.read_text(encoding="utf-8")
@@ -156,16 +158,13 @@ class GitManager:
             try:
                 reset_result = self._run(["reset", "--hard", aim_id])
                 if reset_result.returncode == 0:
-                    print(f"成功回溯到提交 {aim_id}")
                     self.checkpoints_file.write_text(
                         json.dumps(checkpointer_dict, indent=4), encoding="utf-8"
                     )
                     return count
                 else:
-                    print(f"ERROR: 回溯失败: {reset_result.stderr}")
                     return False
-            except Exception as e:
-                print(f"ERROR: 回溯过程中发生异常: {str(e)}")
+            except Exception:
                 return False
 
         # -- 第二步：模糊匹配 --
@@ -191,11 +190,9 @@ class GitManager:
 
         elif has_before and not has_after:
             # Case 3：前有提交后无提交 -> 不回溯
-            print("前有提交后无提交，不执行回溯操作")
             count = len(checkpointer_dict)
             return count
         else:
-            print("无匹配检查点，不执行回溯操作")
             count = len(checkpointer_dict)
             return count
 
@@ -204,16 +201,13 @@ class GitManager:
         try:
             reset_result = self._run(["reset", "--hard", aim_id])
             if reset_result.returncode == 0:
-                print(f"成功回溯到提交 {aim_id}")
                 self.checkpoints_file.write_text(
                     json.dumps(checkpointer_dict, indent=4), encoding="utf-8"
                 )
                 return count
             else:
-                print(f"ERROR: 回溯失败: {reset_result.stderr}")
                 return False
-        except Exception as e:
-            print(f"ERROR: 回溯过程中发生异常: {str(e)}")
+        except Exception:
             return False
 
     def count_checkpoints(self, count: int | None = None) -> int:

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich import box
 from rich.table import Table
 from rich.text import Text
 from rich.markup import escape
@@ -65,6 +66,13 @@ def render_reasoning(reasoning: str) -> None:
     )
 
 
+def render_tool_call(name: str, summary: str) -> None:
+    """渲染工具调用头部 — 类似 ask_user 的风格"""
+    if len(summary) > 120:
+        summary = summary[:117] + "..."
+    console.print(Text(f"\n[{name}] {summary}", style="bold cyan"))
+
+
 def render_tool(name: str, content: str) -> None:
     """渲染工具调用结果"""
     # 截断过长内容
@@ -113,7 +121,7 @@ def render_welcome() -> None:
     console.print(
         Panel(
             "[bold]ChCode[/bold] — Terminal-based AI Coding Agent\n"
-            "Enter 发送 | Esc+Enter 换行 | /help 查看命令\n"
+            "Enter 发送 | Alt+Enter 换行 | /help 查看命令\n"
             "Ctrl+C 中断生成 | /quit 退出",
             border_style="cyan",
             padding=(1, 2),
@@ -131,7 +139,7 @@ def render_status(
     git_status: str = "",
     mode: str = "Common",
 ) -> None:
-    """渲染底部状态栏"""
+    """渲染底部状态栏（带边框）"""
     parts = []
     if workplace:
         short = workplace.replace("\\", "/")
@@ -141,14 +149,26 @@ def render_status(
     if model:
         parts.append(f"[cyan]{model}[/cyan]")
     if tokens:
-        parts.append(f"[yellow]{tokens}[/yellow]")
+        if "[" in tokens:
+            parts.append(tokens)
+        else:
+            parts.append(f"[yellow]{tokens}[/yellow]")
     if git_status:
         parts.append(f"[green]{git_status}[/green]")
     if mode == "Yolo":
         parts.append("[bold red]YOLO[/bold red]")
 
     if parts:
-        console.print(" ".join(parts))
+        content = "  ".join(parts)
+        console.print(
+            Panel(
+                content,
+                box=box.ROUNDED,
+                border_style="dim",
+                padding=(0, 1),
+                expand=False,
+            )
+        )
 
 
 # ─── 消息列表渲染（加载历史） ─────────────────────────────
@@ -205,3 +225,46 @@ def get_token_text(messages: list) -> str:
                 total = usage.get("total_tokens", 0)
                 break
     return f"总: {total} | 输入: {input_t} | 输出: {output_t}"
+
+
+# ─── 上下文用量 ──────────────────────────────────────────
+
+def _format_tokens(n: int) -> str:
+    """格式化 token 数：123456 → 123.5K"""
+    if n >= 1000:
+        return f"{n / 1000:.1f}K"
+    return str(n)
+
+
+def get_context_usage_text(messages: list, max_context: int) -> str:
+    """
+    从消息列表计算上下文占用，返回带样式的文本。
+
+    取最后一次 AIMessage 的 input_tokens 作为上下文快照
+    （因为每次请求的 input_tokens 包含了完整上下文）。
+    """
+    input_tokens = 0
+    for message in reversed(messages):
+        from langchain_core.messages import AIMessage
+        if isinstance(message, AIMessage):
+            usage = message.usage_metadata
+            if usage and usage.get("input_tokens"):
+                input_tokens = usage["input_tokens"]
+                break
+
+    if input_tokens == 0:
+        return ""
+
+    pct = input_tokens / max_context
+    used_str = _format_tokens(input_tokens)
+    max_str = _format_tokens(max_context)
+    pct_str = f"{pct * 100:.0f}%"
+
+    if pct < 0.7:
+        style = "yellow"
+    elif pct < 0.9:
+        style = "bold yellow"
+    else:
+        style = "bold red"
+
+    return f"[{style}]{used_str}/{max_str} {pct_str}[/{style}]"

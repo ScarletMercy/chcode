@@ -22,6 +22,7 @@ from rich.text import Text
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 
 from langchain_core.messages import (
@@ -44,9 +45,11 @@ from chcode.display import (
     render_conversation,
     render_status,
     render_ai_end,
+    render_tool_call,
     get_token_text,
+    get_context_usage_text,
 )
-from chcode.prompts import select, confirm, select_or_custom, text
+from chcode.prompts import select, confirm, select_or_custom, text, checkbox
 from chcode.config import (
     get_default_model_config,
     load_workplace,
@@ -55,6 +58,7 @@ from chcode.config import (
     edit_current_model,
     switch_model,
     ensure_config_dir,
+    get_context_window_size,
 )
 from chcode.session import SessionManager
 from chcode.utils.skill_loader import SkillAgentContext
@@ -67,6 +71,7 @@ from chcode.agent_setup import (
 from chcode.skill_manager import manage_skills
 from chcode.utils.git_checker import check_git_availability
 from chcode.utils.git_manager import GitManager
+from chcode.utils.tools import _select_with_other_async
 
 
 # ─── 命令自动补全 ──────────────────────────────────────
@@ -81,6 +86,9 @@ SLASH_COMMANDS = {
     "/mode": "切换 Common/Yolo 模式",
     "/workdir": "切换工作目录",
     "/status": "显示状态栏",
+    "/edit": "编辑历史消息",
+    "/fork": "从某条消息创建分支",
+    "/delete": "删除历史消息",
     "/help": "显示帮助",
     "/quit": "退出",
 }
@@ -118,6 +126,68 @@ def find_and_slice_from_end(lst, x):
     return []
 
 
+def _group_messages_by_turn(messages: list) -> list[list]:
+    """
+    将消息按轮次分组（参考 chagent 逻辑）
+    从一个 HumanMessage 开始，到下一个 HumanMessage 之前为一组
+    """
+    groups = []
+    current_group = []
+
+    for msg in messages:
+        if msg.type == "human":
+            if current_group:
+                groups.append(current_group)
+            current_group = [msg]
+        else:
+            current_group.append(msg)
+
+    if current_group:
+        groups.append(current_group)
+
+    return groups
+
+
+def _get_group_display(group: list) -> str:
+    """获取消息组的显示文本（以 HumanMessage 内容为代表）"""
+    for msg in group:
+        if msg.type == "human":
+            content = msg.content[:60].replace("\n", " ")
+            if len(msg.content) > 60:
+                content += "..."
+            return content
+    return "(空消息组)"
+
+
+def _collect_ids_from_group(group_index: int, groups: list, mode: str = "edit") -> tuple[list[str], list[str]]:
+    """
+    收集要删除的消息 ID
+    参考 chagent fork_message 逻辑：从目标 HumanMessage 开始，删除之后的所有消息
+    
+    Args:
+        group_index: 目标组索引
+        groups: 所有消息组
+        mode: "edit" 删除目标组及之后, "fork" 只删除目标组之后（保留目标组）
+    
+    Returns:
+        (no_need_ids, all_ids): 要删除的消息 ID 列表，所有消息 ID 列表
+    """
+    all_ids = [m.id for group in groups for m in group]
+    no_need_ids = []
+
+    for i, group in enumerate(groups):
+        if mode == "edit":
+            # edit: 从目标组开始删除
+            if i >= group_index:
+                no_need_ids.extend([m.id for m in group])
+        elif mode == "fork":
+            # fork: 从目标组之后开始删除（保留目标组）
+            if i > group_index:
+                no_need_ids.extend([m.id for m in group])
+
+    return no_need_ids, all_ids
+
+
 # ─── 主聊天类 ──────────────────────────────────────────
 
 
@@ -135,6 +205,10 @@ class ChatREPL:
         self._processing = False
         # 初始化 prompt-toolkit 会话（用于命令自动补全）
         self._prompt_session = None
+        # 编辑缓冲区（用于 /edit 命令）
+        self._edit_buffer: str | None = None
+        # 上下文用量缓存
+        self._context_text: str = ""
 
     # ─── 清理 ────────────────────────────────────────
 
@@ -283,32 +357,77 @@ class ChatREPL:
 
     async def _get_input(self) -> str | None:
         """获取用户输入（使用 prompt-toolkit 实现命令自动补全）"""
-        mode = "YOLO" if self.yolo else "Common"
-        model = self.model_config.get("model", "")[:30]
-        wp = str(self.workplace_path) if self.workplace_path else ""
-        if len(wp) > 30:
-            wp = "..." + wp[-27:]
-        prompt_text = f"{mode} {model} {wp}\n> "
+        import re
+        import shutil
 
-        # 初始化 prompt session（带命令自动补全）
+        # 检查是否有编辑缓冲区
+        edit_mode = self._edit_buffer is not None
+
+        # 初始化 prompt session（带命令自动补全 + 底部状态栏）
         if self._prompt_session is None:
             completer = SlashCommandCompleter()
+
+            # 自定义按键：Enter 提交，Alt+Enter 换行
+            kb = KeyBindings()
+
+            @kb.add("enter")
+            def _submit(event):
+                event.current_buffer.validate_and_handle()
+
+            @kb.add("escape", "enter")  # Alt+Enter → 换行
+            def _newline(event):
+                event.current_buffer.insert_text("\n")
+
+            def _bottom_toolbar():
+                width = shutil.get_terminal_size().columns
+                sep = "\u2500" * width
+                parts = []
+                model = self.model_config.get("model", "未设置")
+                parts.append(model)
+                if hasattr(self, '_context_text') and self._context_text:
+                    clean = re.sub(r'\[/?\w+\]', '', self._context_text)
+                    parts.append(clean)
+                parts.append("普通模式" if not self.yolo else "YOLO 模式")
+                if self.git and self.git_manager and self.git_manager.is_repo():
+                    parts.append(f"Git ({self.git_manager.count_checkpoints()} cp)")
+                wp = str(self.workplace_path) if self.workplace_path else ""
+                if wp:
+                    parts.append(f"cwd: {wp}")
+                status = "  │  ".join(parts)
+                return HTML(f"<ansiblue>{sep}</ansiblue>\n{status}")
+
             self._prompt_session = PromptSession(
+                multiline=True,
+                key_bindings=kb,
                 completer=completer,
-                complete_while_typing=True,  # 实时触发补全
+                complete_while_typing=True,
+                bottom_toolbar=_bottom_toolbar,
                 style=Style.from_dict({
                     "completion-menu.completion": "bg:#008888 #ffffff",
                     "completion-menu.completion.current": "bg:#00aaaa #000000",
                     "completion-menu.meta.completion": "bg:#008888 #ffffff",
                     "completion-menu.meta.completion.current": "bg:#00aaaa #000000",
+                    "bottom-toolbar": "noreverse bg:#1a1a2e #aaaaaa",
                 }),
             )
 
         try:
+            # 如果有编辑缓冲区，预填充到输入框
+            if edit_mode:
+                default_text = self._edit_buffer
+                self._edit_buffer = None  # 清除缓冲区
+            else:
+                default_text = ""
+
+            width = shutil.get_terminal_size().columns
+            sep = "\u2500" * width
+            prompt_text = f"{sep}\n > " if not edit_mode else f"{sep}\n \u270f\ufe0f 编辑模式> "
+
             # 使用 prompt-toolkit 获取输入（支持命令自动补全）
             result = await asyncio.to_thread(
                 self._prompt_session.prompt,
-                HTML(f"<ansiblue>{prompt_text}</ansiblue>")
+                HTML(f"<ansiblue>{prompt_text}</ansiblue>"),
+                default=default_text,
             )
             if result is not None:
                 self._save_readline_history()
@@ -333,6 +452,9 @@ class ChatREPL:
             "/git": self._cmd_git,
             "/mode": self._cmd_mode,
             "/workdir": self._cmd_workdir,
+            "/edit": self._cmd_edit,
+            "/fork": self._cmd_fork,
+            "/delete": self._cmd_delete,
             "/help": self._cmd_help,
             "/quit": self._cmd_quit,
             "/status": self._cmd_status,
@@ -583,6 +705,9 @@ class ChatREPL:
             ("/git", "Git 状态"),
             ("/mode", "切换 Common/Yolo 模式"),
             ("/workdir", "切换工作目录"),
+            ("/edit", "编辑历史消息"),
+            ("/fork", "从某条消息创建分支"),
+            ("/delete", "删除历史消息"),
             ("/status", "显示状态栏"),
             ("/help", "显示此帮助"),
             ("/quit", "退出"),
@@ -597,18 +722,296 @@ class ChatREPL:
     async def _cmd_status(self, _arg: str) -> None:
         self._render_status_bar()
 
-    def _render_status_bar(self) -> None:
-        wp = str(self.workplace_path) if self.workplace_path else ""
-        model = self.model_config.get("model", "未设置")
-        git_str = ""
-        if self.git and self.git_manager and self.git_manager.is_repo():
-            git_str = f"Git ({self.git_manager.count_checkpoints()} cp)"
-        render_status(
-            workplace=wp,
-            model=model,
-            git_status=git_str,
-            mode="Yolo" if self.yolo else "Common",
+    # ─── 消息管理命令 ──────────────────────────────────
+
+    async def _cmd_edit(self, _arg: str) -> None:
+        """编辑历史消息"""
+        if not self.agent or not self.session_mgr:
+            render_error("Agent 未初始化")
+            return
+
+        state = await self.agent.aget_state(self.session_mgr.config)
+        messages: list[BaseMessage] = state.values.get("messages", [])
+
+        # 按轮次分组
+        groups = _group_messages_by_turn(messages)
+        if not groups:
+            render_warning("没有可编辑的消息")
+            return
+
+        # 构建选项列表
+        options = []
+        for idx, group in enumerate(groups):
+            display = _get_group_display(group)
+            options.append(f"[{idx + 1}] {display}")
+
+        # 用户选择
+        chosen = await _select_with_other_async("选择要编辑的消息组:", options)
+        if not chosen:
+            return
+
+        # 解析选择
+        try:
+            sel_idx = int(chosen.split("]")[0].replace("[", "")) - 1
+            if sel_idx < 0 or sel_idx >= len(groups):
+                render_error("无效的选择")
+                return
+        except (ValueError, IndexError):
+            render_error("无效的选择")
+            return
+
+        target_group = groups[sel_idx]
+        edit_msg = None
+        for msg in target_group:
+            if msg.type == "human":
+                edit_msg = msg
+                break
+
+        if not edit_msg:
+            render_warning("该组没有 HumanMessage")
+            return
+
+        # 确认
+        ok = await confirm(f"确定编辑此消息组？编辑后将删除此消息组之后的所有内容。", default=False)
+        if not ok:
+            return
+
+        # 收集要删除的消息 ID（从目标组开始）
+        no_need_ids, all_ids = _collect_ids_from_group(sel_idx, groups, mode="edit")
+
+        # Git rollback
+        if self.git and self.git_manager:
+            try:
+                await asyncio.to_thread(self.git_manager.rollback, no_need_ids, all_ids)
+            except Exception as e:
+                render_warning(f"Git 回滚失败: {e}")
+
+        # 删除消息
+        await self._delete_messages(no_need_ids)
+
+        # 将内容填入输入框
+        self._edit_buffer = edit_msg.content
+        render_success("消息已加载到输入框，修改后发送即可重新生成")
+
+    async def _cmd_fork(self, _arg: str) -> None:
+        """从某条消息创建分支"""
+        if not self.agent or not self.session_mgr:
+            render_error("Agent 未初始化")
+            return
+
+        state = await self.agent.aget_state(self.session_mgr.config)
+        messages: list[BaseMessage] = state.values.get("messages", [])
+
+        # 按轮次分组
+        groups = _group_messages_by_turn(messages)
+        if not groups:
+            render_warning("没有可 Fork 的消息")
+            return
+
+        # 构建选项列表
+        options = []
+        for idx, group in enumerate(groups):
+            display = _get_group_display(group)
+            options.append(f"[{idx + 1}] {display}")
+
+        # 用户选择 Fork 点
+        chosen = await _select_with_other_async("选择 Fork 点（此消息组将保留在分支中）:", options)
+        if not chosen:
+            return
+
+        # 解析选择
+        try:
+            sel_idx = int(chosen.split("]")[0].replace("[", "")) - 1
+            if sel_idx < 0 or sel_idx >= len(groups):
+                render_error("无效的选择")
+                return
+        except (ValueError, IndexError):
+            render_error("无效的选择")
+            return
+
+        fork_group = groups[sel_idx]
+
+        # 确认
+        ok = await confirm(f"确定从第 {sel_idx + 1} 条消息组创建分支？", default=True)
+        if not ok:
+            return
+
+        # 收集要删除的消息 ID（只删除 Fork 点之后的组，保留 Fork 组）
+        no_need_ids, all_ids = _collect_ids_from_group(sel_idx, groups, mode="fork")
+
+        # 选择新工作目录
+        saved = load_workplace()
+        if saved:
+            choices = [str(saved), "自定义路径..."]
+        else:
+            choices = ["自定义路径..."]
+
+        new_path_str = await select_or_custom("选择新工作目录:", choices)
+        if not new_path_str:
+            return
+
+        new_path = Path(new_path_str)
+        if not new_path.exists():
+            render_error("路径不存在")
+            return
+
+        # 保存旧路径
+        old_path = self.workplace_path
+
+        # 设置新工作目录
+        self.workplace_path = new_path
+        os.chdir(self.workplace_path)
+        save_workplace(self.workplace_path)
+
+        # 创建子目录
+        chat_dir = self.workplace_path / ".chat"
+        chat_dir.mkdir(exist_ok=True)
+        (chat_dir / "sessions").mkdir(exist_ok=True)
+        (chat_dir / "skills").mkdir(exist_ok=True)
+
+        # 复制旧工作目录文件（如果不同）
+        if old_path != new_path:
+            render_info("复制工作目录文件...")
+            try:
+                await asyncio.to_thread(self._copy_dir, old_path, new_path)
+                # 删除 sessions 目录（使用新的 checkpointer）
+                sessions_path = self.workplace_path / ".chat" / "sessions"
+                if sessions_path.exists():
+                    import shutil
+                    await asyncio.to_thread(shutil.rmtree, sessions_path)
+                    sessions_path.mkdir(exist_ok=True)
+            except Exception as e:
+                render_warning(f"复制文件失败: {e}")
+
+        # 重新初始化会话管理和 checkpointer
+        self.session_mgr = SessionManager(self.workplace_path)
+        db_path = self.workplace_path / ".chat" / "sessions" / "checkpointer.db"
+        self.checkpointer = await create_checkpointer(db_path)
+
+        # 重建 agent
+        self.agent = await asyncio.to_thread(
+            build_agent,
+            self.model_config, self.checkpointer, None, self.yolo,
         )
+
+        # 保留 Fork 点及之前的所有消息
+        need_messages = []
+        for i, group in enumerate(groups):
+            need_messages.extend(group)
+            if i == sel_idx:
+                break
+
+        # 更新状态
+        await self.agent.aupdate_state(
+            self.session_mgr.config,
+            {"messages": need_messages},
+        )
+
+        # Git rollback（如果启用）
+        if self.git and self.git_manager:
+            try:
+                await asyncio.to_thread(self.git_manager.rollback, no_need_ids, all_ids)
+            except Exception:
+                pass
+
+        # 重新初始化 Git
+        await self._init_git()
+
+        render_success(f"分支已创建！工作目录: {self.workplace_path}")
+        self._render_status_bar()
+
+    async def _cmd_delete(self, _arg: str) -> None:
+        """删除历史消息"""
+        if not self.agent or not self.session_mgr:
+            render_error("Agent 未初始化")
+            return
+
+        state = await self.agent.aget_state(self.session_mgr.config)
+        messages: list[BaseMessage] = state.values.get("messages", [])
+
+        # 按轮次分组
+        groups = _group_messages_by_turn(messages)
+        if not groups:
+            render_warning("没有可删除的消息")
+            return
+
+        # 构建选项列表
+        options = []
+        for idx, group in enumerate(groups):
+            display = _get_group_display(group)
+            options.append(f"[{idx + 1}] {display}")
+
+        # 多选
+        chosen_list = await checkbox("选择要删除的消息组（空格选择，回车确认）:", options)
+        if not chosen_list:
+            return
+
+        # 确认
+        ok = await confirm(f"确定删除 {len(chosen_list)} 个消息组？", default=False)
+        if not ok:
+            return
+
+        # 解析选择并收集要删除的消息 ID
+        delete_ids = []
+        for chosen in chosen_list:
+            try:
+                sel_idx = int(chosen.split("]")[0].replace("[", "")) - 1
+                if 0 <= sel_idx < len(groups):
+                    delete_ids.extend([m.id for m in groups[sel_idx]])
+            except (ValueError, IndexError):
+                continue
+
+        if not delete_ids:
+            render_error("没有有效的选择")
+            return
+
+        # 删除消息
+        await self._delete_messages(delete_ids)
+        render_success(f"已删除 {len(chosen_list)} 个消息组")
+
+    async def _delete_messages(self, message_ids: list[str]) -> None:
+        """删除指定消息"""
+        if not self.agent or not self.session_mgr:
+            return
+
+        # 使用 RemoveMessage 删除
+        remove_messages = [RemoveMessage(id=mid) for mid in message_ids]
+        await self.agent.aupdate_state(
+            self.session_mgr.config,
+            {"messages": remove_messages},
+        )
+
+    def _copy_dir(self, src: Path, dst: Path):
+        """复制目录（同步版本）"""
+        import shutil
+        for item in src.iterdir():
+            if item.name.startswith("."):
+                continue  # 跳过隐藏文件/目录
+            s = item
+            d = dst / item.name
+            if s.is_dir():
+                if not d.exists():
+                    d.mkdir(parents=True)
+                self._copy_dir(s, d)
+            else:
+                shutil.copy2(str(s), str(d))
+
+    def _render_status_bar(self) -> None:
+        """状态栏由 bottom_toolbar 自动渲染，此方法仅用于触发刷新"""
+        pass
+
+    async def _update_context_usage(self) -> None:
+        """从 agent state 更新上下文用量缓存"""
+        if not self.agent or not self.session_mgr:
+            return
+        try:
+            state = await self.agent.aget_state(self.session_mgr.config)
+            messages = state.values.get("messages", [])
+            model_name = self.model_config.get("model", "")
+            max_ctx = get_context_window_size(model_name)
+            self._context_text = get_context_usage_text(messages, max_ctx)
+        except Exception:
+            pass
 
     # ─── 对话处理 ──────────────────────────────────────
 
@@ -668,9 +1071,6 @@ class ChatREPL:
 
                             elif isinstance(i[0], ToolMessage):
                                 ai_started = False
-                                if content:
-                                    name = i[0].name or "tool"
-                                    console.print(Text(f"  {name}", style="dim"))
 
                         elif m == "updates" and "__interrupt__" in i:
                             interrupt_chunk = i
@@ -722,6 +1122,10 @@ class ChatREPL:
 
             if ai_started:
                 render_ai_end()
+
+            # 更新上下文用量并刷新状态栏
+            await self._update_context_usage()
+            self._render_status_bar()
 
             # Git 提交（静默）
             if self.git and self.git_manager:
@@ -808,3 +1212,4 @@ class ChatREPL:
             render_conversation(messages)
         except Exception as e:
             render_error(f"加载对话失败: {e}")
+
