@@ -83,6 +83,7 @@ Your capabilities include:
 - When working with files: use `read_file` to view content, `write_file` to create or save, `edit` to modify existing files, `glob` to find files by name pattern, `grep` to search content within files, and `list_dir` to browse directory structure.
 - When you need information from the Internet, use `web_search` or `web_fetch`.
 - When you need to ask the user about choices, preferences, or options, please use the `ask_user` tool.
+- When working on complex multi-step tasks, use `todo_write` to create and manage a structured task list for tracking progress.
 
 Current working directory: {request.runtime.context.working_directory}.
 Skills Path: {request.runtime.context.skill_loader.skill_paths}

@@ -1157,6 +1157,7 @@ class ChatREPL:
                 ),
                 working_directory=self.workplace_path,
                 model_config=self.model_config or INNER_MODEL_CONFIG,
+                thread_id=self.session_mgr.thread_id,
             )
 
             while True:
