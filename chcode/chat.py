@@ -47,6 +47,8 @@ from chcode.display import (
     render_welcome,
     render_conversation,
     render_status,
+    render_ai_start,
+    render_ai_chunk,
     render_ai_end,
     render_tool_call,
     get_context_usage_text,
@@ -794,12 +796,14 @@ class ChatREPL:
             # 显示日志列表
             log_entries = []
             for log in self._agent_output_logs:
-                log_entries.append({
-                    "index": log["index"],
-                    "timestamp": log["timestamp"],
-                    "turns": log["turns"],
-                    "preview": log["preview"],
-                })
+                log_entries.append(
+                    {
+                        "index": log["index"],
+                        "timestamp": log["timestamp"],
+                        "turns": log["turns"],
+                        "preview": log["preview"],
+                    }
+                )
             render_output_log_list(log_entries)
         else:
             # 查看具体日志
@@ -1132,7 +1136,7 @@ class ChatREPL:
 
         accumulated_content = ""
         ai_started = False
-        
+
         # 初始化日志收集
         self._current_log_turns = []
         self._current_log_index = len(self._agent_output_logs) + 1
@@ -1178,39 +1182,46 @@ class ChatREPL:
                             if isinstance(i[0], AIMessageChunk):
                                 reasoning = additional_kwargs.get("reasoning")
                                 if reasoning:
-                                    if not _display._subagent_parallel and _display._subagent_count == 0:
+                                    if (
+                                        not _display._subagent_parallel
+                                        and _display._subagent_count == 0
+                                    ):
                                         console.print(reasoning, end="", style="dim")
                                     current_reasoning += reasoning
                                 if not ai_started:
                                     if not content:
                                         continue
                                     ai_started = True
-                                if not _display._subagent_parallel and _display._subagent_count == 0:
-                                    console.print(content, end="")
+                                    render_ai_start()
+                                render_ai_chunk(content or "")
                                 accumulated_content += content or ""
                                 current_response += content or ""
-                                
+
                                 # 收集工具调用信息
                                 tool_calls = getattr(i[0], "tool_calls", None) or []
                                 for tc in tool_calls:
                                     tc_name = tc.get("name", "unknown")
                                     tc_args = str(tc.get("args", {}))[:300]
-                                    self._current_log_turns.append({
-                                        "type": "tool_call",
-                                        "tool_name": tc_name,
-                                        "content": f"参数: {tc_args}",
-                                    })
+                                    self._current_log_turns.append(
+                                        {
+                                            "type": "tool_call",
+                                            "tool_name": tc_name,
+                                            "content": f"参数: {tc_args}",
+                                        }
+                                    )
 
                             elif isinstance(i[0], ToolMessage):
                                 ai_started = False
                                 # 保存工具调用结果
                                 tool_name = i[0].name or "unknown"
                                 tool_result = str(content)[:2000]  # 限制长度
-                                self._current_log_turns.append({
-                                    "type": "tool_result",
-                                    "tool_name": tool_name,
-                                    "content": tool_result,
-                                })
+                                self._current_log_turns.append(
+                                    {
+                                        "type": "tool_result",
+                                        "tool_name": tool_name,
+                                        "content": tool_result,
+                                    }
+                                )
 
                         elif m == "updates" and "__interrupt__" in i:
                             interrupt_chunk = i
@@ -1263,30 +1274,39 @@ class ChatREPL:
 
             if ai_started:
                 render_ai_end()
-                
+
                 # 保存本轮日志
                 if current_reasoning:
-                    self._current_log_turns.append({
-                        "type": "reasoning",
-                        "content": current_reasoning,
-                    })
+                    self._current_log_turns.append(
+                        {
+                            "type": "reasoning",
+                            "content": current_reasoning,
+                        }
+                    )
                 if current_response:
-                    self._current_log_turns.append({
-                        "type": "ai_response",
-                        "content": current_response,
-                    })
-                
+                    self._current_log_turns.append(
+                        {
+                            "type": "ai_response",
+                            "content": current_response,
+                        }
+                    )
+
                 if self._current_log_turns:
-                    preview = current_response[:100] if current_response else "(无回复内容)"
+                    preview = (
+                        current_response[:100] if current_response else "(无回复内容)"
+                    )
                     from datetime import datetime
-                    self._agent_output_logs.append({
-                        "index": self._current_log_index,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "turns": len(self._current_log_turns),
-                        "preview": preview,
-                        "user_input": user_input[:200],
-                        "turns_data": self._current_log_turns.copy(),
-                    })
+
+                    self._agent_output_logs.append(
+                        {
+                            "index": self._current_log_index,
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "turns": len(self._current_log_turns),
+                            "preview": preview,
+                            "user_input": user_input[:200],
+                            "turns_data": self._current_log_turns.copy(),
+                        }
+                    )
                     # 保存到文件
                     self._save_output_log()
 

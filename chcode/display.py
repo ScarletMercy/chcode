@@ -72,7 +72,7 @@ def render_ai_start():
     if _subagent_count > 0:
         return
     console.print()
-    console.print("[bold cyan]AI[/bold cyan]", end="")
+    console.print("[cyan]╭─ AI[/cyan]")
 
 
 def render_ai_end() -> None:
@@ -80,6 +80,7 @@ def render_ai_end() -> None:
     if _subagent_parallel or _subagent_count > 0:
         return
     console.print()
+    console.print("[cyan]╰─[/cyan]")
 
 
 def render_reasoning(reasoning: str) -> None:

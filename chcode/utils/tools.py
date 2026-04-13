@@ -729,96 +729,77 @@ def web_fetch(url: str) -> dict:
 
 def _select_with_other(question: str, options: list[str]) -> str | None:
     """
-    下拉选择 + 「其它」行内输入（同步版本 - 用于非 async 上下文）。
-    异步版本见 _select_with_other_async()
+    下拉选择 + 自定义输入框（同步版本）。
+    输入行始终可见，用上下箭头或 Tab 移动到输入行直接输入。
     """
     from prompt_toolkit import Application
     from prompt_toolkit.buffer import Buffer
-    from prompt_toolkit.data_structures import Point
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.layout import Layout, UIContent
-    from prompt_toolkit.layout.controls import FormattedTextControl, UIControl
+    from prompt_toolkit.layout.controls import (
+        FormattedTextControl,
+        BufferControl,
+        UIControl,
+    )
     from prompt_toolkit.layout.containers import HSplit, Window
-    from prompt_toolkit.keys import Keys
-    from prompt_toolkit.utils import get_cwidth
 
-    # ─── 自定义控件：选择列表 + 行内输入 ───
-    class _SelectWithOtherControl(UIControl):
+    input_buffer = Buffer()
+    input_row_idx = len(options)
+
+    class _SelectControl(UIControl):
         def __init__(self, opts: list[str]):
             self.opts = opts
-            self.all_opts = opts + ["\u5176\u5b83"]  # options + 其它
             self.selected = 0
-            self.buffer = Buffer()
 
         def is_focusable(self) -> bool:
             return True
 
         def get_invalidate_events(self):
-            yield self.buffer.on_text_changed
+            yield input_buffer.on_text_changed
 
         def preferred_height(
             self, width, max_available_height, wrap_lines, get_line_prefix
         ):
-            return len(self.all_opts)
+            return len(self.opts) + 1
 
         def create_content(self, width: int, height: int) -> UIContent:
             lines = []
-            other_idx = len(self.all_opts) - 1
-            other_prefix = "  \u276f \u5176\u5b83: "
+            for i, opt in enumerate(self.opts):
+                prefix = "  ❯ " if i == self.selected else "    "
+                line = f"{prefix}{opt}"
+                style = "bold" if i == self.selected else ""
+                lines.append([(style, line)])
 
-            for i, opt in enumerate(self.all_opts):
-                if i == self.selected:
-                    prefix = "  \u276f "
-                else:
-                    prefix = "    "
-
-                if opt == "\u5176\u5b83":
-                    # 始终显示输入框
-                    if self.buffer.text:
-                        input_display = self.buffer.text
-                    else:
-                        input_display = "[\u81ea\u5b9a\u4e49\u8f93\u5165]"
-                    line = f"{prefix}{opt}: {input_display}"
-                else:
-                    line = f"{prefix}{opt}"
-
-                # 选中行高亮
-                if i == self.selected:
-                    lines.append([("bold", line)])
-                else:
-                    lines.append([("", line)])
+            input_text = input_buffer.text or ""
+            input_prefix = "  ❯ " if self.selected == input_row_idx else "    "
+            input_line = f"{input_prefix}> {input_text}"
+            input_style = "bold" if self.selected == input_row_idx else ""
+            lines.append([(input_style, input_line)])
 
             def get_line(i):
-                if i < len(lines):
-                    return lines[i]
-                return [("", "")]
-
-            # 计算光标位置
-            cursor_pos = None
-            if self.selected == other_idx:
-                # 关键：用 get_cwidth() 计算前缀宽度
-                prefix_width = get_cwidth(other_prefix)
-                cursor_x = prefix_width + self.buffer.cursor_position
-                cursor_pos = Point(x=cursor_x, y=other_idx)
+                return lines[i] if i < len(lines) else [("", "")]
 
             return UIContent(
                 get_line=get_line,
                 line_count=len(lines),
-                show_cursor=True,
-                cursor_position=cursor_pos,
             )
 
-    control = _SelectWithOtherControl(options)
+    control = _SelectControl(options)
 
-    # ─── 问题标签 ─────────────────────────
-    question_text = f"? {question}"
     question_window = Window(
         height=1,
-        content=FormattedTextControl(text=question_text),
+        content=FormattedTextControl(text=f"? {question}"),
+        dont_extend_height=True,
     )
     control_window = Window(content=control)
 
-    # ─── 按键绑定 ─────────────────────────
+    input_edit = Window(
+        content=BufferControl(buffer=input_buffer),
+        height=1,
+        dont_extend_height=True,
+        char=" ",
+    )
+
     kb = KeyBindings()
     _exiting = False
 
@@ -827,7 +808,12 @@ def _select_with_other(question: str, options: list[str]) -> str | None:
         nonlocal _exiting
         if _exiting:
             return
-        control.selected = max(0, control.selected - 1)
+        if control.selected > 0:
+            control.selected -= 1
+            if control.selected < input_row_idx:
+                e.app.layout.focus(control_window)
+            else:
+                e.app.layout.focus(input_edit)
         e.app.invalidate()
 
     @kb.add("down")
@@ -835,7 +821,10 @@ def _select_with_other(question: str, options: list[str]) -> str | None:
         nonlocal _exiting
         if _exiting:
             return
-        control.selected = min(len(control.all_opts) - 1, control.selected + 1)
+        if control.selected < input_row_idx:
+            control.selected += 1
+            if control.selected == input_row_idx:
+                e.app.layout.focus(input_edit)
         e.app.invalidate()
 
     @kb.add("tab")
@@ -843,22 +832,26 @@ def _select_with_other(question: str, options: list[str]) -> str | None:
         nonlocal _exiting
         if _exiting:
             return
-        control.selected = (control.selected + 1) % len(control.all_opts)
+        if control.selected == input_row_idx:
+            control.selected = 0
+            e.app.layout.focus(control_window)
+        else:
+            control.selected = input_row_idx
+            e.app.layout.focus(input_edit)
         e.app.invalidate()
 
     @kb.add("enter")
     def _enter(e):
         nonlocal _exiting
         _exiting = True
-        chosen = control.all_opts[control.selected]
-        if chosen == "\u5176\u5b83":
-            text = control.buffer.text.strip()
+        if control.selected == input_row_idx:
+            text = input_buffer.text.strip()
             if text:
                 e.app.exit(result=text)
             else:
                 _exiting = False
         else:
-            e.app.exit(result=chosen)
+            e.app.exit(result=control.opts[control.selected])
 
     @kb.add("escape")
     def _esc(e):
@@ -868,113 +861,229 @@ def _select_with_other(question: str, options: list[str]) -> str | None:
     def _cancel(e):
         e.app.exit(result=None)
 
-    @kb.add(Keys.Any)
-    def _any(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        other_idx = len(control.all_opts) - 1
-        # 只有选中"其它"时才处理输入
-        if control.selected != other_idx:
-            return
+    layout = Layout(HSplit([question_window, control_window, input_edit]))
+    app = Application(
+        layout=layout, key_bindings=kb, full_screen=False, erase_when_done=True
+    )
+    result = app.run()
+    if result is not None:
+        console.print(f"[cyan]?[/cyan] {question} [bold]{result}[/bold]")
+    return result
 
-        data = e.data
-        if data == "\r":  # enter 已处理
-            return
 
-        buf = control.buffer
-        # 处理退格
-        if data == "\x7f" or data == "\x08":
-            if buf.cursor_position > 0:
-                buf.delete_before_cursor()
-            e.app.invalidate()
-            return
-        # 可打印字符
-        if len(data) == 1 and data >= " ":
-            buf.insert_text(data)
-            e.app.invalidate()
+async def _checkbox_with_other_async(
+    question: str, options: list[str]
+) -> list[str] | None:
+    """
+    多选 + 自定义输入框（异步版本）
 
-    # ─── 构建并运行 ───────────────────────
-    layout = Layout(HSplit([question_window, control_window]))
-    app = Application(layout=layout, key_bindings=kb, full_screen=False)
-    return app.run()
+    空格切换选中，Tab 切换列表/输入框焦点，Enter 提交。
+    输入行始终可见，用于输入不在列表中的自定义选项。
+    """
+    from prompt_toolkit import Application
+    from prompt_toolkit.buffer import Buffer
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout, UIContent
+    from prompt_toolkit.layout.controls import (
+        FormattedTextControl,
+        BufferControl,
+        UIControl,
+    )
+    from prompt_toolkit.layout.containers import HSplit, Window
+
+    input_buffer = Buffer()
+    input_row_idx = len(options)
+
+    class _CheckboxControl(UIControl):
+        def __init__(self, opts: list[str]):
+            self.opts = opts
+            self.selected = 0
+            self.checked: set[int] = set()
+
+        def is_focusable(self) -> bool:
+            return True
+
+        def get_invalidate_events(self):
+            yield input_buffer.on_text_changed
+
+        def preferred_height(
+            self, width, max_available_height, wrap_lines, get_line_prefix
+        ):
+            return len(self.opts) + 1
+
+        def create_content(self, width: int, height: int) -> UIContent:
+            lines = []
+            for i, opt in enumerate(self.opts):
+                marker = "[√]" if i in self.checked else "[ ]"
+                prefix = "  ❯ " if i == self.selected else "    "
+                line = f"{prefix}{marker} {opt}"
+                style = "bold" if i == self.selected else ""
+                lines.append([(style, line)])
+
+            input_text = input_buffer.text or ""
+            input_prefix = "  ❯ " if self.selected == input_row_idx else "    "
+            input_line = f"{input_prefix}> {input_text}"
+            input_style = "bold" if self.selected == input_row_idx else ""
+            lines.append([(input_style, input_line)])
+
+            def get_line(i):
+                return lines[i] if i < len(lines) else [("", "")]
+
+            return UIContent(
+                get_line=get_line,
+                line_count=len(lines),
+            )
+
+    control = _CheckboxControl(options)
+
+    question_window = Window(
+        height=1,
+        content=FormattedTextControl(text=f"? {question}"),
+        dont_extend_height=True,
+    )
+    control_window = Window(content=control)
+
+    input_edit = Window(
+        content=BufferControl(buffer=input_buffer),
+        height=1,
+        dont_extend_height=True,
+        char=" ",
+    )
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _up(e):
+        if control.selected > 0:
+            control.selected -= 1
+            if control.selected < input_row_idx:
+                e.app.layout.focus(control_window)
+            else:
+                e.app.layout.focus(input_edit)
+        e.app.invalidate()
+
+    @kb.add("down")
+    def _down(e):
+        if control.selected < input_row_idx:
+            control.selected += 1
+            if control.selected == input_row_idx:
+                e.app.layout.focus(input_edit)
+        e.app.invalidate()
+
+    @kb.add("tab")
+    def _tab(e):
+        if control.selected == input_row_idx:
+            control.selected = 0
+            e.app.layout.focus(control_window)
+        else:
+            control.selected = input_row_idx
+            e.app.layout.focus(input_edit)
+        e.app.invalidate()
+
+    @kb.add(" ")
+    def _space(e):
+        if control.selected < input_row_idx:
+            control.checked ^= {control.selected}
+        e.app.invalidate()
+
+    @kb.add("enter")
+    def _enter(e):
+        selected_names = [control.opts[i] for i in sorted(control.checked)]
+        custom = input_buffer.text.strip()
+        if custom:
+            selected_names.append(custom)
+        e.app.exit(result=selected_names if selected_names else None)
+
+    @kb.add("escape")
+    def _esc(e):
+        e.app.exit(result=None)
+
+    @kb.add("c-c")
+    def _cancel(e):
+        e.app.exit(result=None)
+
+    layout = Layout(HSplit([question_window, control_window, input_edit]))
+    app = Application(
+        layout=layout, key_bindings=kb, full_screen=False, erase_when_done=True
+    )
+    result = await app.run_async()
+    if result is not None:
+        console.print(f"[cyan]?[/cyan] {question} [bold]{', '.join(result)}[/bold]")
+    return result
 
 
 async def _select_with_other_async(question: str, options: list[str]) -> str | None:
     """
-    异步版本 - 用于 async 上下文中（如 ChatREPL 的 /edit, /fork 命令）
+    下拉选择 + 自定义输入框（异步版本）。
+    输入行始终可见，用上下箭头或 Tab 移动到输入行直接输入。
     """
-    # 调用同步实现，但在 async 上下文中使用 run_async
     from prompt_toolkit import Application
     from prompt_toolkit.buffer import Buffer
-    from prompt_toolkit.data_structures import Point
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.layout import Layout, UIContent
-    from prompt_toolkit.layout.controls import FormattedTextControl, UIControl
+    from prompt_toolkit.layout.controls import (
+        FormattedTextControl,
+        BufferControl,
+        UIControl,
+    )
     from prompt_toolkit.layout.containers import HSplit, Window
-    from prompt_toolkit.keys import Keys
-    from prompt_toolkit.utils import get_cwidth
 
-    class _SelectWithOtherControl(UIControl):
+    input_buffer = Buffer()
+    input_row_idx = len(options)
+
+    class _SelectControl(UIControl):
         def __init__(self, opts: list[str]):
             self.opts = opts
-            self.all_opts = opts + ["\u5176\u5b83"]
             self.selected = 0
-            self.buffer = Buffer()
 
         def is_focusable(self) -> bool:
             return True
 
         def get_invalidate_events(self):
-            yield self.buffer.on_text_changed
+            yield input_buffer.on_text_changed
 
         def preferred_height(
             self, width, max_available_height, wrap_lines, get_line_prefix
         ):
-            return len(self.all_opts)
+            return len(self.opts) + 1
 
         def create_content(self, width: int, height: int) -> UIContent:
             lines = []
-            other_idx = len(self.all_opts) - 1
-            other_prefix = "  \u276f \u5176\u5b83: "
+            for i, opt in enumerate(self.opts):
+                prefix = "  ❯ " if i == self.selected else "    "
+                line = f"{prefix}{opt}"
+                style = "bold" if i == self.selected else ""
+                lines.append([(style, line)])
 
-            for i, opt in enumerate(self.all_opts):
-                prefix = "  \u276f " if i == self.selected else "    "
-                if opt == "\u5176\u5b83":
-                    if self.buffer.text:
-                        input_display = self.buffer.text
-                    else:
-                        input_display = "[\u81ea\u5b9a\u4e49\u8f93\u5165]"
-                    line = f"{prefix}{opt}: {input_display}"
-                else:
-                    line = f"{prefix}{opt}"
-                if i == self.selected:
-                    lines.append([("bold", line)])
-                else:
-                    lines.append([("", line)])
+            input_text = input_buffer.text or ""
+            input_prefix = "  ❯ " if self.selected == input_row_idx else "    "
+            input_line = f"{input_prefix}> {input_text}"
+            input_style = "bold" if self.selected == input_row_idx else ""
+            lines.append([(input_style, input_line)])
 
             def get_line(i):
-                if i < len(lines):
-                    return lines[i]
-                return [("", "")]
-
-            cursor_pos = None
-            if self.selected == other_idx:
-                prefix_width = get_cwidth(other_prefix)
-                cursor_x = prefix_width + self.buffer.cursor_position
-                cursor_pos = Point(x=cursor_x, y=other_idx)
+                return lines[i] if i < len(lines) else [("", "")]
 
             return UIContent(
                 get_line=get_line,
                 line_count=len(lines),
-                show_cursor=True,
-                cursor_position=cursor_pos,
             )
 
-    control = _SelectWithOtherControl(options)
-    question_text = f"? {question}"
-    question_window = Window(height=1, content=FormattedTextControl(text=question_text))
+    control = _SelectControl(options)
+
+    question_window = Window(
+        height=1,
+        content=FormattedTextControl(text=f"? {question}"),
+        dont_extend_height=True,
+    )
     control_window = Window(content=control)
+
+    input_edit = Window(
+        content=BufferControl(buffer=input_buffer),
+        height=1,
+        dont_extend_height=True,
+        char=" ",
+    )
 
     kb = KeyBindings()
     _exiting = False
@@ -984,7 +1093,12 @@ async def _select_with_other_async(question: str, options: list[str]) -> str | N
         nonlocal _exiting
         if _exiting:
             return
-        control.selected = max(0, control.selected - 1)
+        if control.selected > 0:
+            control.selected -= 1
+            if control.selected < input_row_idx:
+                e.app.layout.focus(control_window)
+            else:
+                e.app.layout.focus(input_edit)
         e.app.invalidate()
 
     @kb.add("down")
@@ -992,7 +1106,10 @@ async def _select_with_other_async(question: str, options: list[str]) -> str | N
         nonlocal _exiting
         if _exiting:
             return
-        control.selected = min(len(control.all_opts) - 1, control.selected + 1)
+        if control.selected < input_row_idx:
+            control.selected += 1
+            if control.selected == input_row_idx:
+                e.app.layout.focus(input_edit)
         e.app.invalidate()
 
     @kb.add("tab")
@@ -1000,22 +1117,26 @@ async def _select_with_other_async(question: str, options: list[str]) -> str | N
         nonlocal _exiting
         if _exiting:
             return
-        control.selected = (control.selected + 1) % len(control.all_opts)
+        if control.selected == input_row_idx:
+            control.selected = 0
+            e.app.layout.focus(control_window)
+        else:
+            control.selected = input_row_idx
+            e.app.layout.focus(input_edit)
         e.app.invalidate()
 
     @kb.add("enter")
     def _enter(e):
         nonlocal _exiting
         _exiting = True
-        chosen = control.all_opts[control.selected]
-        if chosen == "\u5176\u5b83":
-            text = control.buffer.text.strip()
+        if control.selected == input_row_idx:
+            text = input_buffer.text.strip()
             if text:
                 e.app.exit(result=text)
             else:
                 _exiting = False
         else:
-            e.app.exit(result=chosen)
+            e.app.exit(result=control.opts[control.selected])
 
     @kb.add("escape")
     def _esc(e):
@@ -1025,30 +1146,14 @@ async def _select_with_other_async(question: str, options: list[str]) -> str | N
     def _cancel(e):
         e.app.exit(result=None)
 
-    @kb.add(Keys.Any)
-    def _any(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        other_idx = len(control.all_opts) - 1
-        if control.selected != other_idx:
-            return
-        data = e.data
-        if data == "\r":
-            return
-        buf = control.buffer
-        if data == "\x7f" or data == "\x08":
-            if buf.cursor_position > 0:
-                buf.delete_before_cursor()
-            e.app.invalidate()
-            return
-        if len(data) == 1 and data >= " ":
-            buf.insert_text(data)
-            e.app.invalidate()
-
-    layout = Layout(HSplit([question_window, control_window]))
-    app = Application(layout=layout, key_bindings=kb, full_screen=False)
-    return await app.run_async()
+    layout = Layout(HSplit([question_window, control_window, input_edit]))
+    app = Application(
+        layout=layout, key_bindings=kb, full_screen=False, erase_when_done=True
+    )
+    result = await app.run_async()
+    if result is not None:
+        console.print(f"[cyan]?[/cyan] {question} [bold]{result}[/bold]")
+    return result
 
 
 @tool
@@ -1099,10 +1204,10 @@ def ask_user(
 
     try:
         if is_multiple:
-            selected = questionary.checkbox(
-                "选择（空格选择，回车确认）:",
-                choices=options,
-            ).ask()
+            try:
+                selected = asyncio.run(_checkbox_with_other_async(question, options))
+            except RuntimeError:
+                selected = None
             if selected is None:
                 return "user_answer:\n(用户取消)"
             result = ", ".join(selected)
@@ -1149,9 +1254,7 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
         console.print(f"[dim]问题 {i}/{len(questions)}: {q_text}[/dim]")
 
         if not q_options:
-            answer = await asyncio.to_thread(
-                lambda: questionary.text("请输入: ").ask()
-            )
+            answer = await asyncio.to_thread(lambda: questionary.text("请输入: ").ask())
             if answer is None:
                 answers.append(f"Q{i}: (用户取消)")
                 continue
@@ -1159,39 +1262,19 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
         else:
             try:
                 if q_multiple:
-                    selected = await asyncio.to_thread(
-                        lambda: questionary.checkbox(
-                            "选择（空格选择，回车确认）:",
-                            choices=q_options,
-                        ).ask()
+                    selected = await _checkbox_with_other_async(
+                        "选择（空格选择，回车确认）:", q_options
                     )
                     if selected is None:
                         answers.append(f"Q{i}: (用户取消)")
                         continue
                     result = ", ".join(selected)
                 else:
-                    # 批量模式使用 questionary.select（不用自定义 UI）
-                    choices = list(q_options) + ["其它"]
-                    selected = await asyncio.to_thread(
-                        lambda: questionary.select(
-                            message=q_text,
-                            choices=choices,
-                        ).ask()
-                    )
+                    selected = await _select_with_other_async(q_text, q_options)
                     if selected is None:
                         answers.append(f"Q{i}: (用户取消)")
                         continue
-                    if selected == "其它":
-                        console.print("[dim]请输入自定义回答:[/dim]")
-                        text = await asyncio.to_thread(
-                            lambda: questionary.text("").ask()
-                        )
-                        if text is None:
-                            answers.append(f"Q{i}: (用户取消)")
-                            continue
-                        result = text
-                    else:
-                        result = selected
+                    result = selected
                 answers.append(f"Q{i}: {result}")
             except Exception as e:
                 answers.append(f"Q{i}: (询问失败: {e})")
@@ -1201,7 +1284,7 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
     # 汇总结果
     result_lines = ["=== 批量提问结果 ==="]
     for i, q in enumerate(questions, 1):
-        result_lines.append(f"问题: {q.get('question', '')}\n回答: {answers[i-1]}")
+        result_lines.append(f"问题: {q.get('question', '')}\n回答: {answers[i - 1]}")
     return "\n\n".join(result_lines)
 
 

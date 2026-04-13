@@ -25,62 +25,69 @@ async def select(
     default: str | None = None,
 ) -> str | None:
     """下拉单选"""
+
     def _ask():
         return questionary.select(
             message=message,
             choices=choices,
             default=default,
         ).ask()
+
     return await asyncio.to_thread(_ask)
 
 
 async def confirm(message: str, default: bool = True) -> bool:
     """确认框"""
+
     def _ask():
         return questionary.confirm(
             message=message,
             default=default,
         ).ask()
+
     return await asyncio.to_thread(_ask)
 
 
 async def checkbox(message: str, choices: list[str]) -> list[str]:
     """多选框"""
-    def _ask():
-        return questionary.checkbox(
-            message=message,
-            choices=choices,
-        ).ask()
-    return await asyncio.to_thread(_ask)
+    from chcode.utils.tools import _checkbox_with_other_async
+
+    return await _checkbox_with_other_async(message, choices) or []
 
 
 async def text(message: str, default: str = "") -> str:
     """文本输入"""
+
     def _ask():
         return questionary.text(
             message=message,
             default=default,
         ).ask()
+
     return await asyncio.to_thread(_ask)
 
 
 async def password(message: str) -> str:
     """密码输入（隐藏回显）"""
+
     def _ask():
         return questionary.password(
             message=message,
         ).ask()
+
     return await asyncio.to_thread(_ask)
 
 
 async def path_input(message: str, default: str = "") -> str:
     """路径输入"""
+
     def _ask():
         return questionary.path(
             message=message,
             default=default,
             only_directories=True,
         ).ask()
+
     return await asyncio.to_thread(_ask)
 
 
@@ -178,7 +185,9 @@ async def model_config_form(
     base_url = result
 
     # API Key — 先展示环境变量快捷选择
-    env_choices = [f"{var} ({desc})" for var, desc in API_KEY_ENV_VARS if os.getenv(var)]
+    env_choices = [
+        f"{var} ({desc})" for var, desc in API_KEY_ENV_VARS if os.getenv(var)
+    ]
     env_choices.append("手动输入 API Key...")
     if env_choices:
         result = await select("选择 API Key 来源:", env_choices)
@@ -209,35 +218,49 @@ async def model_config_form(
         # temperature
         t = cfg.get("temperature", "1.0")
         t_str = str(t) if t else "1.0"
-        result = await select_or_custom("Temperature:", TEMPERATURE_PRESETS, custom_prompt="输入 temperature: ")
+        result = await select_or_custom(
+            "Temperature:", TEMPERATURE_PRESETS, custom_prompt="输入 temperature: "
+        )
         if result is not None:
             config["temperature"] = float(result)
 
         # top_p
         tp = cfg.get("top_p", "1.0")
         tp_str = str(tp) if tp else "1.0"
-        result = await select_or_custom("Top P:", TOP_P_PRESETS, custom_prompt="输入 top_p: ")
+        result = await select_or_custom(
+            "Top P:", TOP_P_PRESETS, custom_prompt="输入 top_p: "
+        )
         if result is not None:
             config["top_p"] = float(result)
 
         # max_tokens
         mt = cfg.get("max_tokens", "")
         mt_str = str(mt) if mt else ""
-        result = await select_or_custom("Max Tokens:", MAX_TOKENS_PRESETS, custom_prompt="输入 max_tokens: ")
+        result = await select_or_custom(
+            "Max Tokens:", MAX_TOKENS_PRESETS, custom_prompt="输入 max_tokens: "
+        )
         if result is not None:
             config["max_tokens"] = int(result)
 
         # frequency_penalty
         fp = cfg.get("frequency_penalty", "0")
         fp_str = str(fp) if fp else "0"
-        result = await select_or_custom("Frequency Penalty:", FREQ_PENALTY_PRESETS, custom_prompt="输入 frequency_penalty: ")
+        result = await select_or_custom(
+            "Frequency Penalty:",
+            FREQ_PENALTY_PRESETS,
+            custom_prompt="输入 frequency_penalty: ",
+        )
         if result is not None:
             config["frequency_penalty"] = float(result)
 
         # presence_penalty
         pp = cfg.get("presence_penalty", "0")
         pp_str = str(pp) if pp else "0"
-        result = await select_or_custom("Presence Penalty:", PRESENCE_PENALTY_PRESETS, custom_prompt="输入 presence_penalty: ")
+        result = await select_or_custom(
+            "Presence Penalty:",
+            PRESENCE_PENALTY_PRESETS,
+            custom_prompt="输入 presence_penalty: ",
+        )
         if result is not None:
             config["presence_penalty"] = float(result)
 
