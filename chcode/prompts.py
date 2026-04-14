@@ -213,12 +213,10 @@ async def model_config_form(
     # ── 模型名称 ──
     model_name = cfg.get("model", "")
     if not model_name:
-        result = await select_or_custom(
-            "选择模型:", MODEL_PRESETS, custom_prompt="输入模型名称: ",
-        )
-        if result is None:
+        model_name = await text("输入模型名称: ")
+        if not model_name or not model_name.strip():
             return None
-        model_name = result
+        model_name = model_name.strip()
 
     # ── Base URL ──
     base_url = cfg.get("base_url", "")

@@ -83,11 +83,6 @@ def get_default_model_config() -> dict | None:
     return data.get("default") or None
 
 
-def get_fallback_models() -> dict[str, dict]:
-    """获取所有备用模型"""
-    data = load_model_json()
-    return data.get("fallback", {})
-
 
 def detect_env_api_keys() -> list[dict]:
     """检测环境变量中的 API Key，返回推荐配置列表"""
@@ -193,6 +188,8 @@ async def configure_new_model() -> dict | None:
             console.print(f"[red]连接测试失败: {err_msg}[/red]")
             console.print(f"[dim]{traceback.format_exc()}[/dim]")
             return None
+    data = load_model_json()
+    old_default = data.get("default")
     fallback = data.get("fallback", {})
 
     if not old_default:
@@ -309,16 +306,6 @@ def save_workplace(path: Path) -> None:
     SETTING_JSON.write_text(
         json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
     )
-
-
-def load_setting(key: str, default=None):
-    if SETTING_JSON.exists():
-        try:
-            data = json.loads(SETTING_JSON.read_text(encoding="utf-8"))
-            return data.get(key, default)
-        except Exception:
-            pass
-    return default
 
 
 # ─── 上下文窗口大小 ──────────────────────────────────────────

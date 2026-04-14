@@ -9,10 +9,7 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich import box
-from rich.table import Table
 from rich.text import Text
-from rich.markup import escape
 from rich.rule import Rule
 from rich.live import Live
 
@@ -255,51 +252,7 @@ def render_welcome() -> None:
     console.print()
 
 
-# ─── 状态栏 ──────────────────────────────────────────
-
-
-def render_status(
-    workplace: str = "",
-    model: str = "",
-    tokens: str = "",
-    git_status: str = "",
-    mode: str = "Common",
-) -> None:
-    """渲染底部状态栏（带边框）"""
-    parts = []
-    if workplace:
-        short = workplace.replace("\\", "/")
-        if len(short) > 40:
-            short = "..." + short[-37:]
-        parts.append(f"[dim]{short}[/dim]")
-    if model:
-        parts.append(f"[cyan]{model}[/cyan]")
-    if tokens:
-        if "[" in tokens:
-            parts.append(tokens)
-        else:
-            parts.append(f"[yellow]{tokens}[/yellow]")
-    if git_status:
-        parts.append(f"[green]{git_status}[/green]")
-    if mode == "Yolo":
-        parts.append("[bold red]YOLO[/bold red]")
-
-    if parts:
-        content = "  ".join(parts)
-        console.print(
-            Panel(
-                content,
-                box=box.ROUNDED,
-                border_style="dim",
-                padding=(0, 1),
-                expand=False,
-            )
-        )
-
-
 # ─── 消息列表渲染（加载历史） ─────────────────────────────
-
-MAX_DISPLAY_LINES = 50
 
 
 def render_conversation(messages: list) -> None:
@@ -332,27 +285,6 @@ def render_conversation(messages: list) -> None:
                 render_tool(message.name or "tool", content)
 
     console.print()
-
-
-# ─── Token 统计 ──────────────────────────────────────────
-
-
-def get_token_text(messages: list) -> str:
-    """从消息列表提取最新 AI 消息的 token 统计"""
-    total = input_t = output_t = 0
-    for message in reversed(messages):
-        from langchain_core.messages import AIMessage
-
-        if isinstance(message, AIMessage):
-            if message.additional_kwargs.get("error"):
-                continue
-            usage = message.usage_metadata
-            if usage:
-                input_t = usage.get("input_tokens", 0)
-                output_t = usage.get("output_tokens", 0)
-                total = usage.get("total_tokens", 0)
-                break
-    return f"总: {total} | 输入: {input_t} | 输出: {output_t}"
 
 
 # ─── 上下文用量 ──────────────────────────────────────────

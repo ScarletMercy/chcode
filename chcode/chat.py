@@ -12,19 +12,15 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from datetime import datetime
-from typing import AsyncIterator
 
 import openai
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.text import Text
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout.dimension import Dimension
-from prompt_toolkit.shortcuts.prompt import CompleteStyle
 from prompt_toolkit.styles import Style
 
 from langchain_core.messages import (
@@ -46,7 +42,6 @@ from chcode.display import (
     render_warning,
     render_welcome,
     render_conversation,
-    render_status,
     render_ai_start,
     render_ai_chunk,
     render_ai_end,
@@ -391,7 +386,6 @@ class ChatREPL:
     async def _get_input(self) -> str | None:
         """获取用户输入（使用 prompt-toolkit 实现命令自动补全）"""
         import re
-        import shutil
 
         # 检查是否有中断恢复缓冲区
         interrupt_mode = self._interrupt_buffer is not None
@@ -987,7 +981,6 @@ class ChatREPL:
                         )
                         sessions_path = self.workplace_path / ".chat" / "sessions"
                         if sessions_path.exists():
-                            import shutil
 
                             await asyncio.to_thread(
                                 shutil.rmtree, sessions_path
@@ -1048,8 +1041,6 @@ class ChatREPL:
 
     def _copy_dir(self, src: Path, dst: Path):
         """复制目录（同步版本）"""
-        import shutil
-
         for item in src.iterdir():
             if item.name.startswith("."):
                 continue  # 跳过隐藏文件/目录

@@ -235,7 +235,3 @@ class GitManager:
         except Exception as e:
             print(f"创建.gitignore失败: {e}")
             return False
-
-
-if __name__ == "__main__":
-    ...

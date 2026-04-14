@@ -292,21 +292,6 @@ class SkillLoader:
             return f"You are a helpful coding assistant.\n\n{skills_section}"
 
 
-# 便捷函数
-def discover_skills(skill_paths: list[Path] | None = None) -> list[SkillMetadata]:
-    """便捷函数：发现所有 Skills"""
-    loader = SkillLoader(skill_paths)
-    return loader.scan_skills()
-
-
-def get_skill_content(
-    skill_name: str, skill_paths: list[Path] | None = None
-) -> Optional[SkillContent]:
-    """便捷函数：获取 Skill 内容"""
-    loader = SkillLoader(skill_paths)
-    return loader.load_skill(skill_name)
-
-
 def scan_all_skills(project_path: Path | None = None) -> list[dict]:
     """扫描所有技能（项目级和全局级）
 
@@ -520,28 +505,6 @@ def install_skill(archive_path: str, install_path: Path) -> bool:
         return False
 
 
-def delete_skill(skill_path: str | Path) -> bool:
-    """删除技能
-
-    Args:
-        skill_path: 技能目录路径
-
-    Returns:
-        是否删除成功
-    """
-    try:
-        import shutil
-
-        skill_path = Path(skill_path)
-        if skill_path.exists() and skill_path.is_dir():
-            shutil.rmtree(skill_path)
-            return True
-        return False
-    except Exception as e:
-        print(f"删除技能失败: {e}")
-        return False
-
-
 @dataclass
 class SkillAgentContext:
     """
@@ -555,10 +518,3 @@ class SkillAgentContext:
     working_directory: Path
     thread_id: str = ""
     extra: dict = field(default_factory=dict)
-    # working_directory: Path = field(default_factory=lambda: Path.cwd())
-
-
-if __name__ == "__main__":
-    loader = SkillLoader()
-    skills = loader.scan_skills()
-    print(skills)
