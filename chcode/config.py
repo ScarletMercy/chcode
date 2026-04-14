@@ -187,14 +187,12 @@ async def configure_new_model() -> dict | None:
         model = EnhancedChatOpenAI(**config)
         await asyncio.to_thread(model.invoke, "你好")
     except Exception as e:
+        import traceback
         err_msg = str(e)
         if "null value for 'choices'" not in err_msg:
             console.print(f"[red]连接测试失败: {err_msg}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
             return None
-
-    # 保存
-    data = load_model_json()
-    old_default = data.get("default", {})
     fallback = data.get("fallback", {})
 
     if not old_default:
@@ -232,12 +230,12 @@ async def edit_current_model() -> dict | None:
         model = EnhancedChatOpenAI(**config)
         await asyncio.to_thread(model.invoke, "你好")
     except Exception as e:
+        import traceback
         err_msg = str(e)
         if "null value for 'choices'" not in err_msg:
             console.print(f"[red]连接测试失败: {err_msg}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
             return None
-
-    data["default"] = config
     save_model_json(data)
     console.print(f"[green]模型配置已更新: {config['model']}[/green]")
     return config

@@ -90,7 +90,7 @@ SLASH_COMMANDS = {
     "/git": "Git 状态",
     "/mode": "切换 Common/Yolo 模式",
     "/workdir": "切换工作目录",
-    "/status": "显示状态栏",
+    "/tools": "显示内置工具",
     "/edit": "编辑历史消息",
     "/fork": "从某条消息创建分支",
     "/delete": "删除历史消息",
@@ -121,6 +121,51 @@ class SlashCommandCompleter(Completer):
 
 
 # ─── 辅助函数 ──────────────────────────────────────────
+
+
+def _rich_to_html(text: str) -> str:
+    """将 Rich 标签转换为 prompt_toolkit HTML 标签。"""
+    import re as _re
+
+    _TAG_MAP = {
+        "bold": "b",
+        "italic": "i",
+        "red": "fg:red",
+        "green": "fg:green",
+        "yellow": "fg:yellow",
+        "blue": "fg:blue",
+        "dim": "fg:#888888",
+    }
+
+    # 先将文本拆分为标签和内容片段
+    parts = _re.split(r"(\[/?[^\]]+\])", text)
+    opened: list[str] = []
+    result: list[str] = []
+
+    for part in parts:
+        m = _re.match(r"^\[([^\]]+)\]$", part)
+        close_m = _re.match(r"^\[/([^\]]*)\]$", part)
+        if close_m:
+            # 关闭标签 — 按后进先出顺序关闭
+            while opened:
+                tag = opened.pop()
+                result.append(f"</{tag}>")
+        elif m:
+            # 开标签
+            tags = m.group(1).split()
+            for t in tags:
+                mapped = _TAG_MAP.get(t)
+                if mapped:
+                    if mapped.startswith("fg:"):
+                        result.append(f'<style fg="{mapped[3:]}">')
+                        opened.append("style")
+                    else:
+                        result.append(f"<{mapped}>")
+                        opened.append(mapped)
+        else:
+            result.append(part)
+
+    return "".join(result)
 
 
 def find_and_slice_from_end(lst, x):
@@ -218,7 +263,6 @@ class ChatREPL:
         self._interrupt_buffer: str | None = None
         # 上下文用量缓存
         self._context_text: str = ""
-        # Agent 输出日志收集
 
     # ─── 清理 ────────────────────────────────────────
 
@@ -377,8 +421,8 @@ class ChatREPL:
                 model = self.model_config.get("model", "未设置")
                 parts.append(model)
                 if hasattr(self, "_context_text") and self._context_text:
-                    clean = re.sub(r"\[/?\w+\]", "", self._context_text)
-                    parts.append(clean)
+                    styled = _rich_to_html(self._context_text)
+                    parts.append(styled)
                 parts.append("普通模式" if not self.yolo else "YOLO 模式")
                 if self.git and self.git_manager and self.git_manager.is_repo():
                     parts.append(f"Git ({self.git_manager.count_checkpoints()} cp)")
@@ -484,12 +528,12 @@ class ChatREPL:
             "/git": self._cmd_git,
             "/mode": self._cmd_mode,
             "/workdir": self._cmd_workdir,
+            "/tools": self._cmd_tools,
             "/edit": self._cmd_edit,
             "/fork": self._cmd_fork,
             "/delete": self._cmd_delete,
             "/help": self._cmd_help,
             "/quit": self._cmd_quit,
-            "/status": self._cmd_status,
         }
 
         handler = handlers.get(command)
@@ -542,6 +586,17 @@ class ChatREPL:
                 self.yolo,
             )
             self._render_status_bar()
+
+    async def _cmd_tools(self, _arg: str) -> None:
+        from chcode.utils.tools import ALL_TOOLS
+
+        console.print("[bold]内置工具[/bold]")
+        console.print()
+        for t in ALL_TOOLS:
+            name = t.name
+            desc = t.description.split("\n")[0] if t.description else ""
+            console.print(f"  [cyan]{name:<16}[/cyan] {desc}")
+        console.print()
 
     async def _cmd_skill(self, _arg: str) -> None:
         if not self.session_mgr:
@@ -752,19 +807,16 @@ class ChatREPL:
         cmds = [
             ("/new", "新会话"),
             ("/model", "模型管理（新建/编辑/切换）"),
-            ("/model new", "新建模型"),
-            ("/model edit", "编辑当前模型"),
-            ("/model switch", "切换模型"),
             ("/skill", "技能管理"),
             ("/history", "历史会话"),
             ("/compress", "压缩会话"),
             ("/git", "Git 状态"),
             ("/mode", "切换 Common/Yolo 模式"),
             ("/workdir", "切换工作目录"),
+            ("/tools", "显示内置工具"),
             ("/edit", "编辑历史消息"),
             ("/fork", "从某条消息创建分支"),
             ("/delete", "删除历史消息"),
-            ("/status", "显示状态栏"),
             ("/help", "显示此帮助"),
             ("/quit", "退出"),
         ]
@@ -774,9 +826,6 @@ class ChatREPL:
 
     async def _cmd_quit(self, _arg: str) -> None:
         raise EOFError()
-
-    async def _cmd_status(self, _arg: str) -> None:
-        self._render_status_bar()
 
     # ─── 消息管理命令 ──────────────────────────────────
 
@@ -802,7 +851,7 @@ class ChatREPL:
             options.append(f"[{idx + 1}] {display}")
 
         # 用户选择
-        chosen = await _select_with_other_async("选择要编辑的消息组:", options)
+        chosen = await select("选择要编辑的消息组:", options)
         if not chosen:
             return
 
