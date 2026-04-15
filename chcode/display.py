@@ -69,7 +69,6 @@ def render_ai_start():
     if _subagent_count > 0:
         return
     console.print()
-    console.print("[cyan]╭─ AI[/cyan]")
 
 
 def render_ai_end() -> None:
@@ -77,7 +76,6 @@ def render_ai_end() -> None:
     if _subagent_parallel or _subagent_count > 0:
         return
     console.print()
-    console.print("[cyan]╰─[/cyan]")
 
 
 def render_reasoning(reasoning: str) -> None:
@@ -243,8 +241,8 @@ def render_welcome() -> None:
     console.print(
         Panel(
             "[bold]ChCode[/bold] — Terminal-based AI Coding Agent\n"
-            "Enter 发送 | Alt+Enter 换行 | /help 查看命令\n"
-            "Ctrl+C 中断生成 | /quit 退出",
+            "Enter 发送 | Ctrl+Enter 换行 | /help 查看命令\n"
+            "Ctrl+C 中断生成 | Tab 切换模式 | /quit 退出",
             border_style="cyan",
             padding=(1, 2),
         )

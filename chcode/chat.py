@@ -78,7 +78,7 @@ from chcode.utils.tools import ALL_TOOLS
 
 SLASH_COMMANDS = {
     "/new": "新会话",
-    "/model": "模型管理",
+    "/model": "模型管理（新建/编辑/切换）",
     "/skill": "技能管理",
     "/history": "历史会话",
     "/compress": "压缩会话",
@@ -311,7 +311,15 @@ class ChatREPL:
         self.checkpointer = await create_checkpointer(db_path)
 
         # 构建 agent（可能较慢，放线程）
-        console.print("[dim]构建 Agent...[/dim]")
+        console.print(
+            "[dim cyan]"
+            " ██████╗  ██╗  ██╗   ██████╗   ██████╗   █████╗    ████████╗\n"
+            "██╔════╝  ██║  ██║  ██╔════╝  ██╔═══██╗  ██╔═██╗   ██╔═════╝\n"
+            "██║       ███████║  ██║       ██║   ██║  ██║  ██╗  ████████╗\n"
+            "██║       ██╔══██║  ██║       ██║   ██║  ██║ ██╔╝  ██╔═════╝\n"
+            "███████╗  ██║  ██║  ███████╗  ╚██████╔╝  █████╔╝   ████████╗\n"
+            " ╚═════╝  ╚═╝  ╚═╝   ╚═════╝   ╚═════╝   ╚════╝     ╚══════╝[/dim cyan]"
+        )
         self.agent = await asyncio.to_thread(
             build_agent,
             self.model_config,
@@ -410,16 +418,26 @@ class ChatREPL:
         if self._prompt_session is None:
             completer = SlashCommandCompleter()
 
-            # 自定义按键：Enter 提交，Alt+Enter 换行
+            # 自定义按键：Enter 提交，Ctrl+Enter 换行
             kb = KeyBindings()
 
             @kb.add("enter")
             def _submit(event):
                 event.current_buffer.validate_and_handle()
 
-            @kb.add("escape", "enter")  # Alt+Enter → 换行
+            @kb.add("c-j")  # Ctrl+Enter → 换行
             def _newline(event):
                 event.current_buffer.insert_text("\n")
+
+            @kb.add("tab")
+            def _tab_toggle_mode(event):
+                if event.current_buffer.text:
+                    return  # 有内容时走默认补全
+                self.yolo = not self.yolo
+                from chcode.agent_setup import update_hitl_config
+                update_hitl_config(self.yolo)
+                mode = "Yolo" if self.yolo else "Common"
+                event.app.renderer._last_rendered_width = 0  # 强制刷新 toolbar
 
             def _bottom_toolbar():
                 width = shutil.get_terminal_size().columns
@@ -430,7 +448,7 @@ class ChatREPL:
                 if hasattr(self, "_context_text") and self._context_text:
                     styled = _rich_to_html(self._context_text)
                     parts.append(styled)
-                parts.append("普通模式" if not self.yolo else "YOLO 模式")
+                parts.append("普通模式" if not self.yolo else "<ansired>YOLO 模式</ansired>")
                 if self.git and self.git_manager and self.git_manager.is_repo():
                     parts.append(f"Git ({self._git_cp_count} cp)")
                 wp = str(self.workplace_path) if self.workplace_path else ""
@@ -463,7 +481,8 @@ class ChatREPL:
                     n = len(buff.complete_state.completions)
                     needed = min(n + 2, 16)
                     return Dimension(min=needed, max=needed)
-                return Dimension(min=1, max=1)
+                line_count = buff.text.count("\n") + 1
+                return Dimension(min=line_count, max=line_count)
 
             def _find_buffer_window(container):
                 from prompt_toolkit.layout.containers import Window
@@ -1223,6 +1242,7 @@ class ChatREPL:
 
     async def _collect_decisions_async(self, interrupt_chunk) -> list[dict]:
         """收集 HITL 决策"""
+        console.print()  # 确保 AI 输出和 HITL 之间有换行
         decisions = []
         for interrupt in interrupt_chunk["__interrupt__"]:
             action_requests = interrupt.value["action_requests"]
@@ -1242,13 +1262,73 @@ class ChatREPL:
                     case "write_file":
                         content = f"写入文件: {args.get('file_path')}\n内容: {args.get('content', '')[:200]}"
                     case "edit":
-                        content = f"修改文件: {args.get('file_path')}\n{args.get('old_string', '')[:100]} -> {args.get('new_string', '')[:100]}"
+                        file_path = args.get("file_path", "")
+                        old_str = args.get("old_string", "")
+                        new_str = args.get("new_string", "")
+                        render_warning(f"[HITL] edit  修改文件: {file_path}")
+                        import difflib
+                        from rich.table import Table
+                        # 查找 old_str 在文件中的起始行号
+                        start_line = 1
+                        try:
+                            with open(file_path, "r", encoding="utf-8") as f:
+                                for i, line in enumerate(f, 1):
+                                    if old_str.splitlines()[0] in line:
+                                        start_line = i
+                                        break
+                        except Exception:
+                            pass
+                        old_lines = old_str.splitlines()
+                        new_lines = new_str.splitlines()
+                        table = Table(show_header=False, show_edge=False, padding=(0, 1), border_style="dim")
+                        table.add_column("old", ratio=1)
+                        table.add_column("new", ratio=1)
+                        sm = difflib.SequenceMatcher(None, old_lines, new_lines)
+                        old_num = start_line
+                        new_num = start_line
+                        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                            if tag == "equal":
+                                for k in range(i2 - i1):
+                                    table.add_row(
+                                        Text(f"  {old_num:>3}  {old_lines[i1+k]}", style="dim"),
+                                        Text(f"  {new_num:>3}  {new_lines[j1+k]}", style="dim"),
+                                    )
+                                    old_num += 1; new_num += 1
+                            elif tag == "replace":
+                                max_len = max(i2 - i1, j2 - j1)
+                                for k in range(max_len):
+                                    old_text = Text(f"{old_num:>3} - {old_lines[i1+k]}", style="red") if k < i2 - i1 else None
+                                    new_text = Text(f"{new_num:>3} + {new_lines[j1+k]}", style="green") if k < j2 - j1 else None
+                                    table.add_row(old_text, new_text)
+                                    if k < i2 - i1:
+                                        old_num += 1
+                                    if k < j2 - j1:
+                                        new_num += 1
+                            elif tag == "delete":
+                                for k in range(i2 - i1):
+                                    table.add_row(Text(f"{old_num:>3} - {old_lines[i1+k]}", style="red"))
+                                    old_num += 1
+                            elif tag == "insert":
+                                for k in range(j2 - j1):
+                                    table.add_row(None, Text(f"{new_num:>3} + {new_lines[j1+k]}", style="green"))
+                                    new_num += 1
+                            elif tag == "delete":
+                                for k in range(i2 - i1):
+                                    old_num += 1
+                                    table.add_row(Text(f"{old_num:>3} - {old_lines[i1+k]}", style="red"))
+                            elif tag == "insert":
+                                for k in range(j2 - j1):
+                                    new_num += 1
+                                    table.add_row(None, Text(f"{new_num:>3} + {new_lines[j1+k]}", style="green"))
+                        console.print(table)
+                        content = None  # 已直接渲染，跳过通用渲染
 
                 if self.yolo:
                     select_action = True
                 else:
-                    render_warning(f"[HITL] {name}")
-                    console.print(Text(f"  {content[:500]}", style="dim"))
+                    if content is not None:
+                        render_warning(f"[HITL] {name}")
+                        console.print(Text(f"  {content[:500]}", style="dim"))
                     result = await select(
                         "操作:",
                         ["approve (批准)", "reject (拒绝)"],

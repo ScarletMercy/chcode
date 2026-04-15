@@ -23,6 +23,7 @@ from chcode.utils.tool_result_pipeline import (
     truncate_large_result,
     enforce_per_turn_budget,
 )
+from chcode.agent_setup import _hitl_middleware
 
 
 @wrap_tool_call
@@ -90,6 +91,8 @@ async def run_subagent(
     timeout_seconds: int = 300,
     description: str = "",
 ) -> str:
+    # 守卫：超时最小 300s
+    timeout_seconds = max(timeout_seconds, 300)
     from chcode.utils.tools import ALL_TOOLS
 
     filtered_tools = _resolve_tools(agent_def, ALL_TOOLS)
@@ -107,14 +110,19 @@ async def run_subagent(
         extra={"system_prompt": agent_def.system_prompt},
     )
 
+    middleware = [
+        _handle_tool_errors,
+        _tool_result_budget,
+        _subagent_system_prompt,
+    ]
+    # 非 read-only 子代理继承主 agent 的 HITL 配置
+    if not agent_def.read_only and _hitl_middleware is not None:
+        middleware.append(_hitl_middleware)
+
     subagent = create_agent(
         model,
         filtered_tools,
-        middleware=[
-            _handle_tool_errors,
-            _tool_result_budget,
-            _subagent_system_prompt,
-        ],
+        middleware=middleware,
         context_schema=SkillAgentContext,
     )
 

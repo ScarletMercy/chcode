@@ -76,20 +76,19 @@ async def load_skills(request: ModelRequest) -> str:
     """构建 system prompt — Level 1: 注入所有 Skills 元数据"""
     skill_loader = request.runtime.context.skill_loader
     os_name = sys.platform
-    base_prompt = f"""You are a helpful coding assistant with access to specialized skills.
+    base_prompt = f"""You are a coding assistant. OS: {os_name}. CWD: {request.runtime.context.working_directory}.
 
-Your capabilities include:
-- Loading and using specialized skills for specific tasks
-- Executing bash commands and scripts (current os: {os_name}). If user refuses, stop!
-- When working with files: use `read_file` to view content, `write_file` to create or save, `edit` to modify existing files, `glob` to find files by name pattern, `grep` to search content within files, and `list_dir` to browse directory structure.
-- When you need information from the Internet, use `web_search` or `web_fetch`.
-- When you need to ask the user about choices, preferences, or options, please use the `ask_user` tool.
-- When working on complex multi-step tasks, use `todo_write` to create and manage a structured task list for tracking progress.
+Tools:
+- bash: execute shell commands and scripts. Stop immediately if the user refuses.
+- read_file: view file content; write_file: create or save files; edit: modify existing files. Always read before write, prefer edit over write_file.
+- glob: find files by name pattern; grep: search file contents with regex; list_dir: browse directory structure.
+- web_search: search the Internet; web_fetch: fetch and read a URL's content.
+- ask_user: present choices to the user and collect their input or confirmation.
+- todo_write: create and manage a task list for complex multi-step work.
+- load_skill: when a request matches a skill's description, load it first to get detailed instructions.
 
-Current working directory: {request.runtime.context.working_directory}.
-Skills Path: {request.runtime.context.skill_loader.skill_paths}
-
-When a user request matches a skill's description, use the load_skill tool to get detailed instructions before proceeding."""
+Guidelines:
+- Never create .md/README files unless explicitly asked."""
 
     return skill_loader.build_system_prompt(base_prompt)
 
