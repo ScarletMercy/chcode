@@ -212,7 +212,7 @@ def _collect_ids_from_group(
     Args:
         group_index: 目标组索引
         groups: 所有消息组
-        mode: "edit" 删除目标组及之后, "fork" 只删除目标组之后（保留目标组）
+        mode: "edit" 删除目标组及之后, "fork" 从目标组开始删除（包含目标组）
 
     Returns:
         (no_need_ids, all_ids): 要删除的消息 ID 列表，所有消息 ID 列表
@@ -226,8 +226,8 @@ def _collect_ids_from_group(
             if i >= group_index:
                 no_need_ids.extend([m.id for m in group])
         elif mode == "fork":
-            # fork: 从目标组之后开始删除（保留目标组）
-            if i > group_index:
+            # fork: 从目标组开始删除（包含目标组，与 chagent 逻辑一致）
+            if i >= group_index:
                 no_need_ids.extend([m.id for m in group])
 
     return no_need_ids, all_ids
@@ -257,6 +257,20 @@ class ChatREPL:
         self._interrupt_buffer: str | None = None
         # 上下文用量缓存
         self._context_text: str = ""
+        # Windows 保留名（不能作为文件名）
+        self.WINDOWS_RESERVED_NAMES = {
+            "nul",
+            "con",
+            "aux",
+            "prn",
+            "com1",
+            "com2",
+            "com3",
+            "com4",
+            "lpt1",
+            "lpt2",
+            "lpt3",
+        }
 
     # ─── 清理 ────────────────────────────────────────
 
@@ -741,7 +755,8 @@ class ChatREPL:
         choices = [str(saved)] if saved else []
 
         result = await select_or_custom(
-            "选择工作目录:", choices,
+            "选择工作目录:",
+            choices,
             custom_label="自定义路径...",
             custom_prompt="请输入工作目录路径: ",
         )
@@ -923,6 +938,7 @@ class ChatREPL:
 
                 self._edit_buffer = edit_msg.content
                 render_success("消息已加载到输入框，修改后发送即可重新生成")
+                return
 
             elif action == "分叉消息":
                 ok = await confirm(
@@ -965,12 +981,25 @@ class ChatREPL:
                     render_info("复制工作目录文件...")
                     try:
                         await asyncio.to_thread(self._copy_dir, old_path, new_path)
+                        # 复制 .git 目录以保留检查点数据
+                        old_git = old_path / ".git"
+                        new_git = new_path / ".git"
+                        if old_git.exists() and old_git.is_dir():
+                            await asyncio.to_thread(
+                                shutil.copytree, old_git, new_git, dirs_exist_ok=True
+                            )
                         sessions_path = self.workplace_path / ".chat" / "sessions"
                         if sessions_path.exists():
                             await asyncio.to_thread(shutil.rmtree, sessions_path)
                             sessions_path.mkdir(exist_ok=True)
                     except Exception as e:
-                        render_warning(f"复制文件失败: {e}")
+                        import traceback
+
+                        tb = traceback.format_exc()
+                        render_error(f"复制文件失败:\n{tb}")
+                        self.workplace_path = old_path
+                        os.chdir(self.workplace_path)
+                        return
 
                 self.session_mgr = SessionManager(self.workplace_path)
                 db_path = self.workplace_path / ".chat" / "sessions" / "checkpointer.db"
@@ -995,18 +1024,22 @@ class ChatREPL:
                     {"messages": need_messages},
                 )
 
+                # 先初始化 git
+                await self._init_git()
+
+                # 回滚工作目录
                 if self.git and self.git_manager:
                     try:
                         await asyncio.to_thread(
                             self.git_manager.rollback, no_need_ids, all_ids
                         )
-                    except Exception:
-                        pass
-
-                await self._init_git()
+                    except Exception as e:
+                        render_warning(f"Git 回滚失败: {e}")
 
                 render_success(f"分支已创建！工作目录: {self.workplace_path}")
+                await self._load_conversation()
                 self._render_status_bar()
+                return
 
     async def _delete_messages(self, message_ids: list[str]) -> None:
         """删除指定消息"""
@@ -1024,15 +1057,21 @@ class ChatREPL:
         """复制目录（同步版本）"""
         for item in src.iterdir():
             if item.name.startswith("."):
-                continue  # 跳过隐藏文件/目录
-            s = item
-            d = dst / item.name
-            if s.is_dir():
-                if not d.exists():
-                    d.mkdir(parents=True)
-                self._copy_dir(s, d)
+                continue
+            if item.stem.upper() in self.WINDOWS_RESERVED_NAMES:
+                print(f"跳过 Windows 保留名: {item.name}")
+                continue
+            dest_item = dst / item.name
+            if item.is_dir():
+                try:
+                    shutil.copytree(item, dest_item, dirs_exist_ok=True)
+                except Exception as e:
+                    print(f"复制目录失败: {item.name}, {e}")
             else:
-                shutil.copy2(str(s), str(d))
+                try:
+                    shutil.copy2(item, dest_item)
+                except Exception as e:
+                    print(f"复制文件失败: {item.name}, {e}")
 
     def _render_status_bar(self) -> None:
         """状态栏由 bottom_toolbar 自动渲染，此方法仅用于触发刷新"""
