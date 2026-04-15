@@ -63,10 +63,9 @@ async def _list_skills(session: SessionManager) -> None:
 
     # 选择操作
     names = [f"{s['name']} ({s['type']})" for s in skills]
-    action = await select_or_custom(
+    action = await select(
         "选择技能进行操作:",
         names + ["返回"],
-        custom_label="返回",
     )
     if action is None or action == "返回":
         return

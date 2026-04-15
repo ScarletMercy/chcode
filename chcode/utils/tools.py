@@ -11,17 +11,18 @@ ToolRuntime 提供访问运行时信息的统一接口：
 - context: 不可变的配置（如 skill_loader）
 """
 
+import asyncio
 import os
 import platform
 import re
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
 import httpx
 from langchain.tools import tool, ToolRuntime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 from rich.console import Console
 from rich.text import Text
 from chcode.display import render_tool_call
@@ -1129,12 +1130,22 @@ async def _select_with_other_async(question: str, options: list[str]) -> str | N
     return result
 
 
+def _coerce_json_list(v: Any) -> Any:
+    """将 JSON 字符串解析为 list，兼容 LLM 把数组参数传为字符串的情况"""
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except (json.JSONDecodeError, TypeError):
+            return v
+    return v
+
+
 @tool
 async def ask_user(
     question: str = "",
-    options: list[str] | None = None,
+    options: Annotated[list[str] | None, BeforeValidator(_coerce_json_list)] = None,
     is_multiple: bool = False,
-    questions: list[dict] | None = None,
+    questions: Annotated[list[dict] | None, BeforeValidator(_coerce_json_list)] = None,
 ) -> str:
     """
     Ask the user one or more questions interactively with predefined options.

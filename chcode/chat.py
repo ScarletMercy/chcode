@@ -1077,19 +1077,6 @@ class ChatREPL:
         """状态栏由 bottom_toolbar 自动渲染，此方法仅用于触发刷新"""
         pass
 
-    async def _update_context_usage(self) -> None:
-        """从 agent state 更新上下文用量和 token 消耗缓存"""
-        if not self.agent or not self.session_mgr:
-            return
-        try:
-            state = await self.agent.aget_state(self.session_mgr.config)
-            messages = state.values.get("messages", [])
-            model_name = self.model_config.get("model", "")
-            max_ctx = get_context_window_size(model_name)
-            self._context_text = get_context_usage_text(messages, max_ctx)
-        except Exception:
-            pass
-
     # ─── 对话处理 ──────────────────────────────────────
 
     async def _process_input(self, user_input: str) -> None:
@@ -1208,25 +1195,31 @@ class ChatREPL:
             if ai_started:
                 render_ai_end()
 
-            # 更新上下文用量并刷新状态栏
-            await self._update_context_usage()
-            self._render_status_bar()
+            # 后处理（上下文更新 + Git 提交）放到后台，不阻塞输入框
+            asyncio.create_task(self._post_process())
 
-            # Git 提交（静默）
+        finally:
+            self._processing = False
+
+    async def _post_process(self) -> None:
+        """流式输出后的后台处理：更新上下文用量、Git 提交"""
+        try:
+            state = await self.agent.aget_state(self.session_mgr.config)
+            messages = state.values.get("messages", [])
+            model_name = self.model_config.get("model", "")
+            max_ctx = get_context_window_size(model_name)
+            self._context_text = get_context_usage_text(messages, max_ctx)
+
             if self.git and self.git_manager:
-                current_messages = (
-                    await self.agent.aget_state(self.session_mgr.config)
-                ).values.get("messages", [])
-                new_msgs = find_and_slice_from_end(current_messages, "human")
+                new_msgs = find_and_slice_from_end(messages, "human")
                 ids = [m.id for m in new_msgs]
                 result = await asyncio.to_thread(
                     self.git_manager.add_commit, "&".join(ids)
                 )
                 if isinstance(result, int):
                     self._git_cp_count = result
-
-        finally:
-            self._processing = False
+        except Exception:
+            pass
 
     async def _collect_decisions_async(self, interrupt_chunk) -> list[dict]:
         """收集 HITL 决策"""
