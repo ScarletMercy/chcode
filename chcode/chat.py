@@ -255,6 +255,8 @@ class ChatREPL:
         self._edit_buffer: str | None = None
         # 中断恢复缓冲区（中断时将内容填回输入框，不进入编辑模式）
         self._interrupt_buffer: str | None = None
+        # SkillLoader 复用，避免每条消息重建
+        self._skill_loader: SkillLoader | None = None
         # 上下文用量缓存
         self._context_text: str = ""
         # Windows 保留名（不能作为文件名）
@@ -464,6 +466,7 @@ class ChatREPL:
                 complete_while_typing=True,
                 reserve_space_for_menu=0,
                 bottom_toolbar=_bottom_toolbar,
+                refresh_interval=0.1,
                 style=Style.from_dict(
                     {
                         "completion-menu.completion": "bg:#008888 #ffffff",
@@ -630,10 +633,9 @@ class ChatREPL:
             return
 
         sessions = sessions[-50:]  # 只显示最近 50 个
-        action = await select_or_custom(
+        action = await select(
             "选择历史会话:",
-            sessions,
-            custom_label="返回",
+            sessions + ["返回"],
         )
         if action is None or action == "返回":
             return
@@ -788,6 +790,7 @@ class ChatREPL:
             return
 
         self.workplace_path = new_path
+        self._skill_loader = None  # 工作目录变了，失效缓存
         os.chdir(self.workplace_path)
         save_workplace(self.workplace_path)
 
@@ -1109,15 +1112,17 @@ class ChatREPL:
         try:
             input_data = {"messages": user_input}
 
-            from chcode.utils.skill_loader import SkillLoader
-
-            skill_agent_context = SkillAgentContext(
-                skill_loader=SkillLoader(
+            if self._skill_loader is None:
+                from chcode.utils.skill_loader import SkillLoader
+                self._skill_loader = SkillLoader(
                     [
                         self.workplace_path / ".chat/skills",
                         Path.home() / ".chat/skills",
                     ]
-                ),
+                )
+
+            skill_agent_context = SkillAgentContext(
+                skill_loader=self._skill_loader,
                 working_directory=self.workplace_path,
                 model_config=self.model_config or INNER_MODEL_CONFIG,
                 thread_id=self.session_mgr.thread_id,
@@ -1235,7 +1240,7 @@ class ChatREPL:
                 result = await asyncio.to_thread(
                     self.git_manager.add_commit, "&".join(ids)
                 )
-                if isinstance(result, int):
+                if isinstance(result, int) and not isinstance(result, bool):
                     self._git_cp_count = result
         except Exception:
             pass
@@ -1271,11 +1276,13 @@ class ChatREPL:
                         # 查找 old_str 在文件中的起始行号
                         start_line = 1
                         try:
-                            with open(file_path, "r", encoding="utf-8") as f:
-                                for i, line in enumerate(f, 1):
-                                    if old_str.splitlines()[0] in line:
-                                        start_line = i
-                                        break
+                            content = await asyncio.to_thread(
+                                Path(file_path).read_text, encoding="utf-8"
+                            )
+                            for i, line in enumerate(content.splitlines(), 1):
+                                if old_str.splitlines()[0] in line:
+                                    start_line = i
+                                    break
                         except Exception:
                             pass
                         old_lines = old_str.splitlines()
@@ -1312,14 +1319,6 @@ class ChatREPL:
                                 for k in range(j2 - j1):
                                     table.add_row(None, Text(f"{new_num:>3} + {new_lines[j1+k]}", style="green"))
                                     new_num += 1
-                            elif tag == "delete":
-                                for k in range(i2 - i1):
-                                    old_num += 1
-                                    table.add_row(Text(f"{old_num:>3} - {old_lines[i1+k]}", style="red"))
-                            elif tag == "insert":
-                                for k in range(j2 - j1):
-                                    new_num += 1
-                                    table.add_row(None, Text(f"{new_num:>3} + {new_lines[j1+k]}", style="green"))
                         console.print(table)
                         content = None  # 已直接渲染，跳过通用渲染
 

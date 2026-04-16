@@ -59,7 +59,7 @@ class GitManager:
         try:
             self._is_repo = self._run(["rev-parse", "--git-dir"]).returncode == 0
             return self._is_repo
-        except:
+        except Exception:
             return False
 
     def init(self) -> bool:
@@ -72,15 +72,18 @@ class GitManager:
             return False
         if not self.gitignore_file.exists():
             self.create_gitignore()
-        (self.repo_path / "flag.txt").write_text("init")
         result = self._run(["init"])
+        if result.returncode == 0:
+            # 初始空提交，确保后续 commit 不会因空仓库失败
+            self._run(["commit", "-m", "init", "--allow-empty"])
         if not self.checkpoints_file.exists():
             self.checkpoints_file.write_text(json.dumps({}, indent=4), encoding="utf-8")
         return result.returncode == 0
 
-    def add_commit(self, message_ids: str, files: list = ["."]) -> bool | int:
+    def add_commit(self, message_ids: str, files: list | None = None) -> bool | int:
         """添加文件并提交"""
-        # 添加文件
+        if files is None:
+            files = ["."]
         if self._run(["add"] + files).returncode != 0:
             return False
 

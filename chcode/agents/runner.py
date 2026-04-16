@@ -23,7 +23,6 @@ from chcode.utils.tool_result_pipeline import (
     truncate_large_result,
     enforce_per_turn_budget,
 )
-from chcode.agent_setup import _hitl_middleware
 
 
 @wrap_tool_call
@@ -116,8 +115,10 @@ async def run_subagent(
         _subagent_system_prompt,
     ]
     # 非 read-only 子代理继承主 agent 的 HITL 配置
-    if not agent_def.read_only and _hitl_middleware is not None:
-        middleware.append(_hitl_middleware)
+    if not agent_def.read_only:
+        from chcode.agent_setup import _hitl_middleware
+        if _hitl_middleware is not None:
+            middleware.append(_hitl_middleware)
 
     subagent = create_agent(
         model,
