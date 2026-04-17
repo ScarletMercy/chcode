@@ -15,7 +15,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 
 <details>
 <summary>📸 chagent — the original tkinter prototype</summary>
-<img src="assets/chagent.png" alt="chagent prototype" width="600"/>
+<img src="https://raw.githubusercontent.com/ScarletMercy/chcode/main/assets/chagent.png" alt="chagent prototype" width="600"/>
 </details>
 
 > 5000+ lines of Python, 13 built-in tools, full session persistence, git-aware workflow.
@@ -25,7 +25,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 
 ## Demo
 
-https://github.com/user-attachments/assets/test.mp4
+https://github.com/ScarletMercy/chcode/blob/main/assets/test.mp4
 
 ## Features
 
