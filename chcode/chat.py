@@ -630,31 +630,47 @@ class ChatREPL:
         await manage_skills(self.session_mgr)
 
     async def _cmd_history(self, _arg: str) -> None:
-        if not self.session_mgr or not self.checkpointer:
+        if not self.session_mgr or not self.checkpointer or not self.agent:
             return
         sessions = await self.session_mgr.list_sessions(self.checkpointer)
         if not sessions:
             render_warning("没有历史会话")
             return
 
-        sessions = sessions[-50:]  # 只显示最近 50 个
-        action = await select(
-            "选择历史会话:",
-            sessions + ["返回"],
-        )
+        sessions = sessions[-50:]
+
+        display_names = await self.session_mgr.get_display_names(sessions, self.agent)
+        tid_to_label: dict[str, str] = {}
+        labels: list[str] = []
+        for tid in sessions:
+            name = display_names.get(tid, tid)
+            label = name if name == tid else f"{name}  ({tid})"
+            tid_to_label[label] = tid
+            labels.append(label)
+        labels.append("返回")
+
+        action = await select("选择历史会话:", labels)
         if action is None or action == "返回":
             return
 
-        op = await select("操作:", ["加载此会话", "删除此会话", "返回"])
+        selected_tid = tid_to_label[action]
+
+        op = await select("操作:", ["加载此会话", "重命名此会话", "删除此会话", "返回"])
         if op == "加载此会话":
-            self.session_mgr.set_thread(action)
+            self.session_mgr.set_thread(selected_tid)
             await self._load_conversation()
             self._render_status_bar()
+        elif op == "重命名此会话":
+            cur = self.session_mgr._load_names().get(selected_tid, "")
+            new_name = await text("输入新名称（留空恢复默认）:", default=cur)
+            if new_name is not None:
+                self.session_mgr.rename_session(selected_tid, new_name)
+                render_success("会话已重命名")
         elif op == "删除此会话":
-            ok = await confirm(f"确定删除会话 {action}？", default=False)
+            ok = await confirm(f"确定删除会话 {selected_tid}？", default=False)
             if ok:
-                await self.session_mgr.delete_session(action, self.checkpointer)
-                if action == self.session_mgr.thread_id:
+                await self.session_mgr.delete_session(selected_tid, self.checkpointer)
+                if selected_tid == self.session_mgr.thread_id:
                     self._cmd_new("")
                 render_success("会话已删除")
 
