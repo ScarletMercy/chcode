@@ -681,7 +681,6 @@ async def web_search(
     )
 
 
-MAX_CONTENT_LENGTH = 10 * 1024 * 1024
 FETCH_TIMEOUT = 60.0
 MAX_MARKDOWN_LENGTH = 100_000
 MAX_URL_LENGTH = 2000
@@ -1249,13 +1248,8 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
     Returns:
         Formatted string with all answers
     """
-    import asyncio
     import questionary
-    from rich.console import Console
 
-    console = Console()
-
-    # 渲染问题列表
     console.print()
     console.print(f"[bold cyan]📋 批量提问 ({len(questions)} 个问题)[/bold cyan]")
     console.print()
@@ -1331,8 +1325,6 @@ async def agent(
         description: Short description of what this sub-agent invocation does (for display purposes).
         timeout_seconds: Maximum seconds the sub-agent can run before being terminated. Default 300 (5 minutes). Must be greater than 300 (5 minutes) to allow sufficient execution time.
     """
-    import asyncio
-
     import chcode.display as _display
     from chcode.agents.loader import load_agents
     from chcode.agents.runner import run_subagent
@@ -1392,8 +1384,6 @@ async def agent(
         _display._update_progress()
 
         if not _display._subagent_parallel and result:
-            from rich.text import Text
-
             for line in result.splitlines():
                 _display.console.print(Text(f"  {line}", style="dim"))
     finally:
@@ -1410,8 +1400,6 @@ async def agent(
 # ---------------------------------------------------------------------------
 # todo_write — 创建和管理结构化任务列表
 # ---------------------------------------------------------------------------
-
-import json
 
 
 class TodoItem(BaseModel):
@@ -1452,16 +1440,6 @@ def _save_todos(session_id: str, todos: list[dict]) -> None:
             todo["time_created"] = now
     with open(_todo_path(session_id), "w", encoding="utf-8") as f:
         json.dump(todos, f, ensure_ascii=False, indent=2)
-
-
-def _get_todos(session_id: str) -> list[dict]:
-    path = _todo_path(session_id)
-    if not os.path.isfile(path):
-        return []
-    with open(path, "r", encoding="utf-8") as f:
-        raw: list[dict] = json.load(f)
-    raw.sort(key=lambda t: t.get("position", 0))
-    return raw
 
 
 @tool

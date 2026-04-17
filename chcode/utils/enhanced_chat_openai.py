@@ -7,14 +7,11 @@ content from third-party models like Qwen, GLM, DeepSeek, etc.
 
 from __future__ import annotations
 
-import logging
 from typing import Any, ClassVar
 
-from langchain_core.messages import AIMessage, AIMessageChunk
-from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatResult
 from langchain_openai import ChatOpenAI
-
-logger = logging.getLogger(__name__)
 
 
 class EnhancedChatOpenAI(ChatOpenAI):

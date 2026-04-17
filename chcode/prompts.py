@@ -8,15 +8,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, TypeVar
-from pathlib import Path
+from typing import Any
 
 import questionary
 from rich.console import Console
 
 console = Console()
-
-T = TypeVar("T")
 
 
 async def select(
@@ -80,19 +77,6 @@ async def password(message: str) -> str:
     return await asyncio.to_thread(_ask)
 
 
-async def path_input(message: str, default: str = "") -> str:
-    """路径输入"""
-
-    def _ask():
-        return questionary.path(
-            message=message,
-            default=default,
-            only_directories=True,
-        ).ask()
-
-    return await asyncio.to_thread(_ask)
-
-
 async def select_or_custom(
     message: str,
     preset_choices: list[str],
@@ -109,15 +93,6 @@ async def select_or_custom(
 
 
 # ─── 模型配置表单专用 ──────────────────────────────────────────
-
-MODEL_PRESETS = [
-    "gpt-4o",
-    "gpt-4o-mini",
-    "claude-sonnet-4-20250514",
-    "Qwen/Qwen3-235B-A22B-Thinking-2507",
-    "deepseek-chat",
-    "glm-4-plus",
-]
 
 BASE_URL_PRESETS = [
     "https://api.openai.com/v1",
@@ -150,6 +125,7 @@ SKIP_LABEL = "跳过 (不设置)"
 
 class _SkipSentinel:
     """哨兵对象，区分「跳过此字段」和「用户取消整个表单」。"""
+
     _instance = None
 
     def __new__(cls):
@@ -226,12 +202,18 @@ async def model_config_form(
         result = await select("选择 API Base URL:", _url_choices, default=_keep_url)
         if result is None:
             return None
-        base_url = base_url if result == _keep_url else (
-            await text("输入 Base URL: ") if result == "自定义输入..." else result
+        base_url = (
+            base_url
+            if result == _keep_url
+            else (
+                await text("输入 Base URL: ") if result == "自定义输入..." else result
+            )
         )
     else:
         result = await select_or_custom(
-            "选择 API Base URL:", BASE_URL_PRESETS, custom_prompt="输入 Base URL: ",
+            "选择 API Base URL:",
+            BASE_URL_PRESETS,
+            custom_prompt="输入 Base URL: ",
         )
         if result is None:
             return None
@@ -284,8 +266,10 @@ async def model_config_form(
         # temperature
         t_val = str(cfg["temperature"]) if "temperature" in cfg else None
         result = await _ask_hyperparam(
-            "Temperature:", TEMPERATURE_PRESETS,
-            existing_value=t_val, custom_prompt="输入 temperature: ",
+            "Temperature:",
+            TEMPERATURE_PRESETS,
+            existing_value=t_val,
+            custom_prompt="输入 temperature: ",
         )
         if result is None:
             return None
@@ -297,8 +281,10 @@ async def model_config_form(
         # top_p
         tp_val = str(cfg["top_p"]) if "top_p" in cfg else None
         result = await _ask_hyperparam(
-            "Top P:", TOP_P_PRESETS,
-            existing_value=tp_val, custom_prompt="输入 top_p: ",
+            "Top P:",
+            TOP_P_PRESETS,
+            existing_value=tp_val,
+            custom_prompt="输入 top_p: ",
         )
         if result is None:
             return None
@@ -309,10 +295,16 @@ async def model_config_form(
 
         # top_k → extra_body
         existing_extra = cfg.get("extra_body", {})
-        tk_val = str(existing_extra["top_k"]) if isinstance(existing_extra, dict) and "top_k" in existing_extra else None
+        tk_val = (
+            str(existing_extra["top_k"])
+            if isinstance(existing_extra, dict) and "top_k" in existing_extra
+            else None
+        )
         result = await _ask_hyperparam(
-            "Top K:", TOP_K_PRESETS,
-            existing_value=tk_val, custom_prompt="输入 top_k: ",
+            "Top K:",
+            TOP_K_PRESETS,
+            existing_value=tk_val,
+            custom_prompt="输入 top_k: ",
         )
         if result is None:
             return None
@@ -331,8 +323,10 @@ async def model_config_form(
         # max_tokens
         mt_val = str(cfg["max_tokens"]) if "max_tokens" in cfg else None
         result = await _ask_hyperparam(
-            "Max Tokens:", MAX_TOKENS_PRESETS,
-            existing_value=mt_val, custom_prompt="输入 max_tokens: ",
+            "Max Tokens:",
+            MAX_TOKENS_PRESETS,
+            existing_value=mt_val,
+            custom_prompt="输入 max_tokens: ",
         )
         if result is None:
             return None
@@ -343,10 +337,16 @@ async def model_config_form(
 
         # max_completion_tokens → extra_body
         _eb = config.get("extra_body", {})
-        mct_val = str(_eb["max_completion_tokens"]) if isinstance(_eb, dict) and "max_completion_tokens" in _eb else None
+        mct_val = (
+            str(_eb["max_completion_tokens"])
+            if isinstance(_eb, dict) and "max_completion_tokens" in _eb
+            else None
+        )
         result = await _ask_hyperparam(
-            "Max Completion Tokens:", MAX_COMPLETION_TOKENS_PRESETS,
-            existing_value=mct_val, custom_prompt="输入 max_completion_tokens: ",
+            "Max Completion Tokens:",
+            MAX_COMPLETION_TOKENS_PRESETS,
+            existing_value=mct_val,
+            custom_prompt="输入 max_completion_tokens: ",
         )
         if result is None:
             return None
@@ -368,21 +368,27 @@ async def model_config_form(
             v = cfg["stop_sequences"]
             ss_val = ", ".join(str(x) for x in v) if isinstance(v, list) else str(v)
         result = await _ask_hyperparam(
-            "Stop Sequences:", [],  # 无预设，只有自定义
-            existing_value=ss_val, custom_prompt="输入停止序列 (逗号分隔): ",
+            "Stop Sequences:",
+            [],  # 无预设，只有自定义
+            existing_value=ss_val,
+            custom_prompt="输入停止序列 (逗号分隔): ",
         )
         if result is None:
             return None
         if result is not _SKIP:
-            config["stop_sequences"] = [s.strip() for s in str(result).split(",") if s.strip()]
+            config["stop_sequences"] = [
+                s.strip() for s in str(result).split(",") if s.strip()
+            ]
         else:
             config.pop("stop_sequences", None)
 
         # frequency_penalty
         fp_val = str(cfg["frequency_penalty"]) if "frequency_penalty" in cfg else None
         result = await _ask_hyperparam(
-            "Frequency Penalty:", FREQ_PENALTY_PRESETS,
-            existing_value=fp_val, custom_prompt="输入 frequency_penalty: ",
+            "Frequency Penalty:",
+            FREQ_PENALTY_PRESETS,
+            existing_value=fp_val,
+            custom_prompt="输入 frequency_penalty: ",
         )
         if result is None:
             return None
@@ -394,8 +400,10 @@ async def model_config_form(
         # presence_penalty
         pp_val = str(cfg["presence_penalty"]) if "presence_penalty" in cfg else None
         result = await _ask_hyperparam(
-            "Presence Penalty:", PRESENCE_PENALTY_PRESETS,
-            existing_value=pp_val, custom_prompt="输入 presence_penalty: ",
+            "Presence Penalty:",
+            PRESENCE_PENALTY_PRESETS,
+            existing_value=pp_val,
+            custom_prompt="输入 presence_penalty: ",
         )
         if result is None:
             return None
@@ -407,8 +415,10 @@ async def model_config_form(
         # max_retries
         mr_val = str(cfg["max_retries"]) if "max_retries" in cfg else None
         result = await _ask_hyperparam(
-            "Max Retries:", MAX_RETRIES_PRESETS,
-            existing_value=mr_val, custom_prompt="输入 max_retries: ",
+            "Max Retries:",
+            MAX_RETRIES_PRESETS,
+            existing_value=mr_val,
+            custom_prompt="输入 max_retries: ",
         )
         if result is None:
             return None

@@ -5,8 +5,6 @@ CLI 入口 — Typer 应用
 from __future__ import annotations
 
 import asyncio
-import sys
-
 import typer
 from rich.console import Console
 
@@ -23,7 +21,9 @@ console = Console()
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    yolo: bool = typer.Option(False, "--yolo", "-y", help="启用 Yolo 模式（自动批准所有操作）"),
+    yolo: bool = typer.Option(
+        False, "--yolo", "-y", help="启用 Yolo 模式（自动批准所有操作）"
+    ),
     version: bool = typer.Option(False, "--version", "-v", help="显示版本"),
 ):
     """ChCode — 终端 AI 编程助手"""

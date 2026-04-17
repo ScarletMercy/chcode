@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.table import Table
 
-from chcode.prompts import select, confirm, checkbox, text, select_or_custom
+from chcode.prompts import select, confirm, text
 from chcode.utils.skill_loader import (
     scan_all_skills,
     validate_skill_package,
@@ -108,11 +108,14 @@ async def _show_skill_detail(skill: dict) -> None:
 
 async def _delete_skill(skill: dict, session: SessionManager) -> None:
     """删除技能"""
-    ok = await confirm(f"确定删除技能 '{skill['name']}'？此操作不可撤销！", default=False)
+    ok = await confirm(
+        f"确定删除技能 '{skill['name']}'？此操作不可撤销！", default=False
+    )
     if not ok:
         return
 
     import shutil
+
     skill_path = Path(skill["path"])
     try:
         shutil.rmtree(skill_path)

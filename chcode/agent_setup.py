@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from langchain.agents import create_agent, AgentState
+from langchain.agents import create_agent
 from langchain.agents.middleware import (
     dynamic_prompt,
     wrap_tool_call,
@@ -23,13 +23,13 @@ from langchain.agents.middleware.context_editing import (
     ClearToolUsesEdit,
 )
 from langchain.agents.middleware.summarization import SummarizationMiddleware
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import ToolMessage
 from langchain.tools.tool_node import ToolCallRequest
 from langgraph.types import Command
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
-from chcode.utils.skill_loader import SkillLoader, SkillAgentContext
+from chcode.utils.skill_loader import SkillAgentContext
 from chcode.utils.tool_result_pipeline import (
     clean_tool_output,
     truncate_large_result,

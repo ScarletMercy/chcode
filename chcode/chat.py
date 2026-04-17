@@ -10,11 +10,9 @@ import asyncio
 import json
 import os
 import shutil
-import sys
 from pathlib import Path
 
 import openai
-from rich.console import Console
 from rich.text import Text
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
@@ -45,7 +43,6 @@ from chcode.display import (
     render_ai_start,
     render_ai_chunk,
     render_ai_end,
-    render_tool_call,
     get_context_usage_text,
 )
 from chcode.prompts import select, confirm, select_or_custom, text, checkbox
@@ -71,7 +68,6 @@ from chcode.agent_setup import (
 from chcode.skill_manager import manage_skills
 from chcode.utils.git_checker import check_git_availability
 from chcode.utils.git_manager import GitManager
-from chcode.utils.tools import ALL_TOOLS
 
 
 # ─── 命令自动补全 ──────────────────────────────────────
@@ -206,31 +202,11 @@ def _get_group_display(group: list) -> str:
 def _collect_ids_from_group(
     group_index: int, groups: list, mode: str = "edit"
 ) -> tuple[list[str], list[str]]:
-    """
-    收集要删除的消息 ID
-    参考 chagent fork_message 逻辑：从目标 HumanMessage 开始，删除之后的所有消息
-
-    Args:
-        group_index: 目标组索引
-        groups: 所有消息组
-        mode: "edit" 删除目标组及之后, "fork" 从目标组开始删除（包含目标组）
-
-    Returns:
-        (no_need_ids, all_ids): 要删除的消息 ID 列表，所有消息 ID 列表
-    """
     all_ids = [m.id for group in groups for m in group]
     no_need_ids = []
-
     for i, group in enumerate(groups):
-        if mode == "edit":
-            # edit: 从目标组开始删除
-            if i >= group_index:
-                no_need_ids.extend([m.id for m in group])
-        elif mode == "fork":
-            # fork: 从目标组开始删除（包含目标组，与 chagent 逻辑一致）
-            if i >= group_index:
-                no_need_ids.extend([m.id for m in group])
-
+        if i >= group_index:
+            no_need_ids.extend([m.id for m in group])
     return no_need_ids, all_ids
 
 

@@ -100,13 +100,6 @@ def _start_progress():
         _progress_live.start()
 
 
-def _stop_progress():
-    global _progress_live
-    if _progress_live:
-        _progress_live.stop()
-        _progress_live = None
-
-
 def _update_progress():
     if not _progress_live:
         return

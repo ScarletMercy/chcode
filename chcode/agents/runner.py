@@ -117,6 +117,7 @@ async def run_subagent(
     # 非 read-only 子代理继承主 agent 的 HITL 配置
     if not agent_def.read_only:
         from chcode.agent_setup import _hitl_middleware
+
         if _hitl_middleware is not None:
             middleware.append(_hitl_middleware)
 

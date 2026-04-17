@@ -12,7 +12,3 @@ class ShellResult:
     timed_out: bool = False
     output_file_path: str | None = None
     output_file_size: int | None = None
-
-    @property
-    def is_error(self) -> bool:
-        return self.exit_code != 0 and not self.interrupted
