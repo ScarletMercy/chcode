@@ -58,12 +58,16 @@ from chcode.config import (
     get_context_window_size,
 )
 from chcode.session import SessionManager
-from chcode.utils.skill_loader import SkillAgentContext
+from chcode.utils.skill_loader import SkillAgentContext, SkillLoader
 from chcode.agent_setup import (
     build_agent,
     create_checkpointer,
     INNER_MODEL_CONFIG,
     reset_budget_state,
+    get_fallback_model,
+    set_fallback_models,
+    advance_fallback,
+    ModelSwitchError,
 )
 from chcode.skill_manager import manage_skills
 from chcode.utils.git_checker import check_git_availability
@@ -215,6 +219,7 @@ def _collect_ids_from_group(
 
 class ChatREPL:
     def __init__(self):
+        # 工作目录路径
         self.workplace_path: Path | None = None
         self.model_config: dict = {}
         self.yolo = False
@@ -1203,6 +1208,27 @@ class ChatREPL:
                     if user_input.strip():
                         self._interrupt_buffer = user_input.strip()
                     console.print(Text("\n[已中断]", style="dim"), "\n")
+                    break
+                except ModelSwitchError:
+                    # 需要切换到备用模型
+                    fallback = get_fallback_model()
+                    if fallback:
+                        console.print(f"[yellow]正在切换到备用模型: {fallback.get('model', 'unknown')}[/yellow]")
+                        self.model_config = fallback
+                        advance_fallback()
+                        try:
+                            self.agent = await asyncio.to_thread(
+                                build_agent,
+                                self.model_config,
+                                self.checkpointer,
+                                None,
+                                self.yolo,
+                            )
+                            console.print(f"[green]已切换到备用模型，请重新发送请求[/green]")
+                        except Exception as e:
+                            render_error(f"切换模型失败: {e}")
+                    else:
+                        render_error("没有更多备用模型可用")
                     break
                 except openai.APIError as e:
                     render_error(f"Agent 执行错误: {e}")

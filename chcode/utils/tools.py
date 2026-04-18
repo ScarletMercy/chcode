@@ -18,6 +18,8 @@ import platform
 import re
 import time
 from pathlib import Path
+
+import aiofiles
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
@@ -94,7 +96,7 @@ def resolve_path(file_path: str, working_directory: Path) -> Path:  # type: igno
 
 
 @tool
-def load_skill(skill_name: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
+async def load_skill(skill_name: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     """
     Load a skill's detailed instructions.
 
@@ -196,7 +198,7 @@ def _get_shell_session(workdir: str) -> ShellSession:
 
 
 @tool
-def bash(
+async def bash(
     command: str,
     runtime: ToolRuntime[SkillAgentContext],
     timeout: int = 300,
@@ -231,8 +233,8 @@ def bash(
         return "bash:\n[FAILED] No shell available on this system"
 
     exec_workdir = workdir if workdir else None
-    result, truncated = session.execute(
-        command, timeout=timeout_ms, workdir=exec_workdir
+    result, truncated = await asyncio.to_thread(
+        session.execute, command, timeout=timeout_ms, workdir=exec_workdir
     )
 
     interpretation = interpret_command_result(command, result.exit_code)
@@ -270,7 +272,7 @@ def bash(
 
 
 @tool
-def read_file(file_path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
+async def read_file(file_path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     """
     Read the contents of a file.
 
@@ -292,7 +294,8 @@ def read_file(file_path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
         return f"read:\n[FAILED] Not a file: {file_path}"
 
     try:
-        content = path.read_text(encoding="utf-8")
+        async with aiofiles.open(path, 'r', encoding='utf-8') as f:
+            content = await f.read()
         lines = content.split("\n")
 
         numbered_lines = []
@@ -314,7 +317,7 @@ def read_file(file_path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
 
 
 @tool
-def write_file(
+async def write_file(
     file_path: str, content: str, runtime: ToolRuntime[SkillAgentContext]
 ) -> str:
     """
@@ -333,10 +336,10 @@ def write_file(
     render_tool_call("write_file", file_path)
 
     try:
-        # 确保父目录存在
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        path.write_text(content, encoding="utf-8")
+        async with aiofiles.open(path, 'w', encoding='utf-8') as f:
+            await f.write(content)
         return f"write:\n[OK] File written: {path}"
 
     except Exception as e:
@@ -344,7 +347,7 @@ def write_file(
 
 
 @tool
-def glob(pattern: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
+async def glob(pattern: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     """
     Find files matching a glob pattern.
 
@@ -360,8 +363,8 @@ def glob(pattern: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     render_tool_call("glob", pattern)
 
     try:
-        # 使用 Path.glob 进行匹配
-        matches = sorted(cwd.glob(pattern))
+        loop = asyncio.get_event_loop()
+        matches = await loop.run_in_executor(None, lambda: sorted(cwd.glob(pattern)))
 
         if not matches:
             return f"glob:\n[FAILED] No files matching pattern: {pattern}"
@@ -464,7 +467,7 @@ _GREP_MAX_FILE_SIZE = 1 * 1024 * 1024
 
 
 @tool
-def grep(pattern: str, path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
+async def grep(pattern: str, path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     """
     Search for a pattern in files.
 
@@ -486,71 +489,78 @@ def grep(pattern: str, path: str, runtime: ToolRuntime[SkillAgentContext]) -> st
     except re.error as e:
         return f"grep:\n[FAILED] Invalid regex pattern: {e}"
 
-    results = []
     max_results = 50
-    files_searched = 0
 
-    def _search_file(file_path: Path) -> None:
-        nonlocal files_searched
-        try:
-            size = file_path.stat().st_size
-            if size > _GREP_MAX_FILE_SIZE:
+    def _sync_grep() -> tuple[list[str], int]:
+        results = []
+        files_searched = 0
+
+        def _search_file(file_path: Path):
+            nonlocal files_searched
+            try:
+                size = file_path.stat().st_size
+                if size > _GREP_MAX_FILE_SIZE:
+                    return
+            except OSError:
                 return
-        except OSError:
-            return
+
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                lines = content.split("\n")
+                files_searched += 1
+
+                for line_num, line in enumerate(lines, 1):
+                    if regex.search(line):
+                        try:
+                            rel_path = file_path.relative_to(cwd)
+                        except ValueError:
+                            rel_path = file_path
+                        results.append(f"{rel_path}:{line_num}: {line.strip()[:100]}")
+
+                        if len(results) >= max_results:
+                            return
+            except (PermissionError, IsADirectoryError):
+                pass
 
         try:
-            content = file_path.read_text(encoding="utf-8", errors="ignore")
-            lines = content.split("\n")
-            files_searched += 1
-
-            for line_num, line in enumerate(lines, 1):
-                if regex.search(line):
-                    try:
-                        rel_path = file_path.relative_to(cwd)
-                    except ValueError:
-                        rel_path = file_path
-                    results.append(f"{rel_path}:{line_num}: {line.strip()[:100]}")
-
+            if search_path.is_file():
+                _search_file(search_path)
+            else:
+                for p in search_path.rglob("*"):
                     if len(results) >= max_results:
-                        return
-        except (PermissionError, IsADirectoryError):
+                        break
+                    if not p.is_file():
+                        continue
+                    parts = p.parts
+                    if any(
+                        part.startswith(".") or part in _GREP_EXCLUDED_DIRS
+                        for part in parts
+                    ):
+                        continue
+                    if p.suffix.lower() in _GREP_BINARY_EXT:
+                        continue
+                    _search_file(p)
+        except Exception:
             pass
 
-    try:
-        if search_path.is_file():
-            _search_file(search_path)
-        else:
-            for p in search_path.rglob("*"):
-                if len(results) >= max_results:
-                    break
-                if not p.is_file():
-                    continue
-                parts = p.parts
-                if any(
-                    part.startswith(".") or part in _GREP_EXCLUDED_DIRS
-                    for part in parts
-                ):
-                    continue
-                if p.suffix.lower() in _GREP_BINARY_EXT:
-                    continue
-                _search_file(p)
+        return results, files_searched
 
-        if not results:
-            return f"grep:\n[FAILED] No matches found for pattern: {pattern} (searched {files_searched} files)"
+    loop = asyncio.get_event_loop()
+    results, files_searched = await loop.run_in_executor(None, _sync_grep)
 
-        output = "\n".join(results)
-        if len(results) >= max_results:
-            output += f"\n... (truncated, showing first {max_results} matches)"
+    if not results:
+        return f"grep:\n[FAILED] No matches found for pattern: {pattern} (searched {files_searched} files)"
 
-        return f"grep:\n[OK] ({len(results)} matches in {files_searched} files)\n\n{output}"
+    output = "\n".join(results)
+    if len(results) >= max_results:
+        output += f"\n... (truncated, showing first {max_results} matches)"
 
-    except Exception as e:
-        return f"grep:\n[FAILED] {str(e)}"
+    return f"grep:\n[OK] ({len(results)} matches in {files_searched} files)\n\n{output}"
 
 
 @tool
-def edit(
+async def edit(
     file_path: str,
     old_string: str,
     new_string: str,
@@ -582,7 +592,8 @@ def edit(
         return f"edit:\n[FAILED] Not a file: {file_path}"
 
     try:
-        content = path.read_text(encoding="utf-8")
+        async with aiofiles.open(path, 'r', encoding='utf-8') as f:
+            content = await f.read()
 
         count = content.count(old_string)
 
@@ -593,7 +604,9 @@ def edit(
             return f"edit:\n[FAILED] String appears {count} times in file. Please provide more context to make it unique."
 
         new_content = content.replace(old_string, new_string, 1)
-        path.write_text(new_content, encoding="utf-8")
+
+        async with aiofiles.open(path, 'w', encoding='utf-8') as f:
+            await f.write(new_content)
 
         old_lines = len(old_string.split("\n"))
         new_lines = len(new_string.split("\n"))
@@ -607,7 +620,7 @@ def edit(
 
 
 @tool
-def list_dir(path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
+async def list_dir(path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     """
     List contents of a directory.
 
@@ -628,35 +641,38 @@ def list_dir(path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     if not dir_path.is_dir():
         return f"ls:\n[FAILED] Not a directory: {path}"
 
-    try:
-        entries = sorted(
-            dir_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
-        )
+    def _sync_list_dir() -> list[tuple[str, bool, int]]:
+        entries = sorted(dir_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+        result = []
+        for entry in entries[:100]:
+            try:
+                is_dir = entry.is_dir()
+                size = entry.stat().st_size if not is_dir else 0
+                result.append((entry.name, is_dir, size))
+            except Exception:
+                result.append((entry.name, False, 0))
+        return result
 
-        result_lines = []
-        for entry in entries[:100]:  # 限制数量
-            if entry.is_dir():
-                result_lines.append(f"{entry.name}/")
+    loop = asyncio.get_event_loop()
+    entries = await loop.run_in_executor(None, _sync_list_dir)
+
+    result_lines = []
+    for name, is_dir, size in entries:
+        if is_dir:
+            result_lines.append(f"{name}/")
+        else:
+            if size < 1024:
+                size_str = f"{size}B"
+            elif size < 1024 * 1024:
+                size_str = f"{size // 1024}KB"
             else:
-                # 显示文件大小
-                size = entry.stat().st_size
-                if size < 1024:
-                    size_str = f"{size}B"
-                elif size < 1024 * 1024:
-                    size_str = f"{size // 1024}KB"
-                else:
-                    size_str = f"{size // (1024 * 1024)}MB"
-                result_lines.append(f"   {entry.name} ({size_str})")
+                size_str = f"{size // (1024 * 1024)}MB"
+            result_lines.append(f"   {name} ({size_str})")
 
-        if len(entries) > 100:
-            result_lines.append(f"... and {len(entries) - 100} more entries")
+    if len(entries) > 100:
+        result_lines.append(f"... and {len(entries) - 100} more entries")
 
-        return f"ls:\n[OK] ({len(entries)} entries)\n\n{chr(10).join(result_lines)}"
-
-    except PermissionError:
-        return f"ls:\n[FAILED] Permission denied: {path}"
-    except Exception as e:
-        return f"ls:\n[FAILED] {str(e)}"
+    return f"ls:\n[OK] ({len(entries)} entries)\n\n{chr(10).join(result_lines)}"
 
 
 @tool
@@ -1430,7 +1446,7 @@ def _todo_path(session_id: str) -> str:
     return os.path.join(_TODO_STORAGE_DIR, f"ses_{session_id}.json")
 
 
-def _save_todos(session_id: str, todos: list[dict]) -> None:
+async def _save_todos(session_id: str, todos: list[dict]) -> None:
     os.makedirs(_TODO_STORAGE_DIR, exist_ok=True)
     now = int(time.time() * 1000)
     for i, todo in enumerate(todos):
@@ -1438,12 +1454,12 @@ def _save_todos(session_id: str, todos: list[dict]) -> None:
         todo["time_updated"] = now
         if "time_created" not in todo:
             todo["time_created"] = now
-    with open(_todo_path(session_id), "w", encoding="utf-8") as f:
-        json.dump(todos, f, ensure_ascii=False, indent=2)
+    async with aiofiles.open(_todo_path(session_id), "w", encoding="utf-8") as f:
+        await f.write(json.dumps(todos, ensure_ascii=False, indent=2))
 
 
 @tool
-def todo_write(
+async def todo_write(
     todos: list[TodoItem],
     runtime: ToolRuntime[SkillAgentContext],
 ) -> str:
@@ -1478,7 +1494,7 @@ Args:
     if os.path.isfile(path) and len(todo_dicts) == 0:
         os.remove(path)
     else:
-        _save_todos(session_id, todo_dicts)
+        await _save_todos(session_id, todo_dicts)
 
     active = sum(1 for t in todo_dicts if t.get("status") != "completed")
 

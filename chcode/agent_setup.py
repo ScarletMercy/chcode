@@ -30,6 +30,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
 from chcode.utils.skill_loader import SkillAgentContext
+from chcode.display import console
 from chcode.utils.tool_result_pipeline import (
     clean_tool_output,
     truncate_large_result,
@@ -54,6 +55,44 @@ INNER_MODEL_CONFIG = {
 }
 
 
+# ─── 重试配置 ──────────────────────────────────────────
+
+RETRY_DELAYS = [3, 10, 30, 60]
+_fallback_models: list[dict] = []
+_fallback_index: int = 0
+
+
+def set_fallback_models(models: list[dict]) -> None:
+    global _fallback_models, _fallback_index
+    _fallback_models = models
+    _fallback_index = 0
+
+
+def get_fallback_model() -> dict | None:
+    if _fallback_index < len(_fallback_models):
+        return _fallback_models[_fallback_index]
+    return None
+
+
+def advance_fallback() -> None:
+    global _fallback_index
+    _fallback_index += 1
+
+
+def _load_fallback_config() -> dict | None:
+    """获取当前备用模型"""
+    if not _fallback_models:
+        from chcode.config import load_model_json
+
+        data = load_model_json()
+        fallback = data.get("fallback", {})
+        if not fallback:
+            return None
+        _fallback_models = list(fallback.values())
+
+    return get_fallback_model()
+
+
 # ─── 中间件 ──────────────────────────────────────────
 
 
@@ -69,6 +108,42 @@ async def handle_tool_errors(
             tool_call_id=request.tool_call["id"],
             status="error",
         )
+
+
+class ModelSwitchError(Exception):
+    """标记需要切换模型的异常"""
+    pass
+
+
+@wrap_model_call
+async def model_retry_with_backoff(
+    request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
+) -> ModelResponse:
+    """指数级退避重试中间件 — 每次调用独立计数"""
+    max_retries = 4
+
+    retry_count = 0
+
+    while True:
+        try:
+            return await handler(request)
+        except Exception as e:
+            retry_count += 1
+
+            if retry_count >= max_retries:
+                fallback = _load_fallback_config()
+                if fallback:
+                    console.print(f"[yellow]主模型重试{retry_count}次失败，切换到备用模型...[/yellow]")
+                    raise ModelSwitchError("切换到备用模型")
+                console.print(f"[red]请求失败，无备用模型可用，放弃请求[/red]")
+                raise
+
+            delay_idx = min(retry_count - 1, len(RETRY_DELAYS) - 1)
+            delay = RETRY_DELAYS[delay_idx]
+
+            console.print(f"[yellow]请求失败 ({retry_count}/{max_retries}), {delay}秒后重试... ({str(e)[:50]})[/yellow]")
+
+            await asyncio.sleep(delay)
 
 
 @dynamic_prompt
@@ -183,6 +258,14 @@ def build_agent(
     _hitl_middleware = AsyncHITL(interrupt_on=_build_interrupt_on(yolo))
     _summarization_model = EnhancedChatOpenAI(**cfg)
 
+    # 加载 fallback 模型配置
+    from chcode.config import load_model_json
+
+    data = load_model_json()
+    fallback = data.get("fallback", {})
+    if fallback:
+        set_fallback_models(list(fallback.values()))
+
     agent = create_agent(
         model,
         _get_all_tools() + (mcp_tools or []),
@@ -191,6 +274,7 @@ def build_agent(
             tool_result_budget,
             load_skills,
             load_model,
+            model_retry_with_backoff,
             fix_messages,
             ContextEditingMiddleware(
                 edits=[

@@ -114,6 +114,10 @@ async def run_subagent(
         _tool_result_budget,
         _subagent_system_prompt,
     ]
+
+    from chcode.agent_setup import model_retry_with_backoff, ModelSwitchError
+
+    middleware.append(model_retry_with_backoff)
     # 非 read-only 子代理继承主 agent 的 HITL 配置
     if not agent_def.read_only:
         from chcode.agent_setup import _hitl_middleware
@@ -139,6 +143,8 @@ async def run_subagent(
         )
     except asyncio.TimeoutError:
         return f"Agent {agent_def.agent_type} timed out after {timeout_seconds}s."
+    except ModelSwitchError:
+        return f"Agent {agent_def.agent_type} 主模型失败，已切换备用模型，请重试"
     except Exception as e:
         return f"Agent {agent_def.agent_type} error: {e}"
 

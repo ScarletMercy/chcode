@@ -116,7 +116,6 @@ TOP_P_PRESETS = ["0.5", "0.7", "0.9", "0.95", "1.0"]
 TOP_K_PRESETS = ["1", "5", "10", "20", "50"]
 MAX_TOKENS_PRESETS = ["32768", "65536", "122880", "204800"]
 MAX_COMPLETION_TOKENS_PRESETS = ["122880", "204800", "256000", "1024000"]
-MAX_RETRIES_PRESETS = ["0", "1", "2", "3", "5"]
 FREQ_PENALTY_PRESETS = ["0", "0.2", "0.5", "1.0", "1.5", "2.0"]
 PRESENCE_PENALTY_PRESETS = ["0", "0.2", "0.5", "1.0", "1.5", "2.0"]
 
@@ -412,19 +411,7 @@ async def model_config_form(
         else:
             config.pop("presence_penalty", None)
 
-        # max_retries
-        mr_val = str(cfg["max_retries"]) if "max_retries" in cfg else None
-        result = await _ask_hyperparam(
-            "Max Retries:",
-            MAX_RETRIES_PRESETS,
-            existing_value=mr_val,
-            custom_prompt="输入 max_retries: ",
-        )
-        if result is None:
-            return None
-        if result is not _SKIP:
-            config["max_retries"] = int(result)
-        else:
-            config.pop("max_retries", None)
+        # max_retries - 固定为 4（失败 5 次后自动切换备用模型），不可配置
+        config["max_retries"] = 4
 
     return config
