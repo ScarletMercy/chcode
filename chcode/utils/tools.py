@@ -44,22 +44,31 @@ console = Console()
 CONFIG_DIR = Path.home() / ".chat"
 SETTING_JSON = CONFIG_DIR / "chagent.json"
 
-_tavily_api_key = os.getenv("TAVILY_API_KEY", "")
-if SETTING_JSON.exists():
-    try:
-        data = json.loads(SETTING_JSON.read_text(encoding="utf-8"))
-        api_key = data.get("tavily_api_key", "")
-        if api_key:
-            _tavily_api_key = api_key
-    except Exception:
-        pass
-
+_tavily_api_key = ""
+_tavily_key_loaded = False
 _tavily_client: TavilyClient | None = None
+
+
+def _ensure_tavily_key() -> None:
+    global _tavily_api_key, _tavily_key_loaded
+    if _tavily_key_loaded:
+        return
+    _tavily_key_loaded = True
+    _tavily_api_key = os.getenv("TAVILY_API_KEY", "")
+    if not _tavily_api_key and SETTING_JSON.exists():
+        try:
+            data = json.loads(SETTING_JSON.read_text(encoding="utf-8"))
+            api_key = data.get("tavily_api_key", "")
+            if api_key:
+                _tavily_api_key = api_key
+        except Exception:
+            pass
 
 
 def get_tavily_client() -> TavilyClient | None:
     """获取 Tavily 客户端（懒加载）"""
     global _tavily_client
+    _ensure_tavily_key()
     if _tavily_client is not None:
         return _tavily_client
     if not _tavily_api_key:
