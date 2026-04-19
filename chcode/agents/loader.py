@@ -71,7 +71,15 @@ def _parse_agent_md(md_path: Path) -> AgentDefinition | None:
     )
 
 
+_agents_cache: dict[str, AgentDefinition] | None = None
+
+
 def load_agents(extra_paths: list[Path] | None = None) -> dict[str, AgentDefinition]:
+    global _agents_cache
+
+    if _agents_cache is not None and not extra_paths:
+        return dict(_agents_cache)
+
     from chcode.agents.definitions import BUILT_IN_AGENTS
 
     result: dict[str, AgentDefinition] = dict(BUILT_IN_AGENTS)
@@ -89,5 +97,8 @@ def load_agents(extra_paths: list[Path] | None = None) -> dict[str, AgentDefinit
             agent = _parse_agent_md(item)
             if agent and agent.agent_type not in result:
                 result[agent.agent_type] = agent
+
+    if not extra_paths:
+        _agents_cache = result
 
     return result

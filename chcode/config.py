@@ -61,20 +61,31 @@ def ensure_config_dir() -> Path:
     return CONFIG_DIR
 
 
+_model_json_cache: tuple[float, dict] | None = None
+
+
 def load_model_json() -> dict:
-    """加载 model.json，不存在返回空 dict"""
+    """加载 model.json，带 mtime 缓存"""
+    global _model_json_cache
     if not MODEL_JSON.exists():
         return {}
     try:
-        return json.loads(MODEL_JSON.read_text(encoding="utf-8"))
+        mtime = MODEL_JSON.stat().st_mtime
+        if _model_json_cache and _model_json_cache[0] == mtime:
+            return _model_json_cache[1]
+        data = json.loads(MODEL_JSON.read_text(encoding="utf-8"))
+        _model_json_cache = (mtime, data)
+        return data
     except Exception:
         return {}
 
 
 def save_model_json(data: dict) -> None:
+    global _model_json_cache
     MODEL_JSON.write_text(
         json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
     )
+    _model_json_cache = None
 
 
 def get_default_model_config() -> dict | None:
@@ -346,11 +357,17 @@ CONTEXT_WINDOW_SIZES: dict[str, int] = {
     "gpt-4o-mini": 128000,
     "claude-sonnet-4-20250514": 200000,
     "deepseek-chat": 65536,
-    "glm-4-plus": 128000,
-    "qwen": 128000,
+    "glm-5.1": 200000,
+    "glm-5": 200000,
+    "glm-4.7": 200000,
+    "minimax-m2": 204800,
+    "kimi-k2": 262144,
+    "qwen3.5-plus": 1000000,
+    "qwen3.6-plus": 1000000,
+    "qwen": 256000,
 }
 
-_DEFAULT_CONTEXT_WINDOW = 128000
+_DEFAULT_CONTEXT_WINDOW = 256000
 
 
 def get_context_window_size(model_name: str) -> int:

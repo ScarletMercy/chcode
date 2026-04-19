@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -117,38 +118,37 @@ class SlashCommandCompleter(Completer):
 # ─── 辅助函数 ──────────────────────────────────────────
 
 
+_RE_TAG_SPLIT = re.compile(r"(\[/?[^\]]+\])")
+_RE_TAG_OPEN = re.compile(r"^\[([^\]]+)\]$")
+_RE_TAG_CLOSE = re.compile(r"^\[/([^\]]*)\]$")
+
+_RICH_TAG_MAP = {
+    "bold": "b",
+    "italic": "i",
+    "red": "fg:red",
+    "green": "fg:green",
+    "yellow": "fg:yellow",
+    "blue": "fg:blue",
+    "dim": "fg:#888888",
+}
+
+
 def _rich_to_html(text: str) -> str:
-    """将 Rich 标签转换为 prompt_toolkit HTML 标签。"""
-    import re as _re
-
-    _TAG_MAP = {
-        "bold": "b",
-        "italic": "i",
-        "red": "fg:red",
-        "green": "fg:green",
-        "yellow": "fg:yellow",
-        "blue": "fg:blue",
-        "dim": "fg:#888888",
-    }
-
-    # 先将文本拆分为标签和内容片段
-    parts = _re.split(r"(\[/?[^\]]+\])", text)
+    parts = _RE_TAG_SPLIT.split(text)
     opened: list[str] = []
     result: list[str] = []
 
     for part in parts:
-        m = _re.match(r"^\[([^\]]+)\]$", part)
-        close_m = _re.match(r"^\[/([^\]]*)\]$", part)
+        close_m = _RE_TAG_CLOSE.match(part)
+        open_m = _RE_TAG_OPEN.match(part) if not close_m else None
         if close_m:
-            # 关闭标签 — 按后进先出顺序关闭
             while opened:
                 tag = opened.pop()
                 result.append(f"</{tag}>")
-        elif m:
-            # 开标签
-            tags = m.group(1).split()
+        elif open_m:
+            tags = open_m.group(1).split()
             for t in tags:
-                mapped = _TAG_MAP.get(t)
+                mapped = _RICH_TAG_MAP.get(t)
                 if mapped:
                     if mapped.startswith("fg:"):
                         result.append(f'<style fg="{mapped[3:]}">')
@@ -424,8 +424,17 @@ class ChatREPL:
                 mode = "Yolo" if self.yolo else "Common"
                 event.app.renderer._last_rendered_width = 0  # 强制刷新 toolbar
 
+            _last_width = 0
+            _last_width_time = 0.0
+
             def _bottom_toolbar():
-                width = shutil.get_terminal_size().columns
+                nonlocal _last_width, _last_width_time
+                import time as _time
+                now = _time.monotonic()
+                if now - _last_width_time > 1.0:
+                    _last_width = shutil.get_terminal_size().columns
+                    _last_width_time = now
+                width = _last_width or shutil.get_terminal_size().columns
                 sep = "\u2500" * width
                 parts = []
                 model = self.model_config.get("model", "未设置")

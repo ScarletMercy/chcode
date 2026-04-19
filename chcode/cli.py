@@ -8,8 +8,6 @@ import asyncio
 import typer
 from rich.console import Console
 
-from chcode.chat import ChatREPL
-
 app = typer.Typer(
     name="chcode",
     help="Terminal-based AI coding agent",
@@ -38,6 +36,8 @@ def main(
 
 
 async def _run_chat(yolo: bool) -> None:
+    from chcode.chat import ChatREPL
+
     repl = ChatREPL()
     repl.yolo = yolo
 

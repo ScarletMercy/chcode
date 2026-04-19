@@ -165,7 +165,7 @@ Tools:
 Guidelines:
 - Never create .md/README files unless explicitly asked."""
 
-    return skill_loader.build_system_prompt(base_prompt)
+    return await asyncio.to_thread(skill_loader.build_system_prompt, base_prompt)
 
 
 @wrap_model_call
@@ -183,10 +183,9 @@ async def fix_messages(
 ) -> ModelResponse:
     """过滤隐藏消息"""
     messages = request.messages
-    real_messages = []
-    for message in messages:
-        if not message.additional_kwargs.get("composed", ""):
-            real_messages.append(message)
+    real_messages = [m for m in messages if not m.additional_kwargs.get("composed", "")]
+    if len(real_messages) == len(messages):
+        return await handler(request)
     return await handler(request.override(messages=real_messages))
 
 
@@ -197,8 +196,11 @@ async def tool_result_budget(
     """工具结果截断和 token 预算控制"""
     workplace = request.runtime.context.working_directory
     messages = list(request.messages)
+    changed = False
     for i, msg in enumerate(messages):
         if isinstance(msg, ToolMessage) and msg.content:
+            if msg.additional_kwargs.get("_budget_ok"):
+                continue
             cleaned = clean_tool_output(msg.content)
             truncated = truncate_large_result(
                 cleaned,
@@ -206,9 +208,13 @@ async def tool_result_budget(
                 msg.tool_call_id,
                 workplace=workplace,
             )
-            messages[i] = msg.model_copy(update={"content": truncated})
-    messages = enforce_per_turn_budget(messages, budget=200_000, workplace=workplace)
-    return await handler(request.override(messages=messages))
+            new_kwargs = {**msg.additional_kwargs, "_budget_ok": True}
+            messages[i] = msg.model_copy(update={"content": truncated, "additional_kwargs": new_kwargs})
+            changed = True
+    if changed:
+        messages = enforce_per_turn_budget(messages, budget=200_000, workplace=workplace)
+        return await handler(request.override(messages=messages))
+    return await handler(request)
 
 
 # ─── Agent 构建 ──────────────────────────────────────────
