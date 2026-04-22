@@ -155,7 +155,8 @@ class TestShellSessionExecute:
         mock_proc.communicate.side_effect = [TE("cmd", 60), TE("kill", 5)]
         mock_proc.kill = MagicMock()
         mock_proc.wait = MagicMock(return_value=-9)
-        with patch("chcode.utils.shell.session.subprocess.Popen", return_value=mock_proc):
+        with patch("chcode.utils.shell.session.subprocess.Popen", return_value=mock_proc), \
+             patch("chcode.utils.shell.session._kill_proc_tree", side_effect=lambda p: p.kill()):
             result, truncated = sess.execute("sleep 999", timeout=60000)
             assert result.timed_out or truncated.truncated
         # Verify timeout was handled and process was killed
@@ -187,7 +188,7 @@ class TestShellSessionExecute:
         mock_proc.kill = MagicMock()
         mock_proc.wait = MagicMock(return_value=-9)
         with patch("chcode.utils.shell.session.subprocess.Popen", return_value=mock_proc), \
-             patch("chcode.utils.shell.session._kill_proc_tree"):
+             patch("chcode.utils.shell.session._kill_proc_tree", side_effect=lambda p: p.kill()):
             result, truncated = sess.execute("sleep 999", timeout=60000)
             assert result.timed_out or truncated.truncated
 

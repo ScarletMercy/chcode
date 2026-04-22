@@ -1587,22 +1587,23 @@ class TestKillProcTreeImportError:
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     @patch("os.name", "nt")
     def test_kill_proc_tree_import_error_windows(self):
-        """Cover lines 149-150: ImportError on Windows."""
+        """Cover lines 149-150: psutil kills parent on Windows."""
         from unittest.mock import MagicMock, patch
 
         mock_proc = MagicMock()
         mock_proc.kill = MagicMock()
         mock_proc.pid = 1234
 
-        # We can't easily mock the import in an already-loaded module,
-        # but we can test that the ImportError branch exists by verifying
-        # the module structure
-        import chcode.utils.shell.session as sess_mod
-        assert hasattr(sess_mod, '_kill_proc_tree')
+        mock_psutil = MagicMock()
+        mock_parent = MagicMock()
+        mock_psutil.Process.return_value = mock_parent
+        mock_parent.children.return_value = []
 
-        # Test the function works when psutil is available
-        sess_mod._kill_proc_tree(mock_proc)
-        mock_proc.kill.assert_called_once()
+        import chcode.utils.shell.session as sess_mod
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
+            sess_mod._kill_proc_tree(mock_proc)
+
+        mock_parent.kill.assert_called_once()
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Linux-only")
     def test_kill_proc_tree_linux(self):
