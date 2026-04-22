@@ -170,7 +170,8 @@ class TestConfigureNewModel:
 
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
             "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock):
+        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -207,7 +208,8 @@ class TestConfigureNewModel:
 
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
             "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock):
+        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."):
             mock_form.return_value = new_config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -228,7 +230,8 @@ class TestConfigureNewModel:
         """Test user cancels configuration form"""
         import chcode.config as mod
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form:
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
+            patch("chcode.config.select", new_callable=AsyncMock, return_value=None):
             mock_form.return_value = None
 
             result = await mod.configure_new_model()
@@ -249,7 +252,8 @@ class TestConfigureNewModel:
 
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
             "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model:
+        ) as mock_model, \
+            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -678,7 +682,8 @@ class TestConfigureNewModelNullChoices:
 
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
              patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock):
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -705,7 +710,8 @@ class TestConfigureNewModelNullChoices:
 
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
              patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.console") as mock_console:
+             patch("chcode.config.console") as mock_console, \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst

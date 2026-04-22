@@ -244,27 +244,6 @@ class TestModelConfigFormHyperparamCancels:
             result = await model_config_form(None)
         assert result is None
 
-    async def test_cancel_max_tokens(self):
-        async def _select(msg, choices, default=None, **kw):
-            if "API Key" in msg:
-                return "手动输入 API Key..."
-            if "Temperature" in msg:
-                return "0.7"
-            if "Top P" in msg:
-                return "0.9"
-            if "Top K" in msg:
-                return "10"
-            if "Max Tokens" in msg and "Completion" not in msg:
-                return None
-            return "10"
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value="https://api.openai.com/v1")), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.prompts.select", _select):
-            result = await model_config_form(None)
-        assert result is None
-
     async def test_cancel_max_completion_tokens(self):
         async def _select(msg, choices, default=None, **kw):
             if "API Key" in msg:
@@ -275,8 +254,6 @@ class TestModelConfigFormHyperparamCancels:
                 return "0.9"
             if "Top K" in msg:
                 return "10"
-            if "Max Tokens" in msg and "Completion" not in msg:
-                return "4096"
             if "Max Completion" in msg:
                 return None
             return "10"
@@ -381,8 +358,6 @@ class TestModelConfigFormHyperparamSkips:
                 return "跳过 (不设置)"
             if "Top K" in msg:
                 return "10"
-            if "Max Tokens" in msg and "Completion" not in msg:
-                return "4096"
             return "10"
 
         with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
@@ -412,8 +387,6 @@ class TestModelConfigFormHyperparamSkips:
                 return "<|im_end|>, <|endoftext|>"
             if "Top K" in msg:
                 return "10"
-            if "Max Tokens" in msg and "Completion" not in msg:
-                return "4096"
             if "Max Completion" in msg:
                 return "跳过 (不设置)"
             return "10"
@@ -443,8 +416,6 @@ class TestModelConfigFormHyperparamSkips:
                 return "跳过 (不设置)"
             if "Top K" in msg:
                 return "10"
-            if "Max Tokens" in msg and "Completion" not in msg:
-                return "4096"
             if "Max Completion" in msg:
                 return "跳过 (不设置)"
             return "10"
@@ -499,10 +470,8 @@ class TestModelConfigFormAllHyperparamsFilled:
                 return "0.9"
             if "Top K" in msg:
                 return "自定义输入..."
-            if "Max Tokens" in msg and "Completion" not in msg:
-                return "32768"
             if "Max Completion" in msg:
-                return "122880"
+                return "32768"
             if "Stop" in msg:
                 return "自定义输入..."
             if "Frequency" in msg:
@@ -529,8 +498,7 @@ class TestModelConfigFormAllHyperparamsFilled:
         assert result["temperature"] == 0.5
         assert result["top_p"] == 0.9
         assert result["extra_body"]["top_k"] == 20
-        assert result["max_tokens"] == 32768
-        assert result["extra_body"]["max_completion_tokens"] == 122880
+        assert result["extra_body"]["max_completion_tokens"] == 32768
         assert result["stop_sequences"] == ["<|im_end|>"]
         assert result["frequency_penalty"] == 0.2
         assert result["presence_penalty"] == 0.3

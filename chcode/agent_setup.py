@@ -136,13 +136,13 @@ async def model_retry_with_backoff(
                 if fallback:
                     console.print(f"[yellow]主模型重试{retry_count}次失败，切换到备用模型...[/yellow]")
                     raise ModelSwitchError("切换到备用模型")
-                console.print(f"[red]请求失败，无备用模型可用，放弃请求[/red]")
+                console.print(f"[red]请求失败，无备用模型可用，放弃请求\n  {e}[/red]")
                 raise
 
             delay_idx = min(retry_count - 1, len(RETRY_DELAYS) - 1)
             delay = RETRY_DELAYS[delay_idx]
 
-            console.print(f"[yellow]请求失败 ({retry_count}/{max_retries}), {delay}秒后重试... ({str(e)[:50]})[/yellow]")
+            console.print(f"[yellow]请求失败 ({retry_count}/{max_retries}), {delay}秒后重试...\n  {e}[/yellow]")
 
             await asyncio.sleep(delay)
 
@@ -266,12 +266,17 @@ def build_agent(
     _summarization_model = EnhancedChatOpenAI(**cfg)
 
     # 加载 fallback 模型配置
-    from chcode.config import load_model_json
+    from chcode.config import load_model_json, get_context_window_size
 
     data = load_model_json()
     fallback = data.get("fallback", {})
     if fallback:
         set_fallback_models(list(fallback.values()))
+
+    # 摘要触发阈值 = 上下文窗口的 90%
+    model_name = cfg.get("model", "")
+    ctx_window = get_context_window_size(model_name)
+    summary_trigger = int(ctx_window * 0.9)
 
     agent = create_agent(
         model,
@@ -295,7 +300,7 @@ def build_agent(
             ),
             SummarizationMiddleware(
                 model=_summarization_model,
-                trigger=("tokens", 170_000),
+                trigger=("tokens", summary_trigger),
                 keep=("messages", 20),
             ),
             _hitl_middleware,

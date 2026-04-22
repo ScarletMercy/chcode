@@ -34,7 +34,7 @@ https://github.com/ScarletMercy/chcode/blob/main/assets/test.mp4
 - Compatible with **all OpenAI-compatible APIs** (OpenAI, DeepSeek, Qwen, GLM, Claude via proxy, etc.)
 - First-run wizard with **env auto-detection** (scans `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, etc.)
 - Create / edit / switch models at runtime
-- Per-model hyperparameter tuning (temperature, top_p, top_k, max_tokens, stop_sequences, etc.)
+- Per-model hyperparameter tuning (temperature, top_p, top_k, max_completion_tokens, stop_sequences, etc.)
 - Automatic **retry with exponential backoff** (3/10/30/60s) and fallback model switching on persistent failure
 
 ### Session & History

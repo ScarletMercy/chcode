@@ -434,7 +434,6 @@ class ChatREPL:
                 from chcode.agent_setup import update_hitl_config
 
                 update_hitl_config(self.yolo)
-                mode = "Yolo" if self.yolo else "Common"
                 event.app.renderer._last_rendered_width = 0  # 强制刷新 toolbar
 
             _last_width = 0
@@ -738,9 +737,30 @@ class ChatREPL:
                 import re
 
                 content = raw_resp.content.strip()
+                # 去除 markdown 代码块包裹
                 if content.startswith("```"):
                     content = re.sub(r"^```(?:json)?\s*\n?", "", content)
                     content = re.sub(r"\n?```\s*$", "", content)
+                # 提取包含 "summary" 的 JSON 对象（模型可能在 JSON 前输出思考内容）
+                json_match = re.search(r'\{[^{}]*"summary"[^{}]*\}', content)
+                if json_match:
+                    content = json_match.group()
+                else:
+                    # 可能 summary 值中包含嵌套对象，用逐字符括号匹配兜底
+                    depth = 0
+                    start = -1
+                    for i, ch in enumerate(content):
+                        if ch == '{':
+                            if depth == 0:
+                                start = i
+                            depth += 1
+                        elif ch == '}':
+                            depth -= 1
+                            if depth == 0 and start >= 0:
+                                candidate = content[start:i+1]
+                                if '"summary"' in candidate:
+                                    content = candidate
+                                    break
                 data = json.loads(content)
                 ai_content = data.get("summary", "")
                 if not ai_content:

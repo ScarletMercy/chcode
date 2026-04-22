@@ -171,13 +171,14 @@ class TestModelConfigForm:
             monkeypatch.delenv(var, raising=False)
 
     async def test_new_config_no_hyperparams(self):
-        # model_config_form always calls select() for API key source
-        # (it appends "手动输入 API Key..." to env_choices)
+        async def _select_route(msg, choices, default=None, **kwargs):
+            if "Base URL" in msg:
+                return "https://api.openai.com/v1"
+            return "手动输入 API Key..."
         with patch("chcode.prompts.text", _mock_text_async("gpt-4")), \
-             patch("chcode.prompts.select_or_custom", _mock_select_async("https://api.openai.com/v1")), \
              patch("chcode.prompts.password", _mock_password_async("sk-123")), \
              patch("chcode.prompts.confirm", _mock_confirm_async(False)), \
-             patch("chcode.prompts.select", _mock_select_async("手动输入 API Key...")):
+             patch("chcode.prompts.select", _select_route):
             result = await model_config_form(None)
         assert result is not None
         assert result["model"] == "gpt-4"
@@ -191,24 +192,28 @@ class TestModelConfigForm:
         assert result is None
 
     async def test_empty_api_key_returns_none(self):
+        async def _select_route(msg, choices, default=None, **kwargs):
+            if "Base URL" in msg:
+                return "https://api.openai.com/v1"
+            return "手动输入 API Key..."
         with patch("chcode.prompts.text", _mock_text_async("gpt-4")), \
-             patch("chcode.prompts.select_or_custom", _mock_select_async("https://api.openai.com/v1")), \
              patch("chcode.prompts.password", _mock_password_async("")), \
              patch("chcode.prompts.confirm", _mock_confirm_async(False)), \
-             patch("chcode.prompts.select", _mock_select_async("手动输入 API Key...")):
+             patch("chcode.prompts.select", _select_route):
             result = await model_config_form(None)
         assert result is None
 
     async def test_with_hyperparams(self):
         async def _select_route(msg, choices, default=None, **kwargs):
+            if "Base URL" in msg:
+                return "https://api.openai.com/v1"
             if "API Key" in msg:
                 return "手动输入 API Key..."
             if "Temperature" in msg:
                 return "0.7"
-            # Top P, Top K, Max Tokens, Max Completion Tokens all need numeric values
+            # Top P, Top K, Max Completion Tokens all need numeric values
             return "4096"
         with patch("chcode.prompts.text", _mock_text_async("gpt-4")), \
-             patch("chcode.prompts.select_or_custom", _mock_select_async("https://api.openai.com/v1")), \
              patch("chcode.prompts.password", _mock_password_async("sk-123")), \
              patch("chcode.prompts.confirm", _mock_confirm_async(True)), \
              patch("chcode.prompts.select", _select_route):
@@ -219,11 +224,12 @@ class TestModelConfigForm:
 
     async def test_skip_hyperparam(self):
         async def _select_skip(msg, choices, default=None, **kwargs):
+            if "Base URL" in msg:
+                return "https://api.openai.com/v1"
             if "API Key" in msg:
                 return "手动输入 API Key..."
             return SKIP_LABEL
         with patch("chcode.prompts.text", _mock_text_async("gpt-4")), \
-             patch("chcode.prompts.select_or_custom", _mock_select_async("https://api.openai.com/v1")), \
              patch("chcode.prompts.password", _mock_password_async("sk-123")), \
              patch("chcode.prompts.confirm", _mock_confirm_async(True)), \
              patch("chcode.prompts.select", _select_skip):

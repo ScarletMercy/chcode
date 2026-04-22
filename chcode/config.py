@@ -122,6 +122,7 @@ async def first_run_configure() -> dict | None:
 
     if detected:
         choices = [f"{d['name']} (检测到 {d['env_var']})" for d in detected]
+        choices.append("魔搭快捷配置...")
         choices.append("手动配置...")
         choices.append("退出")
 
@@ -134,6 +135,9 @@ async def first_run_configure() -> dict | None:
 
         if "手动" in result:
             return await configure_new_model()
+
+        if "魔搭" in result:
+            return await _configure_modelscope_with_test()
 
         idx = choices.index(result)
         chosen = detected[idx]
@@ -169,19 +173,26 @@ async def first_run_configure() -> dict | None:
         return config
     else:
         console.print("[yellow]未检测到环境变量中的 API Key[/yellow]")
-        choices = ["手动配置...", "退出"]
+        choices = ["魔搭快捷配置...", "手动配置...", "退出"]
         result = await select("选择:", choices)
         if result is None or "退出" in result:
             console.print("[dim]提示: 在环境变量中设置 API Key 后重新运行，例如:[/dim]")
             console.print("[dim]  set BIGMODEL_API_KEY=your_key[/dim]")
             console.print("[dim]或执行 chcode config new 手动配置[/dim]")
             return None
+        if "魔搭" in result:
+            return await _configure_modelscope_with_test()
         return await configure_new_model()
 
 
 async def configure_new_model() -> dict | None:
     """新建模型配置（交互式表单）"""
     ensure_config_dir()
+    result = await select("配置方式:", ["魔搭快捷配置...", "手动配置..."])
+    if result is None:
+        return None
+    if "魔搭" in result:
+        return await _configure_modelscope_with_test()
     config = await model_config_form()
     if config is None:
         return None
@@ -222,6 +233,56 @@ async def configure_new_model() -> dict | None:
     return config
 
 
+async def _configure_modelscope_with_test() -> dict | None:
+    """魔搭快捷配置：收集 API Key → 测试连接 → 保存 12 个预定义模型。"""
+    from chcode.prompts import configure_modelscope
+
+    ms_config = await configure_modelscope()
+    if ms_config is None:
+        return None
+
+    default = ms_config["default"]
+
+    # 测试连接
+    console.print("[yellow]测试连接中...[/yellow]")
+    try:
+        from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
+        model_inst = EnhancedChatOpenAI(**default)
+        await asyncio.to_thread(model_inst.invoke, "你好")
+    except Exception as e:
+        import traceback
+
+        err_msg = str(e)
+        if "null value for 'choices'" not in err_msg:
+            console.print(f"[red]连接测试失败: {err_msg}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+            return None
+
+    # 合并到已有配置，保留非魔搭的已有模型
+    data = load_model_json()
+    old_default = data.get("default")
+    existing_fallback = data.get("fallback", {})
+
+    if not old_default:
+        # 首次配置 — 魔搭直接作为完整配置
+        save_model_json(ms_config)
+    else:
+        # 已有配置 — 旧的 default 移入 fallback，魔搭作为新 default，合并 fallback
+        if old_default["model"] not in ms_config["fallback"]:
+            existing_fallback[old_default["model"]] = old_default
+        existing_fallback.update(ms_config["fallback"])
+        data["default"] = ms_config["default"]
+        data["fallback"] = existing_fallback
+        save_model_json(data)
+    fallback_names = ", ".join(ms_config["fallback"].keys())
+    console.print(f"[green]配置完成: {default['model']} (默认)[/green]")
+    console.print(f"[dim]备用模型 ({len(ms_config['fallback'])} 个): {fallback_names}[/dim]")
+
+    await configure_tavily()
+    return default
+
+
 async def edit_current_model() -> dict | None:
     """编辑当前默认模型"""
     data = load_model_json()
@@ -249,6 +310,7 @@ async def edit_current_model() -> dict | None:
             console.print(f"[red]连接测试失败: {err_msg}[/red]")
             console.print(f"[dim]{traceback.format_exc()}[/dim]")
             return None
+    data["default"] = config
     save_model_json(data)
     console.print(f"[green]模型配置已更新: {config['model']}[/green]")
     return config
@@ -357,11 +419,15 @@ CONTEXT_WINDOW_SIZES: dict[str, int] = {
     "gpt-4o-mini": 128000,
     "claude-sonnet-4-20250514": 200000,
     "deepseek-chat": 65536,
+    "deepseek-v3.2": 128000,
+    "deepseek-r1-0528": 65536,
     "glm-5.1": 200000,
     "glm-5": 200000,
     "glm-4.7": 200000,
     "minimax-m2": 204800,
-    "kimi-k2": 262144,
+    "minimax-m2.5": 200000,
+    "kimi-k2": 256000,
+    "mimo-v2-flash": 256000,
     "qwen3.5-plus": 1000000,
     "qwen3.6-plus": 1000000,
     "qwen": 256000,

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 
 import questionary
@@ -102,6 +103,101 @@ BASE_URL_PRESETS = [
     "https://dashscope.aliyuncs.com/compatible-mode/v1",
 ]
 
+MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1"
+
+MODELSCOPE_PRESETS = [
+    {
+        "model": "ZhipuAI/GLM-5",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "Qwen/Qwen3-235B-A22B-Thinking-2507",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "stream_usage": True,
+        "extra_body": {"top_k": 20},
+    },
+    {
+        "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "stream_usage": True,
+        "extra_body": {"top_k": 20},
+    },
+    {
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "stream_usage": True,
+        "extra_body": {"top_k": 20, "repetition_penalty": 1.0},
+    },
+    {
+        "model": "deepseek-ai/DeepSeek-V3.2",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "MiniMax/MiniMax-M2.5",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+        "extra_body": {"top_k": 40},
+    },
+    {
+        "model": "moonshotai/Kimi-K2.5",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "ZhipuAI/GLM-4.7",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+        "extra_body": {"max_completion_tokens": 131072},
+    },
+    {
+        "model": "ZhipuAI/GLM-5.1",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "stream_usage": True,
+        "extra_body": {"top_k": 20, "repetition_penalty": 1.05},
+    },
+    {
+        "model": "XiaomiMiMo/MiMo-V2-Flash",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 0.3,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "deepseek-ai/DeepSeek-R1-0528",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+]
+
 API_KEY_ENV_VARS = [
     ("BIGMODEL_API_KEY", "智谱 GLM"),
     ("ModelScopeToken", "ModelScope"),
@@ -111,11 +207,10 @@ API_KEY_ENV_VARS = [
     ("ANTHROPIC_API_KEY", "Anthropic Claude"),
 ]
 
-TEMPERATURE_PRESETS = ["0", "0.3", "0.5", "0.7", "1.0", "1.5", "2.0"]
+TEMPERATURE_PRESETS = ["0", "0.3", "0.5", "0.6", "0.7", "1.0", "1.5", "2.0"]
 TOP_P_PRESETS = ["0.5", "0.7", "0.9", "0.95", "1.0"]
-TOP_K_PRESETS = ["1", "5", "10", "20", "50"]
-MAX_TOKENS_PRESETS = ["32768", "65536", "122880", "204800"]
-MAX_COMPLETION_TOKENS_PRESETS = ["122880", "204800", "256000", "1024000"]
+TOP_K_PRESETS = ["1", "5", "10", "20", "40", "50"]
+MAX_COMPLETION_TOKENS_PRESETS = ["32768", "65536", "122880", "204800"]
 FREQ_PENALTY_PRESETS = ["0", "0.2", "0.5", "1.0", "1.5", "2.0"]
 PRESENCE_PENALTY_PRESETS = ["0", "0.2", "0.5", "1.0", "1.5", "2.0"]
 
@@ -201,22 +296,27 @@ async def model_config_form(
         result = await select("选择 API Base URL:", _url_choices, default=_keep_url)
         if result is None:
             return None
-        base_url = (
-            base_url
-            if result == _keep_url
-            else (
-                await text("输入 Base URL: ") if result == "自定义输入..." else result
-            )
-        )
+        if result == _keep_url:
+            pass  # base_url unchanged
+        elif result == "自定义输入...":
+            base_url = await text("输入 Base URL: ")
+            if not base_url or not base_url.strip():
+                return None
+        else:
+            base_url = result
     else:
-        result = await select_or_custom(
-            "选择 API Base URL:",
-            BASE_URL_PRESETS,
-            custom_prompt="输入 Base URL: ",
-        )
+        _url_choices = ["魔搭 (ModelScope)"] + list(BASE_URL_PRESETS) + ["自定义输入..."]
+        result = await select("选择 API Base URL:", _url_choices)
         if result is None:
             return None
-        base_url = result
+        if result == "魔搭 (ModelScope)":
+            base_url = MODELSCOPE_BASE_URL
+        elif result == "自定义输入...":
+            base_url = await text("输入 Base URL: ")
+            if not base_url or not base_url.strip():
+                return None
+        else:
+            base_url = result
 
     # API Key — 先展示环境变量快捷选择
     existing_api_key = cfg.get("api_key", "")
@@ -258,6 +358,9 @@ async def model_config_form(
         "api_key": api_key,
         "stream_usage": True,
     }
+
+    # 编辑旧配置时清理已移除的 max_tokens 字段
+    cfg.pop("max_tokens", None)
 
     # ─── 超参（可选） ───
     want_hyperparams = await confirm("配置超参数？", default=False)
@@ -318,21 +421,6 @@ async def model_config_form(
                 _eb = {k: v for k, v in existing_extra.items() if k != "top_k"}
                 if _eb:
                     config["extra_body"] = _eb
-
-        # max_tokens
-        mt_val = str(cfg["max_tokens"]) if "max_tokens" in cfg else None
-        result = await _ask_hyperparam(
-            "Max Tokens:",
-            MAX_TOKENS_PRESETS,
-            existing_value=mt_val,
-            custom_prompt="输入 max_tokens: ",
-        )
-        if result is None:
-            return None
-        if result is not _SKIP:
-            config["max_tokens"] = int(result)
-        else:
-            config.pop("max_tokens", None)
 
         # max_completion_tokens → extra_body
         _eb = config.get("extra_body", {})
@@ -415,3 +503,43 @@ async def model_config_form(
         config["max_retries"] = 4
 
     return config
+
+
+async def configure_modelscope() -> dict | None:
+    """魔搭快捷配置 — 只需 API Key，自动生成 12 个预定义模型。"""
+    # 收集 API Key
+    env_choices = [
+        f"{var} ({desc})"
+        for var, desc in API_KEY_ENV_VARS
+        if var == "ModelScopeToken" and os.getenv(var)
+    ]
+    if env_choices:
+        result = await select(
+            "检测到 ModelScope Token，是否使用？", env_choices + ["手动输入..."]
+        )
+        if result is None:
+            return None
+        if result == "手动输入...":
+            api_key = await password("输入 ModelScope API Key: ")
+        else:
+            # 提取 env var 名
+            var_name = result.split(" (")[0]
+            api_key = os.getenv(var_name, "")
+    else:
+        api_key = await password("输入 ModelScope API Key: ")
+
+    if not api_key or not api_key.strip():
+        return None
+    api_key = api_key.strip()
+
+    # 用预设模型 + api_key 构建配置
+    default_cfg = dict(MODELSCOPE_PRESETS[0])
+    default_cfg["api_key"] = api_key
+
+    fallback = {}
+    for preset in MODELSCOPE_PRESETS[1:]:
+        cfg = dict(preset)
+        cfg["api_key"] = api_key
+        fallback[cfg["model"]] = cfg
+
+    return {"default": default_cfg, "fallback": fallback}
