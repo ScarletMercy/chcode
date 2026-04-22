@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
@@ -793,6 +794,7 @@ class TestBuildAgentWithFallback:
              patch("chcode.agent_setup._get_all_tools", return_value=[]), \
              patch("chcode.config.load_model_json", return_value=mock_data), \
              patch("chcode.agent_setup._hitl_middleware", None), \
+             patch("chcode.agent_setup.EnhancedChatOpenAI"), \
              patch("chcode.agent_setup._summarization_model", None):
             agent = build_agent(checkpointer=None, yolo=False)
         # After build_agent, _fallback_models should be populated
@@ -1303,6 +1305,7 @@ class TestBashProviderGitDetection:
         assert p.is_available is True
         assert "bash.exe" in p.shell_path
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     @patch("os.name", "nt")
     def test_git_bash_via_usr_bin(self):
         """Cover line 76: bash found via git_bin/../bin/bash.exe."""
@@ -1513,7 +1516,8 @@ class TestShellSessionExecuteWorkdirFallback:
 class TestShellSessionExecuteTimeout:
     """Cover lines 110-111: timeout handling."""
 
-    def test_execute_timeout_then_grace_period_timeout(self):
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only (uses ping -n)")
+    def test_execute_timeout_then_grace_period_timeout_windows(self):
         """Cover lines 110-111: timeout expires, then grace period also expires."""
         from chcode.utils.shell.session import ShellSession
         from chcode.utils.shell.provider import BashProvider
@@ -1521,8 +1525,21 @@ class TestShellSessionExecuteTimeout:
         provider = BashProvider()
         session = ShellSession(provider)
 
-        # Use a command that times out
+        # Use a command that times out (Windows ping uses -n, not -c)
         result, truncated = session.execute("ping -n 100 127.0.0.1", timeout=1)
+        assert result.timed_out is True
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Linux-only (uses ping -c)")
+    def test_execute_timeout_then_grace_period_timeout_linux(self):
+        """Cover lines 110-111: timeout expires, then grace period also expires."""
+        from chcode.utils.shell.session import ShellSession
+        from chcode.utils.shell.provider import BashProvider
+
+        provider = BashProvider()
+        session = ShellSession(provider)
+
+        # Use a command that times out (Linux ping uses -c, not -n)
+        result, truncated = session.execute("ping -c 100 127.0.0.1", timeout=1)
         assert result.timed_out is True
 
 
@@ -1567,6 +1584,7 @@ class TestKillProcTreeNoPid:
 class TestKillProcTreeImportError:
     """Cover lines 149-150, 159: psutil ImportError branch."""
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     @patch("os.name", "nt")
     def test_kill_proc_tree_import_error_windows(self):
         """Cover lines 149-150: ImportError on Windows."""
@@ -1585,6 +1603,26 @@ class TestKillProcTreeImportError:
         # Test the function works when psutil is available
         sess_mod._kill_proc_tree(mock_proc)
         mock_proc.kill.assert_called_once()
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Linux-only")
+    def test_kill_proc_tree_linux(self):
+        """Cover lines 153-157: Linux fallback with os.killpg."""
+        from unittest.mock import MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.kill = MagicMock()
+        mock_proc.pid = 1234
+
+        import chcode.utils.shell.session as sess_mod
+
+        with patch.dict(sess_mod.__dict__, {"psutil": None}), \
+             patch("chcode.utils.shell.session.psutil", create=True), \
+             patch("os.killpg") as mock_killpg, \
+             patch("os.kill", side_effect=ProcessLookupError):
+            sess_mod._kill_proc_tree(mock_proc)
+
+        mock_killpg.assert_called_once_with(1234, signal.SIGKILL)
+        mock_proc.kill.assert_not_called()
 
 
 # ────────────────────────────────────────────────────────────────

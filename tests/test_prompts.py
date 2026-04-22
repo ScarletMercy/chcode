@@ -237,6 +237,53 @@ class TestModelConfigForm:
         assert result is not None
         assert "temperature" not in result or result.get("temperature") is None
 
+    async def test_new_config_modelscope_url(self):
+        """New config selects ModelScope shortcut URL."""
+        async def _select_route(msg, choices, default=None, **kwargs):
+            if "Base URL" in msg:
+                return "魔搭 (ModelScope)"
+            return "手动输入 API Key..."
+        with patch("chcode.prompts.text", _mock_text_async("gpt-4")), \
+             patch("chcode.prompts.password", _mock_password_async("ms-key")), \
+             patch("chcode.prompts.confirm", _mock_confirm_async(False)), \
+             patch("chcode.prompts.select", _select_route):
+            result = await model_config_form(None)
+        assert result is not None
+        assert result["base_url"] == "https://api-inference.modelscope.cn/v1"
+        assert result["api_key"] == "ms-key"
+
+    async def test_new_config_custom_url_empty(self):
+        """New config custom URL empty input returns None."""
+        async def _text_route(msg, default="", **kwargs):
+            if "Base URL" in msg or "base" in msg.lower():
+                return ""
+            return "gpt-4"
+        async def _select_route(msg, choices, default=None, **kwargs):
+            if "Base URL" in msg:
+                return "自定义输入..."
+            return "手动输入 API Key..."
+        with patch("chcode.prompts.text", _text_route), \
+             patch("chcode.prompts.select", _select_route), \
+             patch("chcode.prompts.password", _mock_password_async("sk-123")):
+            result = await model_config_form(None)
+        assert result is None
+
+    async def test_edit_config_custom_url_empty(self):
+        """Edit mode custom URL empty input returns None."""
+        existing = {
+            "model": "gpt-4",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-123",
+        }
+        async def _select_route(msg, choices, default=None, **kwargs):
+            if "Base URL" in msg:
+                return "自定义输入..."
+            return "保持当前 Key (****)"
+        with patch("chcode.prompts.text", _mock_text_async("")), \
+             patch("chcode.prompts.select", _select_route):
+            result = await model_config_form(existing)
+        assert result is None
+
     async def test_edit_mode_keeps_base_url(self):
         async def _select_route(msg, choices, default=None, **kwargs):
             if "API Key" in msg:

@@ -763,6 +763,8 @@ class ChatREPL:
                                     break
                 data = json.loads(content)
                 ai_content = data.get("summary", "")
+                if isinstance(ai_content, dict):
+                    ai_content = json.dumps(ai_content, ensure_ascii=False)
                 if not ai_content:
                     ai_content = "会话压缩失败: LLM 返回结果缺少 summary 字段"
             except Exception as e:

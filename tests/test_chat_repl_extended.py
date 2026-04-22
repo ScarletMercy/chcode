@@ -126,6 +126,43 @@ class TestCmdCompressCodeBlockStripping:
                                 assert len(ai_msg) == 1
                                 assert "stripped" in ai_msg[0].content
 
+    async def test_compress_nested_json_fallback(self):
+        """LLM response with thinking before nested JSON uses bracket-depth fallback."""
+        repl = ChatREPL()
+        repl.model_config = {"model": "gpt-4"}
+        repl.agent = Mock()
+        repl.session_mgr = Mock()
+        repl.session_mgr.config = {}
+
+        msg1 = HumanMessage("q1", id="m1")
+        msg2 = HumanMessage("q2", id="m2")
+
+        state = Mock()
+        state.values = {"messages": [msg1, msg2]}
+        repl.agent.aget_state = AsyncMock(return_value=state)
+        repl.agent.aupdate_state = AsyncMock()
+
+        with patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True):
+            with patch("chcode.chat.render_info"):
+                with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+                    mock_inst = Mock()
+                    mock_resp = Mock()
+                    # Thinking before JSON with nested braces (regex won't match, fallback will)
+                    mock_resp.content = '让我来分析...\n{"summary": {"key": "嵌套摘要内容"}}'
+                    mock_inst.invoke = Mock(return_value=mock_resp)
+                    mock_llm_cls.return_value = mock_inst
+                    with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=mock_resp):
+                        with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
+                            with patch("chcode.chat.render_success"):
+                                await repl._cmd_compress("")
+
+                                repl.agent.aupdate_state.assert_called()
+                                call_args = repl.agent.aupdate_state.call_args
+                                messages = call_args[0][1]["messages"]
+                                ai_msg = [m for m in messages if isinstance(m, AIMessage)]
+                                assert len(ai_msg) == 1
+                                assert "嵌套" in ai_msg[0].content
+
 
 # ============================================================================
 # Test _cmd_compress — error branches (lines 738-746, 749)

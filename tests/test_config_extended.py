@@ -12,6 +12,7 @@ Tests for:
 """
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
@@ -877,3 +878,199 @@ class TestConfigureTavilySavedKeyException:
         # Should not raise, should proceed to ask user
         mock_select.assert_called_once()
         assert mock_select.return_value == "否"
+
+
+class TestConfigureModelscope:
+    """Tests for _configure_modelscope_with_test() and configure_modelscope()."""
+
+    @pytest.mark.asyncio
+    async def test_modelscope_first_time(self, mock_config_dir):
+        """First-time config: no existing model.json -> full ModelScope config saved."""
+        import chcode.config as mod
+        from chcode.prompts import MODELSCOPE_PRESETS
+
+        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock):
+            ms_result = {
+                "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
+                "fallback": {
+                    m["model"]: {**m, "api_key": "ms-key"}
+                    for m in MODELSCOPE_PRESETS[1:]
+                },
+            }
+            mock_ms.return_value = ms_result
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.return_value = MagicMock()
+
+            result = await mod._configure_modelscope_with_test()
+
+            assert result is not None
+            assert result["model"] == "ZhipuAI/GLM-5"
+            assert result["api_key"] == "ms-key"
+
+            data = mod.load_model_json()
+            assert data["default"]["model"] == "ZhipuAI/GLM-5"
+            assert len(data["fallback"]) == 11
+
+    @pytest.mark.asyncio
+    async def test_modelscope_merge_existing(self, mock_config_dir):
+        """Existing config: old default moves to fallback, ModelScope presets merged in."""
+        import chcode.config as mod
+        from chcode.prompts import MODELSCOPE_PRESETS
+
+        mod.save_model_json({
+            "default": {"model": "old-model", "api_key": "k", "base_url": "https://x.com/v1", "stream_usage": True},
+            "fallback": {"existing-fb": {"model": "existing-fb", "api_key": "k2"}},
+        })
+
+        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock):
+            ms_result = {
+                "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
+                "fallback": {
+                    m["model"]: {**m, "api_key": "ms-key"}
+                    for m in MODELSCOPE_PRESETS[1:]
+                },
+            }
+            mock_ms.return_value = ms_result
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.return_value = MagicMock()
+
+            result = await mod._configure_modelscope_with_test()
+
+            data = mod.load_model_json()
+            assert data["default"]["model"] == "ZhipuAI/GLM-5"
+            assert "old-model" in data["fallback"]
+            assert "existing-fb" in data["fallback"]
+
+    @pytest.mark.asyncio
+    async def test_modelscope_connection_fails(self, mock_config_dir):
+        """Connection test fails -> returns None without saving."""
+        import chcode.config as mod
+        from chcode.prompts import MODELSCOPE_PRESETS
+
+        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.console") as mock_console:
+            mock_ms.return_value = {
+                "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
+                "fallback": {m["model"]: {**m, "api_key": "ms-key"} for m in MODELSCOPE_PRESETS[1:]},
+            }
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.side_effect = Exception("Connection refused")
+
+            result = await mod._configure_modelscope_with_test()
+
+            assert result is None
+            assert not mod.load_model_json().get("default")
+
+    @pytest.mark.asyncio
+    async def test_configure_modelscope_manual_key(self):
+        """configure_modelscope() manual key input."""
+        from chcode.prompts import configure_modelscope
+
+        with patch("chcode.prompts.select", new_callable=AsyncMock, return_value="手动输入..."), \
+             patch("chcode.prompts.password", new_callable=AsyncMock, return_value="ms-test-key"):
+            result = await configure_modelscope()
+
+        assert result is not None
+        assert result["default"]["api_key"] == "ms-test-key"
+        assert len(result["fallback"]) == 11
+
+    @pytest.mark.asyncio
+    async def test_configure_modelscope_cancel(self):
+        """configure_modelscope() returns None when user cancels select."""
+        from chcode.prompts import configure_modelscope
+
+        with patch("chcode.prompts.select", new_callable=AsyncMock, return_value=None):
+            result = await configure_modelscope()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_configure_modelscope_empty_key(self):
+        """configure_modelscope() returns None for empty API key."""
+        from chcode.prompts import configure_modelscope
+
+        with patch("chcode.prompts.select", new_callable=AsyncMock, return_value="手动输入..."), \
+             patch("chcode.prompts.password", new_callable=AsyncMock, return_value=""):
+            result = await configure_modelscope()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_configure_modelscope_with_env_token(self):
+        """configure_modelscope() detects ModelScopeToken env var."""
+        import os as _os
+        from chcode.prompts import configure_modelscope
+
+        with patch.dict(_os.environ, {"ModelScopeToken": "env-ms-key"}), \
+             patch("chcode.prompts.select", new_callable=AsyncMock, return_value="ModelScopeToken (ModelScope)"):
+            result = await configure_modelscope()
+
+        assert result is not None
+        assert result["default"]["api_key"] == "env-ms-key"
+
+    @pytest.mark.asyncio
+    async def test_modelscope_configure_returns_none(self, mock_config_dir):
+        """configure_modelscope returns None -> _configure_modelscope_with_test returns None."""
+        import chcode.config as mod
+
+        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock, return_value=None):
+            result = await mod._configure_modelscope_with_test()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_first_run_detected_modelscope(self, mock_config_dir):
+        """first_run_configure with detected key chooses 魔搭 path."""
+        import chcode.config as mod
+
+        with patch("chcode.config.detect_env_api_keys", return_value=[
+            {"name": "TestProvider", "env_var": "TEST_KEY", "base_url": "https://x.com", "models": ["m1"], "api_key": "k"}
+        ]), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置..."), \
+             patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock, return_value=None):
+            result = await mod.first_run_configure()
+
+        # Returns None because configure_modelscope returns None
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_first_run_no_env_modelscope(self, mock_config_dir):
+        """first_run_configure no env vars, user picks 魔搭."""
+        import chcode.config as mod
+
+        with patch("chcode.config.detect_env_api_keys", return_value=[]), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置..."), \
+             patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock, return_value=None):
+            result = await mod.first_run_configure()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_configure_new_model_selects_modelscope(self, mock_config_dir):
+        """configure_new_model user selects 魔搭."""
+        import chcode.config as mod
+
+        with patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置..."), \
+             patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock, return_value=None):
+            result = await mod.configure_new_model()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_configure_new_model_form_returns_none(self, mock_config_dir):
+        """configure_new_model: user selects manual, model_config_form returns None."""
+        import chcode.config as mod
+
+        with patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
+             patch("chcode.config.model_config_form", new_callable=AsyncMock, return_value=None):
+            result = await mod.configure_new_model()
+
+        assert result is None

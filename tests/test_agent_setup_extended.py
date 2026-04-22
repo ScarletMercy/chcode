@@ -177,7 +177,8 @@ class TestBuildAgent:
         with patch("chcode.agent_setup._dummy_model") as mock_model, \
              patch("chcode.agent_setup.create_agent") as mock_create, \
              patch("chcode.agent_setup._get_all_tools", return_value=[]), \
-             patch("chcode.config.load_model_json", return_value={}):
+             patch("chcode.config.load_model_json", return_value={}), \
+             patch("chcode.agent_setup.EnhancedChatOpenAI") as mock_llm:
             agent = build_agent(model_config={"model": "gpt-4"}, checkpointer=None, yolo=True)
         mock_create.assert_called_once()
 

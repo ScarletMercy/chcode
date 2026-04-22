@@ -1,5 +1,6 @@
 """Extended tests for chcode/utils/shell/session.py"""
 import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -130,6 +131,7 @@ class TestShellSessionExecute:
         # Verify OSError was handled gracefully
         assert result is not None
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     def test_timeout_handling(self):
         from chcode.utils.shell.session import ShellSession
         mock_provider = MagicMock()
@@ -158,6 +160,36 @@ class TestShellSessionExecute:
             assert result.timed_out or truncated.truncated
         # Verify timeout was handled and process was killed
         mock_proc.kill.assert_called()
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Linux-only")
+    def test_timeout_handling_linux(self):
+        """Linux: timeout triggers os.killpg on process group."""
+        from chcode.utils.shell.session import ShellSession
+        mock_provider = MagicMock()
+        mock_provider.shell_path = "/bin/bash"
+        mock_provider.env = {}
+        mock_provider.name = "bash"
+        mock_provider.args = ["/bin/bash", "-i"]
+        mock_provider.encoding = "utf-8"
+        mock_provider.display_name = "bash"
+        mock_provider.create_cwd_file.return_value = "/tmp/cwd_test"
+        mock_provider.build_command.return_value = "sleep 999"
+        mock_provider.get_spawn_args.return_value = []
+        mock_provider.get_env_overrides.return_value = {}
+        mock_provider.read_cwd_file.return_value = None
+        mock_provider.cleanup_cwd_file.return_value = None
+        sess = ShellSession(mock_provider)
+        import subprocess
+        from subprocess import TimeoutExpired as TE
+        mock_proc = MagicMock()
+        mock_proc.pid = 12345
+        mock_proc.communicate.side_effect = [TE("cmd", 60), TE("kill", 5)]
+        mock_proc.kill = MagicMock()
+        mock_proc.wait = MagicMock(return_value=-9)
+        with patch("chcode.utils.shell.session.subprocess.Popen", return_value=mock_proc), \
+             patch("chcode.utils.shell.session._kill_proc_tree"):
+            result, truncated = sess.execute("sleep 999", timeout=60000)
+            assert result.timed_out or truncated.truncated
 
 
 class TestRobustDecodeExhaustedFallback:
