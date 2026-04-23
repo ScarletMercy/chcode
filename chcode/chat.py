@@ -80,6 +80,7 @@ from chcode.utils.git_manager import GitManager
 SLASH_COMMANDS = {
     "/new": "新会话",
     "/model": "模型管理（新建/编辑/切换）",
+    "/vision": "视觉模型配置",
     "/skill": "技能管理",
     "/history": "历史会话",
     "/compress": "压缩会话",
@@ -557,6 +558,7 @@ class ChatREPL:
         handlers = {
             "/new": self._cmd_new,
             "/model": self._cmd_model,
+            "/vision": self._cmd_vision,
             "/skill": self._cmd_skill,
             "/history": self._cmd_history,
             "/compress": self._cmd_compress,
@@ -818,6 +820,11 @@ class ChatREPL:
         else:
             render_warning("Git 仓库未初始化")
 
+    async def _cmd_vision(self, _arg: str) -> None:
+        """视觉模型配置命令"""
+        from chcode.vision_config import configure_vision_interactive
+        await configure_vision_interactive()
+
     async def _cmd_search(self, _arg: str) -> None:
         from chcode.config import load_tavily_api_key, save_tavily_api_key
         from chcode.utils.tools import update_tavily_api_key
@@ -916,6 +923,7 @@ class ChatREPL:
         cmds = [
             ("/new", "新会话"),
             ("/model", "模型管理（新建/编辑/切换）"),
+            ("/vision", "视觉模型配置"),
             ("/skill", "技能管理"),
             ("/history", "历史会话"),
             ("/compress", "压缩会话"),

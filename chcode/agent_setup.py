@@ -162,9 +162,11 @@ Tools:
 - ask_user: present choices to the user and collect their input or confirmation.
 - todo_write: create and manage a task list for complex multi-step work.
 - load_skill: when a request matches a skill's description, load it first to get detailed instructions.
+- analyze_image: analyze an image file (PNG, JPG, etc.). Use when the user provides an image path or asks about an image. The user can paste image paths directly in chat.
 
 Guidelines:
-- Never create .md/README files unless explicitly asked."""
+- Never create .md/README files unless explicitly asked.
+- When the user sends an image file path, use analyze_image to understand the image before responding."""
 
     return await asyncio.to_thread(skill_loader.build_system_prompt, base_prompt)
 

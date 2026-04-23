@@ -20,6 +20,7 @@ dependencies = [
     "markdownify>=0.14.0",
     "aiofiles>=25.1.0",
     "psutil>=6.0.0",
+    "pillow>=12.2.0",
 ]
 
 [project.optional-dependencies]

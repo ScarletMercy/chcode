@@ -1,0 +1,322 @@
+"""
+视觉模型配置管理 — 读取/保存 vision_model.json，配置视觉理解模型
+
+视觉模型通过 ModelScope OpenAI 兼容 API 调用，
+发送 base64 编码图片 + 文本 prompt，获取图像理解结果。
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+from rich.console import Console
+
+from chcode.prompts import select, confirm, password
+
+console = Console()
+
+CONFIG_DIR = Path.home() / ".chat"
+VISION_JSON = CONFIG_DIR / "vision_model.json"
+
+MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1"
+
+# 视觉模型预设（默认 + 备用）
+VISION_MODEL_PRESETS = [
+    # 默认模型
+    {
+        "model": "moonshotai/Kimi-K2.5",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    # 备用模型
+    {
+        "model": "Qwen/Qwen3-VL-235B-A22B-Instruct",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "Shanghai_AI_Laboratory/Intern-S1-Pro",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "Shanghai_AI_Laboratory/Intern-S1",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "Qwen/Qwen3-VL-8B-Instruct",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    # 非视觉多模态模型（也支持图片输入）
+    {
+        "model": "Qwen/Qwen3.5-122B-A10B",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "Qwen/Qwen3.5-35B-A3B",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+    {
+        "model": "Qwen/Qwen3.5-27B",
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    },
+]
+
+
+def ensure_config_dir() -> Path:
+    CONFIG_DIR.mkdir(exist_ok=True)
+    return CONFIG_DIR
+
+
+_vision_json_cache: tuple[float, dict] | None = None
+
+
+def load_vision_json() -> dict:
+    """加载 vision_model.json，带 mtime 缓存"""
+    global _vision_json_cache
+    if not VISION_JSON.exists():
+        return {}
+    try:
+        mtime = VISION_JSON.stat().st_mtime
+        if _vision_json_cache and _vision_json_cache[0] == mtime:
+            return _vision_json_cache[1]
+        data = json.loads(VISION_JSON.read_text(encoding="utf-8"))
+        _vision_json_cache = (mtime, data)
+        return data
+    except Exception:
+        return {}
+
+
+def save_vision_json(data: dict) -> None:
+    global _vision_json_cache
+    ensure_config_dir()
+    VISION_JSON.write_text(
+        json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
+    )
+    _vision_json_cache = None
+
+
+def get_vision_default_model() -> dict | None:
+    """获取当前默认视觉模型配置"""
+    data = load_vision_json()
+    default = data.get("default")
+    if default and default.get("api_key"):
+        return default
+    return None
+
+
+def get_vision_fallback_models() -> list[dict]:
+    """获取备用视觉模型列表"""
+    data = load_vision_json()
+    fallback = data.get("fallback", {})
+    return [v for k, v in fallback.items() if v.get("api_key")]
+
+
+def _detect_modelscope_api_key() -> str | None:
+    """检测 ModelScope API Key（环境变量 → model.json）"""
+    # 优先从环境变量
+    key = os.getenv("ModelScopeToken", "")
+    if key:
+        return key
+
+    # 从已配置的 model.json 中找 ModelScope 的 key
+    model_json_path = CONFIG_DIR / "model.json"
+    if model_json_path.exists():
+        try:
+            data = json.loads(model_json_path.read_text(encoding="utf-8"))
+            default = data.get("default", {})
+            if default.get("base_url") == MODELSCOPE_BASE_URL and default.get("api_key"):
+                return default["api_key"]
+            # 检查 fallback
+            for cfg in data.get("fallback", {}).values():
+                if cfg.get("base_url") == MODELSCOPE_BASE_URL and cfg.get("api_key"):
+                    return cfg["api_key"]
+        except Exception:  # pragma: no cover
+            pass  # pragma: no cover
+    return None
+
+
+def _build_vision_config(api_key: str) -> dict:
+    """用预设模型 + api_key 构建完整视觉配置"""
+    default_cfg = dict(VISION_MODEL_PRESETS[0])
+    default_cfg["api_key"] = api_key
+
+    fallback = {}
+    for preset in VISION_MODEL_PRESETS[1:]:
+        cfg = dict(preset)
+        cfg["api_key"] = api_key
+        fallback[cfg["model"]] = cfg
+
+    return {"default": default_cfg, "fallback": fallback}
+
+
+def auto_configure_vision() -> dict | None:
+    """自动配置视觉模型（静默模式，不需要用户交互）。
+
+    从环境变量或已配置的 ModelScope key 自动生成视觉配置。
+    返回默认模型配置，失败返回 None。
+    """
+    api_key = _detect_modelscope_api_key()
+    if not api_key:
+        return None
+
+    # 已有配置且 key 相同则不重复写入
+    existing = get_vision_default_model()
+    if existing and existing.get("api_key") == api_key:
+        return existing
+
+    config = _build_vision_config(api_key)
+    save_vision_json(config)
+    return config["default"]
+
+
+async def configure_vision_interactive() -> dict | None:
+    """交互式配置视觉模型（/vision 命令调用）"""
+    ensure_config_dir()
+
+    current = load_vision_json()
+    current_default = current.get("default", {})
+    has_config = bool(current_default and current_default.get("api_key"))
+
+    if has_config:
+        action = await select(
+            "视觉模型配置:",
+            ["查看当前配置", "重新配置", "清除配置", "返回"],
+        )
+    else:
+        action = await select(
+            "视觉模型未配置，是否现在配置？",
+            ["配置视觉模型", "返回"],
+        )
+
+    if action is None or action == "返回":
+        return None
+
+    if action == "查看当前配置":
+        _display_vision_config(current)
+        return None
+
+    if action == "清除配置":
+        ok = await confirm("确定清除视觉模型配置？", default=False)
+        if ok:
+            if VISION_JSON.exists():
+                VISION_JSON.unlink()
+            global _vision_json_cache
+            _vision_json_cache = None
+            console.print("[green]视觉模型配置已清除[/green]")
+        return None
+
+    # 配置
+    return await _configure_vision_wizard()
+
+
+async def _configure_vision_wizard() -> dict | None:
+    """配置向导"""
+    # 选择 API Key 来源
+    env_key = os.getenv("ModelScopeToken", "")
+    choices = []
+    if env_key:
+        choices.append(f"使用环境变量 ModelScopeToken ({env_key[:6]}...{env_key[-4:]})")
+    choices.append("手动输入 API Key")
+
+    result = await select("选择 API Key 来源:", choices)
+    if result is None:
+        return None
+
+    if result.startswith("使用环境变量"):
+        api_key = env_key
+    else:
+        api_key = await password("输入 ModelScope API Key:")
+        if not api_key or not api_key.strip():
+            return None
+        api_key = api_key.strip()
+
+    # 选择默认模型
+    preset_names = [p["model"] for p in VISION_MODEL_PRESETS]
+    default_choice = await select("选择默认视觉模型:", preset_names, default=preset_names[0])
+    if default_choice is None:
+        return None
+
+    # 构建：用户选的模型作为 default，其余作为 fallback
+    all_presets = {p["model"]: p for p in VISION_MODEL_PRESETS}
+    default_preset = all_presets[default_choice]
+    default_cfg = dict(default_preset)
+    default_cfg["api_key"] = api_key
+
+    fallback = {}
+    for model_name, preset in all_presets.items():
+        if model_name == default_choice:
+            continue
+        cfg = dict(preset)
+        cfg["api_key"] = api_key
+        fallback[model_name] = cfg
+
+    config = {"default": default_cfg, "fallback": fallback}
+    save_vision_json(config)
+
+    console.print(f"[green]视觉模型配置完成: {default_choice} (默认)[/green]")
+    fallback_names = ", ".join(fallback.keys())
+    console.print(f"[dim]备用模型 ({len(fallback)} 个): {fallback_names}[/dim]")
+
+    return default_cfg
+
+
+def _display_vision_config(config: dict) -> None:
+    """显示当前视觉模型配置"""
+    from rich.table import Table
+
+    default = config.get("default", {})
+    fallback = config.get("fallback", {})
+
+    if not default:
+        console.print("[yellow]未配置视觉模型[/yellow]")
+        return
+
+    console.print(f"[bold]默认视觉模型:[/bold] {default.get('model', '未知')}")
+
+    if fallback:
+        table = Table(title="备用视觉模型")
+        table.add_column("模型", style="cyan")
+        table.add_column("状态", style="green")
+        for name in fallback:
+            table.add_row(name, "✓")
+        console.print(table)
+    else:
+        console.print("[dim]无备用模型[/dim]")
