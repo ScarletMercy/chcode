@@ -373,34 +373,54 @@ class TestConfigureVisionInteractive:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_clears_config(self, mock_config_dir):
-        """User clears config."""
+    async def test_switch_model(self, mock_config_dir):
+        """User switches to another model."""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json({
+            "default": {"model": "model_a", "api_key": "k", "base_url": "url"},
+            "fallback": {
+                "model_b": {"model": "model_b", "api_key": "k", "base_url": "url"},
+                "model_c": {"model": "model_c", "api_key": "k", "base_url": "url"},
+            }
+        })
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value="清除配置"), \
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=[
+            "切换模型",  # 菜单选择
+            "model_c (当前默认)" if "fallback" in mod.get_vision_fallback_models().__str__() else "model_c",  # 选择模型
+        ]), \
              patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             result = await mod.configure_vision_interactive()
 
-            assert result is None
-            assert not mod.VISION_JSON.exists()
-            assert mod._vision_json_cache is None
+            assert result is not None
+            assert result["model"] == "model_c"
+
+            data = mod.load_vision_json()
+            assert data["default"]["model"] == "model_c"
+            assert "model_a" in data["fallback"]
 
     @pytest.mark.asyncio
-    async def test_clears_config_declined(self, mock_config_dir):
-        """User declines clear confirmation."""
+    async def test_switch_model_declined(self, mock_config_dir):
+        """User declines switch confirmation."""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json({
+            "default": {"model": "model_a", "api_key": "k", "base_url": "url"},
+            "fallback": {"model_b": {"model": "model_b", "api_key": "k", "base_url": "url"}}
+        })
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value="清除配置"), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=[
+            "切换模型",
+            "model_b",
+        ]), \
+             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False), \
+             patch("chcode.vision_config.console"):
             result = await mod.configure_vision_interactive()
 
             assert result is None
-            assert mod.VISION_JSON.exists()
+            data = mod.load_vision_json()
+            assert data["default"]["model"] == "model_a"
 
     @pytest.mark.asyncio
     async def test_returns_wizard_result(self, mock_config_dir):

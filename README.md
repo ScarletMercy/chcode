@@ -18,7 +18,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 <img src="https://raw.githubusercontent.com/ScarletMercy/chcode/main/assets/chagent.png" alt="chagent prototype" width="600"/>
 </details>
 
-> 6000+ lines of Python, 13 built-in tools, full session persistence, git-aware workflow.
+> 6000+ lines of Python, 14 built-in tools, full session persistence, git-aware workflow.
 
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -80,7 +80,7 @@ https://github.com/ScarletMercy/chcode/blob/main/assets/test.mp4
 - Skills are injected into system prompt via LangChain middleware
 - Supports project-level and global skill directories
 
-## Built-in Tools (13)
+## Built-in Tools (14)
 
 | Tool | Description |
 |------|-------------|
@@ -97,6 +97,7 @@ https://github.com/ScarletMercy/chcode/blob/main/assets/test.mp4
 | `ask_user` | Single-select, multi-select, batch questions for user interaction |
 | `agent` | Launch sub-agents (explore, plan, general-purpose), supports parallel execution |
 | `todo_write` | Structured task tracking for complex multi-step work |
+| `vision` | Analyze images and videos via ModelScope vision models |
 
 ## Quick Start
 
@@ -160,6 +161,7 @@ On first launch, ChCode will:
 | `/tools` | List built-in tools |
 | `/langsmith` | Toggle LangSmith tracing |
 | `/skill` | Manage skills |
+| `/vision` | Visual model configuration |
 | `/quit` | Exit |
 
 ## Keybindings
@@ -192,7 +194,7 @@ chcode/
 │   ├── loader.py           # Load custom agents from .chat/agents/
 │   └── runner.py           # Sub-agent execution with middleware
 └── utils/
-    ├── tools.py            # 13 built-in tools
+    ├── tools.py            # 14 built-in tools
     ├── shell/              # Shell abstraction (Bash/PowerShell providers)
     ├── enhanced_chat_openai.py  # Extended ChatOpenAI with reasoning support
     ├── git_manager.py      # Git checkpoint management

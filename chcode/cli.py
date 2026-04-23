@@ -21,12 +21,23 @@ def _setup_langsmith_guard():
             nonlocal _disabled
             if not data:
                 return 0
-            if _disabled and ("LangSmith" in data or "langsmith" in data):
-                if "429" in data or "Rate limit" in data:
-                    os.environ["LANGCHAIN_TRACING_V2"] = "false"
+            if _disabled and ("LangSmith" in data or "langsmith" in data.lower()):
                 return len(data)
             if "LangSmithRateLimitError" in data or (
-                "langsmith" in data and "429" in data
+                "langsmith" in data.lower() and "429" in data
+            ):
+                _disabled = True
+                os.environ["LANGCHAIN_TRACING_V2"] = "false"
+                return len(data)
+            if "langsmith" in data.lower() and (
+                "ConnectionError" in data
+                or "MaxRetryError" in data
+                or "ProtocolError" in data
+                or "Failed to send" in data
+                or "Connection aborted" in data
+                or "ConnectionAbortedError" in data
+                or "ConnectionResetError" in data
+                or "api.smith.langchain.com" in data
             ):
                 _disabled = True
                 os.environ["LANGCHAIN_TRACING_V2"] = "false"

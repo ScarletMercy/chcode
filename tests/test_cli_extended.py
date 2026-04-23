@@ -142,6 +142,104 @@ class TestLangSmithGuard:
             else:
                 os.environ.pop("LANGCHAIN_TRACING_V2", None)
 
+    def test_guard_detects_connection_error(self):
+        """Lines 36-48: langsmith + ConnectionError triggers disable."""
+        old_env = os.environ.pop("LANGCHAIN_TRACING_V2", None)
+        guard, original, old_s, old__s = self._make_guard()
+        buf = io.StringIO()
+        guard._original = buf
+        try:
+            ret = guard.write(
+                "Failed to send compressed multipart ingest: langsmith ConnectionError\n"
+            )
+            assert ret > 0
+            assert os.environ.get("LANGCHAIN_TRACING_V2") == "false"
+        finally:
+            guard._original = original
+            self._cleanup(old_s, old__s)
+            if old_env is not None:
+                os.environ["LANGCHAIN_TRACING_V2"] = old_env
+            else:
+                os.environ.pop("LANGCHAIN_TRACING_V2", None)
+
+    def test_guard_detects_max_retry_error(self):
+        """Lines 36-48: langsmith + MaxRetryError triggers disable."""
+        old_env = os.environ.pop("LANGCHAIN_TRACING_V2", None)
+        guard, original, old_s, old__s = self._make_guard()
+        buf = io.StringIO()
+        guard._original = buf
+        try:
+            ret = guard.write(
+                "langsmith MaxRetryError: api.smith.langchain.com\n"
+            )
+            assert ret > 0
+            assert os.environ.get("LANGCHAIN_TRACING_V2") == "false"
+        finally:
+            guard._original = original
+            self._cleanup(old_s, old__s)
+            if old_env is not None:
+                os.environ["LANGCHAIN_TRACING_V2"] = old_env
+            else:
+                os.environ.pop("LANGCHAIN_TRACING_V2", None)
+
+    def test_guard_detects_connection_aborted(self):
+        """Lines 36-48: ConnectionAbortedError triggers disable."""
+        old_env = os.environ.pop("LANGCHAIN_TRACING_V2", None)
+        guard, original, old_s, old__s = self._make_guard()
+        buf = io.StringIO()
+        guard._original = buf
+        try:
+            ret = guard.write(
+                "langsmith ConnectionAbortedError(10053)\n"
+            )
+            assert ret > 0
+            assert os.environ.get("LANGCHAIN_TRACING_V2") == "false"
+        finally:
+            guard._original = original
+            self._cleanup(old_s, old__s)
+            if old_env is not None:
+                os.environ["LANGCHAIN_TRACING_V2"] = old_env
+            else:
+                os.environ.pop("LANGCHAIN_TRACING_V2", None)
+
+    def test_guard_detects_connection_reset(self):
+        """Lines 36-48: ConnectionResetError triggers disable."""
+        old_env = os.environ.pop("LANGCHAIN_TRACING_V2", None)
+        guard, original, old_s, old__s = self._make_guard()
+        buf = io.StringIO()
+        guard._original = buf
+        try:
+            ret = guard.write(
+                "langsmith ConnectionResetError(10054)\n"
+            )
+            assert ret > 0
+            assert os.environ.get("LANGCHAIN_TRACING_V2") == "false"
+        finally:
+            guard._original = original
+            self._cleanup(old_s, old__s)
+            if old_env is not None:
+                os.environ["LANGCHAIN_TRACING_V2"] = old_env
+            else:
+                os.environ.pop("LANGCHAIN_TRACING_V2", None)
+
+    def test_guard_disabled_filters_connection_error(self):
+        """After disable, connection errors are suppressed."""
+        old_env = os.environ.pop("LANGCHAIN_TRACING_V2", None)
+        guard, original, old_s, old__s = self._make_guard()
+        buf = io.StringIO()
+        guard._original = buf
+        try:
+            guard.write("LangSmithRateLimitError\n")
+            ret = guard.write("langsmith: Failed to send ConnectionError\n")
+            assert ret > 0
+        finally:
+            guard._original = original
+            self._cleanup(old_s, old__s)
+            if old_env is not None:
+                os.environ["LANGCHAIN_TRACING_V2"] = old_env
+            else:
+                os.environ.pop("LANGCHAIN_TRACING_V2", None)
+
     def test_guard_flush(self):
         """Line 37: flush delegates to original."""
         guard, original, old_s, old__s = self._make_guard()

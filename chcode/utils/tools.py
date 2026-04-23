@@ -1554,46 +1554,61 @@ Args:
 
 
 # ---------------------------------------------------------------------------
-# analyze_image — 视觉理解工具（通过 ModelScope API 调用视觉模型）
+# vision — 视觉理解工具（通过 ModelScope API 调用视觉模型）
 # ---------------------------------------------------------------------------
 
 _VISION_SUPPORTED_EXTS = frozenset(
-    {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif"}
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".bmp",
+        ".webp",
+        ".tiff",
+        ".tif",
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".mkv",
+        ".webm",
+    }
 )
 _VISION_MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20MB
 
 
 @tool
-async def analyze_image(
+async def vision(
     image_path: str,
     prompt: str = "请详细描述这张图片的内容。",
     runtime: ToolRuntime[SkillAgentContext] = None,
 ) -> str:
     """\
-    Analyze an image using a vision model.
+    Analyze an image or video using a vision model.
 
-    Use this tool when the user provides an image file path (or mentions an image)
+    Use this tool when the user provides an image/video file path
     and wants to understand, describe, or extract information from it.
 
-    The tool supports common image formats: PNG, JPG, JPEG, GIF, BMP, WebP, TIFF.
+    The tool supports common image formats: PNG, JPG, JPEG, GIF, BMP, WebP, TIFF
+    and video formats: MP4, MOV, AVI, MKV, WebM.
 
     Args:
-        image_path: Path to the image file (absolute or relative to working directory)
-        prompt: What to ask about the image (default: describe the image content)
+        image_path: Path to the image or video file (absolute or relative to working directory)
+        prompt: What to ask about the media (default: describe the content)
     """
     path = resolve_path(image_path, runtime.context.working_directory)
-    render_tool_call("analyze_image", image_path)
+    render_tool_call("vision", image_path)
 
     # 验证文件
     if not path.exists():
-        return f"analyze_image:\n[FAILED] File not found: {image_path}"
+        return f"vision:\n[FAILED] File not found: {image_path}"
 
     if not path.is_file():
-        return f"analyze_image:\n[FAILED] Not a file: {image_path}"
+        return f"vision:\n[FAILED] Not a file: {image_path}"
 
     if path.suffix.lower() not in _VISION_SUPPORTED_EXTS:
         return (
-            f"analyze_image:\n[FAILED] Unsupported image format: {path.suffix}\n"
+            f"vision:\n[FAILED] Unsupported image format: {path.suffix}\n"
             f"Supported formats: {', '.join(sorted(_VISION_SUPPORTED_EXTS))}"
         )
 
@@ -1602,35 +1617,16 @@ async def analyze_image(
         file_size = path.stat().st_size  # pragma: no cover
         if file_size > _VISION_MAX_IMAGE_SIZE:  # pragma: no cover
             return (  # pragma: no cover
-                f"analyze_image:\n[FAILED] Image too large: {file_size / 1024 / 1024:.1f}MB "  # pragma: no cover
+                f"vision:\n[FAILED] Image too large: {file_size / 1024 / 1024:.1f}MB "  # pragma: no cover
                 f"(max {_VISION_MAX_IMAGE_SIZE / 1024 / 1024:.0f}MB)"  # pragma: no cover
             )  # pragma: no cover
     except OSError as e:  # pragma: no cover
-        return f"analyze_image:\n[FAILED] Cannot read file: {e}"  # pragma: no cover
+        return f"vision:\n[FAILED] Cannot read file: {e}"  # pragma: no cover
 
-    # 读取并 base64 编码（超过 2048px 自动缩放）
-    try:
-        from PIL import Image
-        import io
-
-        img = Image.open(path)
-        w, h = img.size
-        max_side = max(w, h)
-        max_pixels = 2048
-
-        if max_side > max_pixels:
-            scale = max_pixels / max_side
-            new_w, new_h = int(w * scale), int(h * scale)
-            img = img.resize((new_w, new_h), Image.LANCZOS)
-
-        buf = io.BytesIO()
-        img.save(buf, format=img.format or "PNG")
-        image_data = buf.getvalue()
-        b64_image = base64.b64encode(image_data).decode("utf-8")
-    except Exception as e:
-        return f"analyze_image:\n[FAILED] Failed to read image: {e}"
-
+    # 读取并 base64 编码（视频：直接读取，图片：超过 2048px 自动缩放）
     ext = path.suffix.lower().lstrip(".")
+    is_video = ext in {"mp4", "mov", "avi", "mkv", "webm"}
+
     mime_map = {
         "jpg": "image/jpeg",
         "jpeg": "image/jpeg",
@@ -1640,125 +1636,123 @@ async def analyze_image(
         "webp": "image/webp",
         "tiff": "image/tiff",
         "tif": "image/tiff",
+        "mp4": "video/mp4",
+        "mov": "video/quicktime",
+        "avi": "video/x-msvideo",
+        "mkv": "video/x-matroska",
+        "webm": "video/webm",
     }
-    mime_type = mime_map.get(ext, "image/png")
+    mime_type = mime_map.get(ext, "video/mp4" if is_video else "image/png")
 
-    # 获取视觉模型配置
+    try:
+        if is_video:
+            with open(path, "rb") as f:
+                b64_image = base64.b64encode(f.read()).decode("utf-8")
+        else:
+            from PIL import Image
+            import io
+
+            img = Image.open(path)
+            w, h = img.size
+            max_side = max(w, h)
+            max_pixels = 2048
+
+            if max_side > max_pixels:
+                scale = max_pixels / max_side
+                new_w, new_h = int(w * scale), int(h * scale)
+                img = img.resize((new_w, new_h), Image.LANCZOS)
+
+            buf = io.BytesIO()
+            img.save(buf, format=img.format or "PNG")
+            b64_image = base64.b64encode(buf.getvalue()).decode("utf-8")
+    except Exception as e:
+        return f"vision:\n[FAILED] Failed to read {'video' if is_video else 'image'}: {e}"
+
+    # 获取视觉模型配置 + 构建消息 + 调用模型
+    from langchain_core.messages import HumanMessage
+
+    from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
     from chcode.vision_config import (
         auto_configure_vision,
         get_vision_default_model,
         get_vision_fallback_models,
     )
 
-    default_model = get_vision_default_model()
-    if not default_model:
-        # 尝试自动配置
-        default_model = auto_configure_vision()
-        if not default_model:
-            return (
-                "analyze_image:\n[FAILED] 视觉模型未配置。\n"
-                "请使用 /vision 命令配置 ModelScope API Key，\n"
-                "或设置环境变量 ModelScopeToken。"
-            )
-
-    # 构建请求消息
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{mime_type};base64,{b64_image}",
-                    },
-                },
-                {
-                    "type": "text",
-                    "text": prompt,
-                },
-            ],
+    media_url = f"data:{mime_type};base64,{b64_image}"
+    if is_video:
+        media_content = {
+            "type": "video_url",
+            "video_url": {"url": media_url},
         }
+    else:
+        media_content = {
+            "type": "image_url",
+            "image_url": {"url": media_url},
+        }
+    messages = [
+        HumanMessage(content=[media_content, {"type": "text", "text": prompt}])
     ]
 
-    # 尝试默认模型 + 备用模型
-    models_to_try = [default_model] + get_vision_fallback_models()
-    # 去重
-    seen = set()
-    unique_models = []
+    models_to_try = []
+    default_model = get_vision_default_model()
+    if not default_model:
+        default_model = auto_configure_vision()
+    if default_model:
+        models_to_try.append(default_model)
+    models_to_try.extend(get_vision_fallback_models())
+
+    seen: set[str] = set()
+    unique_models: list[dict] = []
     for m in models_to_try:
         name = m.get("model", "")
         if name and name not in seen:
             seen.add(name)
             unique_models.append(m)
 
+    if not unique_models:
+        return (
+            "vision:\n[FAILED] 视觉模型未配置。\n"
+            "请使用 /vision 命令配置 ModelScope API Key，\n"
+            "或设置环境变量 ModelScopeToken。"
+        )
+
     last_error = None
     for model_config in unique_models:
         model_name = model_config.get("model", "unknown")
-        base_url = model_config.get("base_url", "https://api-inference.modelscope.cn/v1")
         api_key = model_config.get("api_key", "")
-
         if not api_key:
             continue
 
         try:
-            payload: dict[str, Any] = {
+            llm_kwargs: dict[str, Any] = {
                 "model": model_name,
-                "messages": messages,
+                "base_url": model_config.get(
+                    "base_url", "https://api-inference.modelscope.cn/v1"
+                ),
+                "api_key": api_key,
                 "max_tokens": 4096,
+                "max_retries": 0,
+                "timeout": 120,
             }
-            # 可选参数
             if "temperature" in model_config:
-                payload["temperature"] = model_config["temperature"]
+                llm_kwargs["temperature"] = model_config["temperature"]
             if "top_p" in model_config:
-                payload["top_p"] = model_config["top_p"]
+                llm_kwargs["top_p"] = model_config["top_p"]
 
-            async with httpx.AsyncClient(
-                timeout=120.0,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-            ) as client:
-                response = await client.post(
-                    f"{base_url}/chat/completions",
-                    json=payload,
-                )
-
-            if response.status_code != 200:
-                last_error = f"HTTP {response.status_code}: {response.text[:200]}"
-                console.print(
-                    f"[yellow]视觉模型 {model_name} 请求失败: {last_error}[/yellow]"
-                )
-                continue
-
-            try:
-                result = response.json()
-            except (json.JSONDecodeError, ValueError):
-                last_error = f"Invalid JSON response from model {model_name}"
-                console.print(f"[yellow]{last_error}[/yellow]")
-                continue
-            choices = result.get("choices", [])
-            if not choices:
-                last_error = "No choices in response"
-                continue
-
-            content = choices[0].get("message", {}).get("content", "")
-            if not content:
-                last_error = "Empty content in response"
-                continue
-
-            return f"analyze_image:\n[OK] (model: {model_name})\n\n{content}"
-
-        except httpx.TimeoutException:
-            last_error = f"Request timed out (model: {model_name})"
-            console.print(f"[yellow]视觉模型 {model_name} 请求超时[/yellow]")
-            continue
+            llm = EnhancedChatOpenAI(**llm_kwargs)
+            result = await llm.ainvoke(messages, config={"callbacks": []})
+            content = result.content
+            if content:
+                return f"vision:\n[OK] (model: {model_name})\n\n{content}"
+            last_error = "Empty content in response"
         except Exception as e:
             last_error = str(e)
-            console.print(f"[yellow]视觉模型 {model_name} 调用失败: {e}[/yellow]")
+            console.print(
+                f"[yellow]视觉模型 {model_name} 调用失败: {e}[/yellow]"
+            )
             continue
 
-    return f"analyze_image:\n[FAILED] 所有视觉模型均调用失败\n最后错误: {last_error}"
+    return f"vision:\n[FAILED] 所有视觉模型均调用失败\n最后错误: {last_error}"
 
 
 ALL_TOOLS = [
@@ -1775,5 +1769,5 @@ ALL_TOOLS = [
     ask_user,
     agent,
     todo_write,
-    analyze_image,
+    vision,
 ]

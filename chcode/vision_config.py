@@ -218,7 +218,7 @@ async def configure_vision_interactive() -> dict | None:
     if has_config:
         action = await select(
             "视觉模型配置:",
-            ["查看当前配置", "重新配置", "清除配置", "返回"],
+            ["查看当前配置", "重新配置", "切换模型", "返回"],
         )
     else:
         action = await select(
@@ -233,15 +233,8 @@ async def configure_vision_interactive() -> dict | None:
         _display_vision_config(current)
         return None
 
-    if action == "清除配置":
-        ok = await confirm("确定清除视觉模型配置？", default=False)
-        if ok:
-            if VISION_JSON.exists():
-                VISION_JSON.unlink()
-            global _vision_json_cache
-            _vision_json_cache = None
-            console.print("[green]视觉模型配置已清除[/green]")
-        return None
+    if action == "切换模型":
+        return await _switch_vision_model()
 
     # 配置
     return await _configure_vision_wizard()
@@ -296,6 +289,47 @@ async def _configure_vision_wizard() -> dict | None:
     console.print(f"[dim]备用模型 ({len(fallback)} 个): {fallback_names}[/dim]")
 
     return default_cfg
+
+
+async def _switch_vision_model() -> dict | None:
+    """切换视觉模型（从 fallback 列表选择）"""
+    data = load_vision_json()
+    default = data.get("default", {})
+    fallback = data.get("fallback", {})
+
+    if not default:
+        console.print("[yellow]请先配置默认视觉模型[/yellow]")
+        return await _configure_vision_wizard()
+
+    if not fallback:
+        console.print("[yellow]没有备用视觉模型可切换[/yellow]")
+        return None
+
+    current_name = default.get("model", "")
+    choices = []
+    for name in fallback:
+        tag = " (当前默认)" if name == current_name else ""
+        choices.append(f"{name}{tag}")
+
+    result = await select("选择要使用的视觉模型:", choices)
+    if result is None:
+        return None
+
+    selected_name = result.replace(" (当前默认)", "")
+
+    ok = await confirm(f"确定切换到 {selected_name}？当前默认将移至备用列表")
+    if not ok:
+        return None
+
+    selected_config = fallback.pop(selected_name)
+    if default:
+        fallback[current_name] = default
+
+    data["default"] = selected_config
+    data["fallback"] = fallback
+    save_vision_json(data)
+    console.print(f"[green]已切换到: {selected_name}[/green]")
+    return selected_config
 
 
 def _display_vision_config(config: dict) -> None:
