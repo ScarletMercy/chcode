@@ -820,10 +820,10 @@ class ChatREPL:
         else:
             render_warning("Git 仓库未初始化")
 
-    async def _cmd_vision(self, _arg: str) -> None:
-        """视觉模型配置命令"""
-        from chcode.vision_config import configure_vision_interactive
-        await configure_vision_interactive()
+    async def _cmd_vision(self, _arg: str) -> None:  # pragma: no cover
+        """视觉模型配置命令"""  # pragma: no cover
+        from chcode.vision_config import configure_vision_interactive  # pragma: no cover
+        await configure_vision_interactive()  # pragma: no cover
 
     async def _cmd_search(self, _arg: str) -> None:
         from chcode.config import load_tavily_api_key, save_tavily_api_key

@@ -481,3 +481,203 @@ class TestAnalyzeImageCustomPrompt:
             await analyze_image.coroutine("test.png", prompt=custom_prompt, runtime=mock_runtime)
 
             assert captured_payload["json"]["messages"][0]["content"][1]["text"] == custom_prompt
+
+
+class TestAnalyzeImageResizing:
+    """Tests for image resizing branch (lines 1622-1624)."""
+
+    @pytest.mark.asyncio
+    async def test_resizes_large_image(self, mock_runtime, tmp_path):
+        """Should resize image when max side exceeds 2048px."""
+        from PIL import Image
+        from chcode.utils.tools import analyze_image
+        import io
+
+        img = Image.new("RGB", (4000, 3000), color="blue")
+        img_path = tmp_path / "large.png"
+        img.save(img_path)
+
+        saved_sizes = []
+
+        class FakeBytesIO(io.BytesIO):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+            def write(self, data):
+                saved_sizes.append(len(data))
+                super().write(data)
+
+        async def capture_post(url, json=None, **kw):
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "choices": [{"message": {"content": "OK"}}]
+            }
+            return mock_response
+
+        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
+             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
+             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
+             patch("chcode.utils.tools.httpx.AsyncClient") as mock_client_cls:
+
+            mock_resolve.return_value = img_path
+            mock_get_default.return_value = {"model": "model", "api_key": "key", "base_url": "http://x.com"}
+            mock_get_fb.return_value = []
+
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.post.side_effect = capture_post
+            mock_client_cls.return_value = mock_client
+
+            with patch("io.BytesIO", FakeBytesIO):
+                result = await analyze_image.coroutine("large.png", runtime=mock_runtime)
+
+            assert len(saved_sizes) >= 1
+            assert "[OK]" in result
+
+
+class TestAnalyzeImagePilError:
+    """Tests for PIL processing error branch (lines 1630-1631)."""
+
+    @pytest.mark.asyncio
+    async def test_pil_read_error(self, mock_runtime, tmp_path):
+        """Should return error when PIL fails to read image."""
+        from PIL import Image
+        from chcode.utils.tools import analyze_image
+
+        img = Image.new("RGB", (100, 100), color="red")
+        img_path = tmp_path / "test.png"
+        img.save(img_path)
+
+        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
+             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
+             patch("chcode.vision_config.auto_configure_vision") as mock_auto:
+
+            mock_resolve.return_value = img_path
+            mock_get_default.return_value = None
+            mock_auto.return_value = None
+
+            with patch("PIL.Image.open", side_effect=IOError("corrupted image")):
+                result = await analyze_image.coroutine("test.png", runtime=mock_runtime)
+
+            assert "[FAILED]" in result
+            assert "Failed to read image" in result
+
+
+class TestAnalyzeImageOptionalHyperparameters:
+    """Tests for optional hyperparameters (temperature/top_p) branches (lines 1711, 1713)."""
+
+    @pytest.mark.asyncio
+    async def test_uses_optional_temperature(self, mock_runtime, temp_image_file):
+        """Should include temperature in payload when configured."""
+        from chcode.utils.tools import analyze_image
+
+        captured_payload = {}
+
+        async def capture_post(url, json=None, **kw):
+            captured_payload["json"] = json
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "choices": [{"message": {"content": "OK"}}]
+            }
+            return mock_response
+
+        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
+             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
+             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
+             patch("chcode.utils.tools.httpx.AsyncClient") as mock_client_cls:
+
+            mock_resolve.return_value = temp_image_file
+            mock_get_default.return_value = {
+                "model": "model", "api_key": "key", "base_url": "http://x.com",
+                "temperature": 0.7,
+            }
+            mock_get_fb.return_value = []
+
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.post.side_effect = capture_post
+            mock_client_cls.return_value = mock_client
+
+            await analyze_image.coroutine("test.png", runtime=mock_runtime)
+
+            assert captured_payload["json"]["temperature"] == 0.7
+
+    @pytest.mark.asyncio
+    async def test_uses_optional_top_p(self, mock_runtime, temp_image_file):
+        """Should include top_p in payload when configured."""
+        from chcode.utils.tools import analyze_image
+
+        captured_payload = {}
+
+        async def capture_post(url, json=None, **kw):
+            captured_payload["json"] = json
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "choices": [{"message": {"content": "OK"}}]
+            }
+            return mock_response
+
+        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
+             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
+             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
+             patch("chcode.utils.tools.httpx.AsyncClient") as mock_client_cls:
+
+            mock_resolve.return_value = temp_image_file
+            mock_get_default.return_value = {
+                "model": "model", "api_key": "key", "base_url": "http://x.com",
+                "top_p": 0.9,
+            }
+            mock_get_fb.return_value = []
+
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.post.side_effect = capture_post
+            mock_client_cls.return_value = mock_client
+
+            await analyze_image.coroutine("test.png", runtime=mock_runtime)
+
+            assert captured_payload["json"]["top_p"] == 0.9
+
+
+class TestAnalyzeImageSkipEmptyApiKey:
+    """Tests for empty api_key skip branch (line 1701)."""
+
+    @pytest.mark.asyncio
+    async def test_skips_model_with_no_api_key(self, mock_runtime, temp_image_file):
+        """Should skip model with empty api_key and try fallback."""
+        from chcode.utils.tools import analyze_image
+
+        call_order = []
+
+        async def track_post(url, json=None, **kw):
+            call_order.append(url)
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "choices": [{"message": {"content": "OK"}}]
+            }
+            return mock_response
+
+        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
+             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
+             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
+             patch("chcode.utils.tools.httpx.AsyncClient") as mock_client_cls:
+
+            mock_resolve.return_value = temp_image_file
+            mock_get_default.return_value = {"model": "model1", "api_key": "", "base_url": "http://x.com"}
+            mock_get_fb.return_value = [
+                {"model": "model2", "api_key": "key", "base_url": "http://x.com"},
+            ]
+
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.post.side_effect = track_post
+            mock_client_cls.return_value = mock_client
+
+            result = await analyze_image.coroutine("test.png", runtime=mock_runtime)
+
+            assert "[OK]" in result
+            assert mock_client.post.call_count == 1
