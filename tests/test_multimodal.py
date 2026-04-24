@@ -1,5 +1,6 @@
 """Tests for chcode/utils/multimodal.py — multimodal detection, media encoding, path extraction, message building."""
 
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -316,6 +317,7 @@ class TestExtractMediaPaths:
         result = extract_media_paths("INFO processed output.png successfully", tmp_path)
         assert len(result) == 0
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only backslash paths")
     def test_windows_backslash_path(self, tmp_path):
         """Windows-style backslash paths should be matched."""
         from chcode.utils.multimodal import extract_media_paths
@@ -323,7 +325,6 @@ class TestExtractMediaPaths:
         img = tmp_path / "test.png"
         img.write_bytes(b"\x00")
 
-        # Use forward slash since Python returns forward slashes on Windows too
         result = extract_media_paths(f"看看 {tmp_path}\\test.png", tmp_path)
         assert len(result) == 1
 

@@ -8,9 +8,7 @@ def get_text_content(content: str | list) -> str:
             if isinstance(part, dict):
                 if part.get("type") == "text":
                     text_parts.append(part.get("text", ""))
-                else:
-                    text_parts.append(f"[{part.get('type', 'image')}]")
-            else:
-                text_parts.append(str(part))
-        return " ".join(text_parts).strip()
+            elif isinstance(part, str):
+                text_parts.append(part)
+        return "".join(text_parts).strip()
     return str(content)

@@ -83,6 +83,8 @@ class SessionManager:
             messages = state.values.get("messages", [])
             for msg in messages:
                 if isinstance(msg, HumanMessage):
+                    if not isinstance(msg.content, (str, list)):
+                        continue
                     text = get_text_content(msg.content)
                     text = text.strip().replace("\n", " ")
                     if text:
