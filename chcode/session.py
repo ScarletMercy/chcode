@@ -78,23 +78,12 @@ class SessionManager:
     ) -> str | None:
         cfg = {"configurable": {"thread_id": thread_id}}
         try:
+            from chcode.utils import get_text_content
             state = await agent.aget_state(cfg)
             messages = state.values.get("messages", [])
             for msg in messages:
                 if isinstance(msg, HumanMessage):
-                    content = msg.content
-                    if isinstance(content, str):
-                        text = content
-                    elif isinstance(content, list):
-                        parts = []
-                        for part in content:
-                            if isinstance(part, str):
-                                parts.append(part)
-                            elif isinstance(part, dict) and part.get("type") == "text":
-                                parts.append(part.get("text", ""))
-                        text = "".join(parts)
-                    else:
-                        continue
+                    text = get_text_content(msg.content)
                     text = text.strip().replace("\n", " ")
                     if text:
                         return text[:_SUMMARY_MAX_LEN] + (

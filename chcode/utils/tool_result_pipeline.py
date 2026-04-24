@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from chcode.utils import get_text_content
+
 if TYPE_CHECKING:
     from langchain_core.messages import BaseMessage
 
@@ -28,7 +30,8 @@ def clean_tool_output(text: str) -> str:
     return text
 
 
-def _content_size(content: str) -> int:
+def _content_size(content: str | list) -> int:
+    content = get_text_content(content)
     return len(content.encode("utf-8"))
 
 
@@ -219,7 +222,7 @@ def enforce_per_turn_budget(
         for idx, msg in selected:
             tool_use_id = msg.tool_call_id or ""
             state.seen_ids.add(tool_use_id)
-            content = msg.content or ""
+            content = get_text_content(msg.content or "")
             result = truncate_large_result(
                 content,
                 msg.name or "",

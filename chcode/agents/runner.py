@@ -148,13 +148,11 @@ async def run_subagent(
     except Exception as e:
         return f"Agent {agent_def.agent_type} error: {e}"
 
+    from chcode.utils import get_text_content
     messages = result.get("messages", [])
     for msg in reversed(messages):
         if msg.type == "ai" and msg.content:
-            content = msg.content
-            if isinstance(content, list):
-                parts = [b.get("text", "") for b in content if b.get("type") == "text"]
-                content = "\n".join(parts)
+            content = get_text_content(msg.content)
             if content.strip():
                 return content.strip()
 

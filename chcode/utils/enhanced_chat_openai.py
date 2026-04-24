@@ -193,7 +193,7 @@ class EnhancedChatOpenAI(ChatOpenAI):
                     data = message.dict()
                     if data.get("reasoning_content"):
                         reasoning_parts.append(data["reasoning_content"])
-            except:
+            except Exception:
                 pass
 
         # Combine all reasoning parts

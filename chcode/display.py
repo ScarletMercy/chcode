@@ -31,7 +31,7 @@ _progress_live: Live | None = None
 _progress_task: asyncio.Task | None = None
 
 if TYPE_CHECKING:
-    from langchain_core.messages import AIMessageChunk, ToolMessage, BaseMessage
+    pass
 
 console = Console()
 
@@ -254,6 +254,8 @@ def render_conversation(messages: list) -> None:
             continue
         msg_type = message.type
         content = message.content
+        from chcode.utils import get_text_content
+        content = get_text_content(content)
 
         if msg_type == "human":
             if top_flag:

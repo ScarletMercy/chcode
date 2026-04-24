@@ -23,7 +23,6 @@ import aiofiles
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
-import base64
 import httpx
 from langchain.tools import tool, ToolRuntime
 from pydantic import BaseModel, BeforeValidator, Field
@@ -1623,48 +1622,14 @@ async def vision(
     except OSError as e:  # pragma: no cover
         return f"vision:\n[FAILED] Cannot read file: {e}"  # pragma: no cover
 
-    # 读取并 base64 编码（视频：直接读取，图片：超过 2048px 自动缩放）
+    # 读取并 base64 编码（使用共享工具函数）
     ext = path.suffix.lower().lstrip(".")
     is_video = ext in {"mp4", "mov", "avi", "mkv", "webm"}
 
-    mime_map = {
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "png": "image/png",
-        "gif": "image/gif",
-        "bmp": "image/bmp",
-        "webp": "image/webp",
-        "tiff": "image/tiff",
-        "tif": "image/tiff",
-        "mp4": "video/mp4",
-        "mov": "video/quicktime",
-        "avi": "video/x-msvideo",
-        "mkv": "video/x-matroska",
-        "webm": "video/webm",
-    }
-    mime_type = mime_map.get(ext, "video/mp4" if is_video else "image/png")
-
     try:
-        if is_video:  # pragma: no cover
-            with open(path, "rb") as f:  # pragma: no cover
-                b64_image = base64.b64encode(f.read()).decode("utf-8")  # pragma: no cover
-        else:
-            from PIL import Image
-            import io
+        from chcode.utils.multimodal import encode_media_as_base64
 
-            img = Image.open(path)
-            w, h = img.size
-            max_side = max(w, h)
-            max_pixels = 2048
-
-            if max_side > max_pixels:
-                scale = max_pixels / max_side
-                new_w, new_h = int(w * scale), int(h * scale)
-                img = img.resize((new_w, new_h), Image.LANCZOS)
-
-            buf = io.BytesIO()
-            img.save(buf, format=img.format or "PNG")
-            b64_image = base64.b64encode(buf.getvalue()).decode("utf-8")
+        b64_image, mime_type = encode_media_as_base64(path)
     except Exception as e:
         return f"vision:\n[FAILED] Failed to read {'video' if is_video else 'image'}: {e}"
 

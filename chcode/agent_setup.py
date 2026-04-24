@@ -35,7 +35,7 @@ from chcode.utils.tool_result_pipeline import (
     clean_tool_output,
     truncate_large_result,
     enforce_per_turn_budget,
-    reset_budget_state,
+    reset_budget_state,  # noqa: F401  # 重新导出供其他模块使用
 )
 
 import aiosqlite
@@ -116,6 +116,27 @@ class ModelSwitchError(Exception):
     pass
 
 
+@wrap_tool_call
+async def filter_vision_tool(
+    request: ToolCallRequest,
+    handler: Callable[[ToolCallRequest], Command],
+) -> Command | ToolMessage:
+    """多模态模型时屏蔽 vision 工具 — 模型自带视觉能力"""
+    tool_name = request.tool_call.get("name", "")
+    if tool_name == "vision":
+        model_config = request.runtime.context.model_config
+        model_name = model_config.get("model", "")
+        from chcode.utils.multimodal import is_multimodal_model
+
+        if is_multimodal_model(model_name):
+            return ToolMessage(
+                content="当前模型支持原生视觉，图片/视频已直接嵌入消息，无需调用 vision 工具。请直接分析消息中的图片/视频内容。",
+                tool_call_id=request.tool_call["id"],
+                status="error",
+            )
+    return await handler(request)
+
+
 @wrap_model_call
 async def model_retry_with_backoff(
     request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
@@ -152,7 +173,30 @@ async def load_skills(request: ModelRequest) -> str:
     """构建 system prompt — Level 1: 注入所有 Skills 元数据"""
     skill_loader = request.runtime.context.skill_loader
     os_name = sys.platform
-    base_prompt = f"""You are a coding assistant. OS: {os_name}. CWD: {request.runtime.context.working_directory}.
+    model_config = request.runtime.context.model_config
+    model_name = model_config.get("model", "")
+
+    from chcode.utils.multimodal import is_multimodal_model
+
+    native_vision = is_multimodal_model(model_name)
+
+    if native_vision:
+        base_prompt = f"""You are a coding assistant. OS: {os_name}. CWD: {request.runtime.context.working_directory}.
+
+Tools:
+- bash: execute shell commands and scripts. Stop immediately if the user refuses.
+- read_file: view file content; write_file: create or save files; edit: modify existing files. Always read before write, prefer edit over write_file.
+- glob: find files by name pattern; grep: search file contents with regex; list_dir: browse directory structure.
+- web_search: search the Internet; web_fetch: fetch and read a URL's content.
+- ask_user: present choices to the user and collect their input or confirmation.
+- todo_write: create and manage a task list for complex multi-step work.
+- load_skill: when a request matches a skill's description, load it first to get detailed instructions.
+
+ Guidelines:
+- Never create .md/README files unless explicitly asked.
+- You have native vision capability. When the user sends an image or video file path, the image/video is already embedded in the message — analyze it directly. Do NOT call the vision tool."""
+    else:
+        base_prompt = f"""You are a coding assistant. OS: {os_name}. CWD: {request.runtime.context.working_directory}.
 
 Tools:
 - bash: execute shell commands and scripts. Stop immediately if the user refuses.
@@ -285,6 +329,7 @@ def build_agent(
         _get_all_tools() + (mcp_tools or []),
         middleware=[
             handle_tool_errors,
+            filter_vision_tool,
             tool_result_budget,
             load_skills,
             load_model,

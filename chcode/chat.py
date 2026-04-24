@@ -30,6 +30,7 @@ from langchain_core.messages import (
     HumanMessage,
     BaseMessage,
 )
+from chcode.utils import get_text_content
 from langgraph.types import Command
 
 import chcode.display as _display
@@ -66,7 +67,7 @@ from chcode.agent_setup import (
     INNER_MODEL_CONFIG,
     reset_budget_state,
     get_fallback_model,
-    set_fallback_models,
+    set_fallback_models,  # noqa: F401  # 重新导出供其他模块使用
     advance_fallback,
     ModelSwitchError,
 )
@@ -204,8 +205,9 @@ def _get_group_display(group: list) -> str:
     """获取消息组的显示文本（以 HumanMessage 内容为代表）"""
     for msg in group:
         if msg.type == "human":
-            content = msg.content[:60].replace("\n", " ")
-            if len(msg.content) > 60:
+            text_content = get_text_content(msg.content)
+            content = text_content[:60].replace("\n", " ")
+            if len(text_content) > 60:
                 content += "..."
             return content
     return "(空消息组)"
@@ -409,7 +411,6 @@ class ChatREPL:
 
     async def _get_input(self) -> str | None:
         """获取用户输入（使用 prompt-toolkit 实现命令自动补全）"""
-        import re
 
         # 检查是否有中断恢复缓冲区
         interrupt_mode = self._interrupt_buffer is not None
@@ -633,13 +634,23 @@ class ChatREPL:
 
     async def _cmd_tools(self, _arg: str) -> None:
         from chcode.utils.tools import ALL_TOOLS
+        from chcode.utils.multimodal import is_multimodal_model
+
+        current_model = (self.model_config or {}).get("model", "")
+        native_vision = is_multimodal_model(current_model)
 
         console.print("[bold]内置工具[/bold]")
         console.print()
+        if native_vision:
+            console.print("[dim]当前模型支持原生视觉，图片/视频将直接嵌入消息[/dim]")
+            console.print()
         for t in ALL_TOOLS:
             name = t.name
             desc = t.description.split("\n")[0] if t.description else ""
-            console.print(f"  [cyan]{name:<16}[/cyan] {desc}")
+            if name == "vision" and native_vision:
+                console.print(f"  [dim]{name:<16}[/dim] {desc} (已禁用)")
+            else:
+                console.print(f"  [cyan]{name:<16}[/cyan] {desc}")
         console.print()
 
     async def _cmd_skill(self, _arg: str) -> None:
@@ -1039,7 +1050,7 @@ class ChatREPL:
                     continue
 
                 ok = await confirm(
-                    f"确定编辑此消息组？编辑后将删除此消息组之后的所有内容。",
+                    "确定编辑此消息组？编辑后将删除此消息组之后的所有内容。",
                     default=False,
                 )
                 if not ok:
@@ -1059,7 +1070,7 @@ class ChatREPL:
 
                 await self._delete_messages(no_need_ids)
 
-                self._edit_buffer = edit_msg.content
+                self._edit_buffer = get_text_content(edit_msg.content)
                 render_success("消息已加载到输入框，修改后发送即可重新生成")
                 return
 
@@ -1115,7 +1126,7 @@ class ChatREPL:
                         if sessions_path.exists():
                             await asyncio.to_thread(shutil.rmtree, sessions_path)
                             sessions_path.mkdir(exist_ok=True)
-                    except Exception as e:
+                    except Exception:
                         import traceback
 
                         tb = traceback.format_exc()
@@ -1211,7 +1222,24 @@ class ChatREPL:
         ai_started = False
 
         try:
-            input_data = {"messages": user_input}
+            # 多模态模型：检测图片/视频路径并嵌入消息
+            from chcode.utils.multimodal import (
+                is_multimodal_model,
+                extract_media_paths,
+                build_multimodal_message,
+            )
+
+            current_model = (self.model_config or {}).get("model", "")
+            if is_multimodal_model(current_model):
+                media_paths = extract_media_paths(user_input, self.workplace_path)
+                if media_paths:
+                    message = build_multimodal_message(user_input, media_paths)
+                    input_data = {"messages": message}
+                    render_info(f"[已嵌入 {len(media_paths)} 个媒体文件]")
+                else:
+                    input_data = {"messages": user_input}
+            else:
+                input_data = {"messages": user_input}
 
             if self._skill_loader is None:
                 from chcode.utils.skill_loader import SkillLoader
@@ -1244,7 +1272,7 @@ class ChatREPL:
                             raise asyncio.CancelledError()
 
                         if m == "messages":
-                            content = i[0].content
+                            content = get_text_content(i[0].content)
                             additional_kwargs = i[0].additional_kwargs
 
                             if additional_kwargs.get("hide", ""):
@@ -1292,7 +1320,7 @@ class ChatREPL:
                                 None,
                                 self.yolo,
                             )
-                            console.print(f"[green]已切换到备用模型，请重新发送请求[/green]")
+                            console.print("[green]已切换到备用模型，请重新发送请求[/green]")
                         except Exception as e:
                             render_error(f"切换模型失败: {e}")
                     else:
@@ -1374,10 +1402,6 @@ class ChatREPL:
         decisions = []
         for interrupt in interrupt_chunk["__interrupt__"]:
             action_requests = interrupt.value["action_requests"]
-            review_configs = interrupt.value["review_configs"]
-            review_dict = {
-                i["action_name"]: i["allowed_decisions"] for i in review_configs
-            }
 
             for action_request in action_requests:
                 name = action_request["name"]

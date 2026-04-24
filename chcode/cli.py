@@ -58,8 +58,8 @@ def _setup_langsmith_guard():
 
 _setup_langsmith_guard()
 
-import typer
-from rich.console import Console
+import typer  # noqa: E402
+from rich.console import Console  # noqa: E402
 
 app = typer.Typer(
     name="chcode",

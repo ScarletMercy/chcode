@@ -41,20 +41,6 @@ VISION_MODEL_PRESETS = [
         "stream_usage": True,
     },
     {
-        "model": "Shanghai_AI_Laboratory/Intern-S1-Pro",
-        "base_url": MODELSCOPE_BASE_URL,
-        "temperature": 1.0,
-        "top_p": 0.95,
-        "stream_usage": True,
-    },
-    {
-        "model": "Shanghai_AI_Laboratory/Intern-S1",
-        "base_url": MODELSCOPE_BASE_URL,
-        "temperature": 1.0,
-        "top_p": 0.95,
-        "stream_usage": True,
-    },
-    {
         "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
         "base_url": MODELSCOPE_BASE_URL,
         "temperature": 1.0,
