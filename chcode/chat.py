@@ -743,6 +743,15 @@ class ChatREPL:
             for msg in messages:
                 if msg.id not in recent_message_ids:
                     msg.additional_kwargs["composed"] = True
+                    # 压缩时去掉 base64 图片/视频，避免 payload 过大导致 API 返回空 choices
+                    if isinstance(msg.content, list):
+                        clean_blocks = [
+                            b for b in msg.content
+                            if not isinstance(b, dict)
+                            or b.get("type") not in ("image_url", "video_url")
+                        ]
+                        if clean_blocks != msg.content:
+                            msg = msg.model_copy(update={"content": clean_blocks})
                     pre_messages.append(msg)
 
             from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
@@ -771,6 +780,7 @@ class ChatREPL:
                     content = json_match.group()
                 else:
                     # 可能 summary 值中包含嵌套对象，用逐字符括号匹配兜底
+                    # NOTE: 不处理字符串内的 `}`，但模型 summary 含 `}` 的概率极低，暂不改
                     depth = 0
                     start = -1
                     for i, ch in enumerate(content):

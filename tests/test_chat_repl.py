@@ -962,6 +962,59 @@ class TestChatREPLCmdCompress:
 
                     mock_err.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_compress_strips_multimodal_content(self):
+        """多模态消息中的 base64 图片/视频块应在压缩时被过滤，只保留文本块。"""
+        repl = ChatREPL()
+        repl.model_config = {"model": "gpt-4"}
+        repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock()
+        # 构造包含多模态 content 的消息
+        multimodal_msg = HumanMessage(
+            content=[
+                {"type": "text", "text": "[image: test.png] 描述这张图"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+            ],
+            id="1",
+        )
+        text_msg = HumanMessage("普通文本消息", id="2")
+        state = Mock()
+        state.values = {"messages": [multimodal_msg, text_msg]}
+        repl.agent.aget_state.return_value = state
+        repl.agent.aupdate_state = AsyncMock()
+        repl.session_mgr = Mock()
+        repl.session_mgr.config = {}
+
+        captured_pre_messages = None
+
+        def capture_invoke(func, messages, *args):
+            nonlocal captured_pre_messages
+            captured_pre_messages = messages
+            mock_resp = Mock()
+            mock_resp.content = '{"summary": "ok"}'
+            return mock_resp
+
+        with patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True):
+            with patch("chcode.chat.render_info"):
+                with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm:
+                    mock_inst = Mock()
+                    mock_inst.invoke = Mock(side_effect=capture_invoke)
+                    mock_llm.return_value = mock_inst
+                    with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=capture_invoke):
+                        with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
+                            with patch("chcode.chat.render_success"):
+                                await repl._cmd_compress("")
+
+        # 验证发给模型的消息中，多模态块已被过滤
+        for msg in captured_pre_messages:
+            if isinstance(msg.content, list):
+                for block in msg.content:
+                    if isinstance(block, dict):
+                        assert block["type"] not in ("image_url", "video_url"), \
+                            f"多模态块未被过滤: {block['type']}"
+        # 验证原始消息未被修改（content 仍包含 image_url）
+        assert multimodal_msg.content[1]["type"] == "image_url"
+
 
 # ============================================================================
 # Test ChatREPL._cmd_messages
