@@ -35,7 +35,8 @@ class TestGitManager:
     def test_init_already_repo(self, tmp_path: Path):
         gm = GitManager(str(tmp_path))
         gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
-        with patch.object(gm, "is_repo", return_value=True):
+        with patch.object(gm, "is_repo", return_value=True), \
+             patch.object(gm, "_run", return_value=_mock_run(0, stdout="abc123\n")):
             result = gm.init()
             assert result is False
 

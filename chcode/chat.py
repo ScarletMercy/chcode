@@ -709,9 +709,9 @@ class ChatREPL:
             ok = await confirm(f"确定删除会话 {selected_tid}？", default=False)
             if ok:
                 await self.session_mgr.delete_session(selected_tid, self.checkpointer)
-                if selected_tid == self.session_mgr.thread_id:
-                    self._cmd_new("")
                 render_success("会话已删除")
+                if selected_tid == self.session_mgr.thread_id:
+                    await self._cmd_new("")
 
     async def _cmd_compress(self, _arg: str) -> None:
         if not self.model_config:
@@ -927,6 +927,14 @@ class ChatREPL:
         chat_dir.mkdir(exist_ok=True)
         (chat_dir / "sessions").mkdir(exist_ok=True)
         (chat_dir / "skills").mkdir(exist_ok=True)
+
+        # 关闭旧 checkpointer 连接
+        if self.checkpointer is not None:
+            try:
+                await self.checkpointer.conn.close()
+            except Exception:
+                pass
+            self.checkpointer = None
 
         # 重建会话和 agent
         self.session_mgr = SessionManager(self.workplace_path)
@@ -1153,6 +1161,14 @@ class ChatREPL:
                         self.workplace_path = old_path
                         os.chdir(self.workplace_path)
                         return
+
+                # 关闭旧 checkpointer 连接
+                if self.checkpointer is not None:
+                    try:
+                        await self.checkpointer.conn.close()
+                    except Exception:
+                        pass
+                    self.checkpointer = None
 
                 self.session_mgr = SessionManager(self.workplace_path)
                 db_path = self.workplace_path / ".chat" / "sessions" / "checkpointer.db"

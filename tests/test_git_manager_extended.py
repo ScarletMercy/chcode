@@ -211,12 +211,13 @@ class TestInit:
         gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Simulate existing repo
-        with patch.object(gm, "is_repo", return_value=True):
+        with patch.object(gm, "is_repo", return_value=True), \
+             patch.object(gm, "_run", return_value=_mock_run(0, stdout="abc123\n")):
             result = gm.init()
             assert result is False
             assert gm.checkpoints_file.exists()
             content = json.loads(gm.checkpoints_file.read_text())
-            assert content == {}
+            assert "init" in content
 
     def test_init_existing_repo_preserves_checkpoints(self, tmp_path: Path):
         """Init preserves existing checkpoints file"""
@@ -227,11 +228,13 @@ class TestInit:
         existing = {"msg1": "abc123"}
         gm.checkpoints_file.write_text(json.dumps(existing))
 
-        with patch.object(gm, "is_repo", return_value=True):
+        with patch.object(gm, "is_repo", return_value=True), \
+             patch.object(gm, "_run", return_value=_mock_run(0, stdout="def456\n")):
             result = gm.init()
             assert result is False
             content = json.loads(gm.checkpoints_file.read_text())
-            assert content == existing
+            assert content["msg1"] == "abc123"
+            assert "init" in content
 
     def test_init_new_repo_creates_checkpoints(self, tmp_path: Path):
         """Init on new repo creates checkpoints file"""

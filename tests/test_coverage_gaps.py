@@ -822,6 +822,7 @@ class TestUpdateSummarizationModel:
         fake = FakeModel()
         new_model = FakeModel.__new__(FakeModel)
         new_model.__dict__ = {"model": "new-model", "temperature": 1.0, "api_key": "new-key"}
+        new_model.model_fields_set = {"model", "temperature", "api_key"}
 
         import chcode.agent_setup as mod
         old_val = mod._summarization_model
@@ -856,6 +857,7 @@ class TestUpdateSummarizationModel:
         fake = FakeModel()
         new_model = FakeModel.__new__(FakeModel)
         new_model.__dict__ = {"model": "new-model", "nonexistent_key": "val"}
+        new_model.model_fields_set = {"model", "nonexistent_key"}
 
         import chcode.agent_setup as mod
         old_val = mod._summarization_model
@@ -890,6 +892,7 @@ class TestUpdateSummarizationModel:
         fake = FakeModel()
         new_model = FakeModel.__new__(FakeModel)
         new_model.__dict__ = {"model": "new-model", "bad_key": "val"}
+        new_model.model_fields_set = {"model", "bad_key"}
 
         import chcode.agent_setup as mod
         old_val = mod._summarization_model

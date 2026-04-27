@@ -69,6 +69,7 @@ class GitManager:
                 self.checkpoints_file.write_text(
                     json.dumps({}, indent=4), encoding="utf-8"
                 )
+            self._ensure_init_checkpoint()
             return False
         if not self.gitignore_file.exists():
             self.create_gitignore()
@@ -76,9 +77,24 @@ class GitManager:
         if result.returncode == 0:
             # 初始空提交，确保后续 commit 不会因空仓库失败
             self._run(["commit", "-m", "init", "--allow-empty"])
-        if not self.checkpoints_file.exists():
-            self.checkpoints_file.write_text(json.dumps({}, indent=4), encoding="utf-8")
+        self._ensure_init_checkpoint()
         return result.returncode == 0
+
+    def _ensure_init_checkpoint(self) -> None:
+        """确保 checkpoints.json 中存在 "init" 条目，供 rollback 使用"""
+        if not self.checkpoints_file.exists():
+            self.checkpoints_file.write_text(
+                json.dumps({}, indent=4), encoding="utf-8"
+            )
+        data = json.loads(self.checkpoints_file.read_text(encoding="utf-8"))
+        if "init" in data:
+            return
+        hash_result = self._run(["rev-list", "--max-parents=0", "HEAD"])
+        if hash_result.returncode == 0 and hash_result.stdout.strip():
+            data["init"] = hash_result.stdout.strip().split("\n")[-1]
+            self.checkpoints_file.write_text(
+                json.dumps(data, indent=4), encoding="utf-8"
+            )
 
     def add_commit(self, message_ids: str, files: list | None = None) -> bool | int:
         """添加文件并提交"""

@@ -374,7 +374,7 @@ def update_summarization_model(model_config: dict) -> None:
     """运行时更新 SummarizationMiddleware 的模型"""
     if _summarization_model is not None:
         new_model = EnhancedChatOpenAI(**model_config)
-        for key in _summarization_model.model_fields_set:
+        for key in new_model.model_fields_set:
             try:
                 if key in new_model.__dict__:
                     setattr(_summarization_model, key, new_model.__dict__[key])
