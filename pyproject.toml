@@ -2,6 +2,19 @@
 name = "chcode"
 version = "0.1.0"
 description = "Terminal-based AI coding agent with typer+rich"
+authors = [{name = "Flymo Han", email = "minimizeball@foxmail.com"}]
+license = "MIT"
+readme = "README.md"
+keywords = ["ai", "coding-agent", "cli", "langchain", "typer", "rich"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+]
 requires-python = ">=3.13"
 dependencies = [
     "typer>=0.15.0",
@@ -34,6 +47,11 @@ test = [
 
 [project.scripts]
 chcode = "chcode.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/ScarletMercy/chcode"
+Repository = "https://github.com/ScarletMercy/chcode"
+Issues = "https://github.com/ScarletMercy/chcode/issues"
 
 [build-system]
 requires = ["hatchling"]

@@ -135,22 +135,14 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 ### Install
 
 ```bash
-# Option 1: Install globally with uv (recommended)
-uv tool install git+https://github.com/ScarletMercy/chcode.git
+# Option 1: Install with pip
+pip install chcode
 
-# Option 2: Clone and install with uv
-git clone https://github.com/ScarletMercy/chcode.git
-cd chcode
-uv sync
-uv run chcode
+# Option 2: Install with uv (recommended)
+uv tool install chcode
 
-# Option 3: Install globally with pipx
-pipx install git+https://github.com/ScarletMercy/chcode.git
-
-# Option 4: Clone and install with pip
-git clone https://github.com/ScarletMercy/chcode.git
-cd chcode
-pip install -e .
+# Option 3: Install with pipx
+pipx install chcode
 ```
 
 ### Run
