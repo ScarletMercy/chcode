@@ -1929,7 +1929,7 @@ class TestAgentRunnerTimeoutMinGuard:
                 mock_create.return_value = mock_agent
 
                 with patch("chcode.agents.runner.EnhancedChatOpenAI"):
-                    result = await run_subagent(
+                    result, is_error = await run_subagent(
                         "test",
                         agent_def,
                         {"model": "gpt-4"},
@@ -1939,6 +1939,7 @@ class TestAgentRunnerTimeoutMinGuard:
                     )
                     # Should complete successfully despite low timeout
                     assert result is not None
+                    assert is_error is False
 
 
 class TestAgentRunnerTimeoutError:
@@ -1966,7 +1967,7 @@ class TestAgentRunnerTimeoutError:
                 mock_create.return_value = mock_agent
 
                 with patch("chcode.agents.runner.EnhancedChatOpenAI"):
-                    result = await run_subagent(
+                    result, is_error = await run_subagent(
                         "test",
                         agent_def,
                         {"model": "gpt-4"},
@@ -1975,6 +1976,7 @@ class TestAgentRunnerTimeoutError:
                         timeout_seconds=300,
                     )
                 assert "timed out" in result.lower()
+                assert is_error is True
 
 
 class TestAgentRunnerModelSwitchError:
@@ -2002,7 +2004,7 @@ class TestAgentRunnerModelSwitchError:
                 mock_create.return_value = mock_agent
 
                 with patch("chcode.agents.runner.EnhancedChatOpenAI"):
-                    result = await run_subagent(
+                    result, is_error = await run_subagent(
                         "test",
                         agent_def,
                         {"model": "gpt-4"},
@@ -2011,6 +2013,7 @@ class TestAgentRunnerModelSwitchError:
                         timeout_seconds=300,
                     )
                 assert "备用模型" in result
+                assert is_error is True
 
 
 class TestAgentRunnerNoTextOutput:
@@ -2040,7 +2043,7 @@ class TestAgentRunnerNoTextOutput:
                 mock_create.return_value = mock_agent
 
                 with patch("chcode.agents.runner.EnhancedChatOpenAI"):
-                    result = await run_subagent(
+                    result, is_error = await run_subagent(
                         "test",
                         agent_def,
                         {"model": "gpt-4"},
@@ -2049,6 +2052,7 @@ class TestAgentRunnerNoTextOutput:
                         timeout_seconds=300,
                     )
                 assert result == "(Agent completed with no text output)"
+                assert is_error is False
 
 
 class TestAgentRunnerListContent:
@@ -2080,7 +2084,7 @@ class TestAgentRunnerListContent:
         with patch("chcode.utils.tools.ALL_TOOLS", []):
             with patch("chcode.agents.runner.create_agent", return_value=mock_agent):
                 with patch("chcode.agents.runner.EnhancedChatOpenAI"):
-                    result = await run_subagent(
+                    result, is_error = await run_subagent(
                         "test",
                         agent_def,
                         {"model": "gpt-4"},
@@ -2090,6 +2094,7 @@ class TestAgentRunnerListContent:
                     )
         # The result joins with newline
         assert "Hello" in result and "world" in result
+        assert is_error is False
 
 
 class TestAgentRunnerGenericException:
@@ -2116,7 +2121,7 @@ class TestAgentRunnerGenericException:
                 mock_create.return_value = mock_agent
 
                 with patch("chcode.agents.runner.EnhancedChatOpenAI"):
-                    result = await run_subagent(
+                    result, is_error = await run_subagent(
                         "test",
                         agent_def,
                         {"model": "gpt-4"},
@@ -2125,6 +2130,7 @@ class TestAgentRunnerGenericException:
                         timeout_seconds=300,
                     )
         assert "error: custom error" in result
+        assert is_error is True
 
 
 class TestAgentRunnerToolErrorsHandler:

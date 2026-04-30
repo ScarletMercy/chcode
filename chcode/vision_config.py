@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -184,7 +185,7 @@ def auto_configure_vision() -> dict | None:
     if not api_key:
         return None
 
-    data = load_vision_json()
+    data = copy.deepcopy(load_vision_json())
     existing_default = data.get("default", {})
     existing_fallback = data.get("fallback", {})
 
@@ -308,7 +309,7 @@ async def _configure_vision_wizard() -> dict | None:
 
 async def _switch_vision_model() -> dict | None:
     """切换视觉模型（从 fallback 列表选择）"""
-    data = load_vision_json()
+    data = copy.deepcopy(load_vision_json())
     default = data.get("default", {})
     fallback = data.get("fallback", {})
 

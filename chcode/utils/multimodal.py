@@ -125,28 +125,31 @@ def encode_media_as_base64(
     else:
         from PIL import Image
 
-        img = Image.open(path)
-        w, h = img.size
-        if max(w, h) > max_side:
-            scale = max_side / max(w, h)
-            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        with Image.open(path) as img:
+            w, h = img.size
+            resized = max(w, h) > max_side
+            if resized:
+                scale = max_side / max(w, h)
+                img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+                mime_type = "image/png"
 
-        # 分辨率缩放后，如果体积仍超过 5MB，逐步降低 JPEG quality 压缩到 5MB 以内
-        MAX_BYTES = 5 * 1024 * 1024
-        buf = io.BytesIO()
-        img.save(buf, format=img.format or "PNG")
+            # 分辨率缩放后，如果体积仍超过 5MB，逐步降低 JPEG quality 压缩到 5MB 以内
+            MAX_BYTES = 5 * 1024 * 1024
+            buf = io.BytesIO()
+            save_format = "PNG" if resized else (img.format or "PNG")
+            img.save(buf, format=save_format)
 
-        if buf.tell() > MAX_BYTES:
-            if img.mode in ("RGBA", "P", "LA"):
-                img = img.convert("RGB")
-            for quality in range(85, 4, -15):
-                buf = io.BytesIO()
-                img.save(buf, format="JPEG", quality=quality)
-                if buf.tell() <= MAX_BYTES:
-                    break
-            mime_type = "image/jpeg"
+            if buf.tell() > MAX_BYTES:
+                if img.mode in ("RGBA", "P", "LA"):
+                    img = img.convert("RGB")
+                for quality in range(85, 4, -15):
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG", quality=quality)
+                    if buf.tell() <= MAX_BYTES:
+                        break
+                mime_type = "image/jpeg"
 
-        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
     return b64, mime_type
 

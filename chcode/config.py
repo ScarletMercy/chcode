@@ -76,15 +76,24 @@ def load_model_json() -> dict:
         data = json.loads(MODEL_JSON.read_text(encoding="utf-8"))
         _model_json_cache = (mtime, data)
         return data
-    except Exception:
+    except Exception as e:
+        console.print(f"[red]Warning: 加载 {MODEL_JSON} 失败: {e}[/red]")
         return {}
 
 
 def save_model_json(data: dict) -> None:
     global _model_json_cache
-    MODEL_JSON.write_text(
-        json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
-    )
+    content = json.dumps(data, indent=4, ensure_ascii=False)
+    tmp = MODEL_JSON.with_suffix(".tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        tmp.replace(MODEL_JSON)
+    except Exception:
+        MODEL_JSON.write_text(content, encoding="utf-8")
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
     _model_json_cache = None
 
 
@@ -491,6 +500,8 @@ CONTEXT_WINDOW_SIZES: dict[str, int] = {
     "deepseek-chat": 65536,
     "deepseek-v3.2": 128000,
     "deepseek-r1-0528": 65536,
+    "deepseek-v4-pro": 1000000,
+    "deepseek-v4-flash": 1000000,
     "glm-5.1": 200000,
     "glm-5": 200000,
     "glm-4.7": 200000,
@@ -569,3 +580,116 @@ async def configure_tavily() -> None:
         console.print("[green]Tavily API Key 已保存并生效[/green]")
     else:
         console.print("[dim]已取消[/dim]")
+
+
+# ─── LangSmith 配置 ──────────────────────────────────────
+
+LANGSMITH_ENDPOINT = "https://api.smith.langchain.com"
+
+
+def load_langsmith_config() -> dict:
+    """加载 LangSmith 配置（环境变量优先，其次 SETTING_JSON）"""
+    tracing_env = os.getenv("LANGCHAIN_TRACING", "")
+    tracing_explicit = tracing_env.lower() in ("true", "false")
+    config = {
+        "tracing": tracing_env.lower() == "true",
+        "project": os.getenv("LANGCHAIN_PROJECT", ""),
+        "api_key": os.getenv("LANGSMITH_API_KEY", ""),
+    }
+    # api_key 有值但 project 缺失时默认 chcode
+    if config["api_key"] and not config["project"]:
+        config["project"] = "chcode"
+    # 如果环境变量不完整，尝试从配置文件补充
+    if SETTING_JSON.exists():
+        try:
+            data = json.loads(SETTING_JSON.read_text(encoding="utf-8"))
+            if "langsmith_tracing" in data and not data.get("langsmith_api_key"):
+                return {"tracing": False, "project": "", "api_key": ""}
+            if not tracing_explicit and data.get("langsmith_tracing"):
+                config["tracing"] = bool(data["langsmith_tracing"])
+            if not config["project"]:
+                config["project"] = data.get("langsmith_project", "")
+            if not config["api_key"]:
+                config["api_key"] = data.get("langsmith_api_key", "")
+        except Exception:
+            pass
+    return config
+
+
+def save_langsmith_config(tracing: bool, project: str, api_key: str) -> None:
+    """保存 LangSmith 配置到 SETTING_JSON"""
+    ensure_config_dir()
+    data = {}
+    if SETTING_JSON.exists():
+        try:
+            data = json.loads(SETTING_JSON.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    data["langsmith_tracing"] = tracing
+    data["langsmith_project"] = project
+    data["langsmith_api_key"] = api_key
+    SETTING_JSON.write_text(
+        json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def _apply_langsmith_env(tracing: bool, project: str, api_key: str) -> None:
+    """将 LangSmith 配置写入环境变量"""
+    os.environ["LANGCHAIN_TRACING"] = "true" if tracing else "false"
+    os.environ.pop("LANGCHAIN_TRACING_V2", None)
+    os.environ["LANGCHAIN_PROJECT"] = project or ""
+    os.environ["LANGSMITH_API_KEY"] = api_key or ""
+    os.environ["LANGCHAIN_ENDPOINT"] = LANGSMITH_ENDPOINT
+
+
+async def configure_langsmith() -> dict:
+    """首次引导时配置 LangSmith，返回配置 dict"""
+    # 1. 环境变量已有 API Key（project 缺失时默认 chcode）
+    env_key = os.getenv("LANGSMITH_API_KEY", "")
+    env_project = os.getenv("LANGCHAIN_PROJECT", "")
+    if env_key:
+        project = env_project or "chcode"
+        tracing = os.getenv("LANGCHAIN_TRACING", "true").lower() == "true"
+        _apply_langsmith_env(tracing, project, env_key)
+        console.print("[dim]检测到 LANGSMITH_API_KEY 环境变量，已自动配置 LangSmith[/dim]")
+        return {"tracing": tracing, "project": project, "api_key": env_key}
+
+    # 2. 配置文件已有
+    if SETTING_JSON.exists():
+        try:
+            data = json.loads(SETTING_JSON.read_text(encoding="utf-8"))
+            saved_project = data.get("langsmith_project", "")
+            saved_key = data.get("langsmith_api_key", "")
+            if saved_key and saved_project:
+                tracing = bool(data.get("langsmith_tracing", True))
+                _apply_langsmith_env(tracing, saved_project, saved_key)
+                masked = saved_key[:6] + "..." + saved_key[-4:] if len(saved_key) > 10 else "***"
+                console.print(
+                    f"[dim]已配置 LangSmith: 项目={saved_project}, Key={masked}[/dim]"
+                )
+                return {"tracing": tracing, "project": saved_project, "api_key": saved_key}
+            elif "langsmith_tracing" in data and not saved_key:
+                return {"tracing": False, "project": "", "api_key": ""}
+        except Exception:
+            pass
+
+    # 3. 引导配置
+    console.print()
+    result = await select("是否配置 LangSmith 追踪?", ["是", "否"])
+    if result is None or result == "否":
+        save_langsmith_config(False, "", "")
+        console.print("[dim]已跳过，后续可通过 /langsmith 命令配置[/dim]")
+        return {"tracing": False, "project": "", "api_key": ""}
+
+    project_name = await text("请输入 LangSmith 项目名称:", default="chcode")
+    api_key = await text("请输入 LangSmith API Key:")
+
+    if not api_key:
+        console.print("[dim]已取消[/dim]")
+        return {"tracing": False, "project": "", "api_key": ""}
+
+    project_name = project_name.strip() or "chcode"
+    _apply_langsmith_env(True, project_name, api_key)
+    save_langsmith_config(True, project_name, api_key)
+    console.print("[green]LangSmith 配置已保存并生效[/green]")
+    return {"tracing": True, "project": project_name, "api_key": api_key}

@@ -49,3 +49,12 @@ class TestResolveTools:
         ad = AgentDefinition(agent_type="t", when_to_use="w", system_prompt="p")
         result = _resolve_tools(ad, tools)
         assert len(result) == 2
+
+    def test_fallback_to_func_name_when_name_missing(self):
+        t = MagicMock()
+        t.name = None
+        t.func = MagicMock(__name__="custom_tool")
+        tools = [t]
+        ad = AgentDefinition(agent_type="t", when_to_use="w", system_prompt="p")
+        result = _resolve_tools(ad, tools)
+        assert len(result) == 1

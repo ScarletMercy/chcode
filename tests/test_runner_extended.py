@@ -105,8 +105,9 @@ class TestRunSubagent:
         with patch("chcode.agents.runner.create_agent", return_value=mock_agent), \
              patch("chcode.agents.runner._resolve_tools", return_value=[]), \
              patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            result = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock())
+            result, is_error = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock())
         assert result == "result text"
+        assert is_error is False
 
     async def test_timeout(self):
         import asyncio
@@ -121,8 +122,9 @@ class TestRunSubagent:
         with patch("chcode.agents.runner.create_agent", return_value=mock_agent), \
              patch("chcode.agents.runner._resolve_tools", return_value=[]), \
              patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            result = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
+            result, is_error = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
         assert "timed out" in result
+        assert is_error is True
 
     async def test_model_switch_error_runner(self):
         from chcode.agents.runner import run_subagent
@@ -137,8 +139,9 @@ class TestRunSubagent:
         with patch("chcode.agents.runner.create_agent", return_value=mock_agent), \
              patch("chcode.agents.runner._resolve_tools", return_value=[]), \
              patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            result = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
+            result, is_error = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
         assert "备用模型" in result
+        assert is_error is True
 
     async def test_generic_error(self):
         from chcode.agents.runner import run_subagent
@@ -152,8 +155,9 @@ class TestRunSubagent:
         with patch("chcode.agents.runner.create_agent", return_value=mock_agent), \
              patch("chcode.agents.runner._resolve_tools", return_value=[]), \
              patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            result = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
+            result, is_error = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
         assert "error" in result.lower()
+        assert is_error is True
 
     async def test_list_content_output(self):
         from chcode.agents.runner import run_subagent
@@ -170,5 +174,6 @@ class TestRunSubagent:
         with patch("chcode.agents.runner.create_agent", return_value=mock_agent), \
              patch("chcode.agents.runner._resolve_tools", return_value=[]), \
              patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            result = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
+            result, is_error = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
         assert "part1" in result and "part2" in result
+        assert is_error is False

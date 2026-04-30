@@ -540,44 +540,146 @@ class TestChatREPLSlashCommands:
                     assert repl.model_config == {}
 
     @pytest.mark.asyncio
+    async def test_cmd_langsmith_enable_no_key(self):
+        repl = ChatREPL()
+
+        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
+             patch("chcode.chat.console.print") as mock_print:
+            mock_sel.return_value = "开启追踪"
+            with patch("chcode.config.save_langsmith_config") as mock_save:
+                await repl._cmd_langsmith("")
+
+                assert repl.langsmith_tracing is False
+                mock_save.assert_not_called()
+                printed = [str(c) for c in mock_print.call_args_list]
+                assert any("请先设置" in p for p in printed)
+
+    @pytest.mark.asyncio
     async def test_cmd_langsmith_enable(self):
         repl = ChatREPL()
+        repl.langsmith_api_key = "lsv2_test_key"
 
         with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
             mock_sel.return_value = "开启追踪"
-            with patch("chcode.chat.render_success") as mock_success:
+            with patch("chcode.config.save_langsmith_config") as mock_save, \
+                 patch("chcode.chat.render_success") as mock_success:
                 await repl._cmd_langsmith("")
 
-                assert os.environ.get("LANGCHAIN_TRACING_V2") == "true"
+                assert repl.langsmith_tracing is True
+                assert os.environ.get("LANGCHAIN_TRACING") == "true"
+                mock_save.assert_called_once()
                 mock_success.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_cmd_langsmith_disable(self):
         repl = ChatREPL()
-        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        repl.langsmith_tracing = True
 
         with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
             mock_sel.return_value = "关闭追踪"
-            with patch("chcode.chat.render_success") as mock_success:
+            with patch("chcode.config.save_langsmith_config") as mock_save, \
+                 patch("chcode.chat.render_success") as mock_success:
                 await repl._cmd_langsmith("")
 
-                assert os.environ.get("LANGCHAIN_TRACING_V2") == "false"
+                assert repl.langsmith_tracing is False
+                assert os.environ.get("LANGCHAIN_TRACING") == "false"
+                mock_save.assert_called_once()
                 mock_success.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_cmd_langsmith_cancel(self):
         repl = ChatREPL()
-        original = os.environ.get("LANGCHAIN_TRACING_V2", "false")
+        original = os.environ.get("LANGCHAIN_TRACING", "false")
 
         with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
             mock_sel.return_value = None
             await repl._cmd_langsmith("")
 
-            assert os.environ.get("LANGCHAIN_TRACING_V2") == original
+            assert os.environ.get("LANGCHAIN_TRACING") == original
 
     @pytest.mark.asyncio
-    async def test_cmd_tools(self):
+    async def test_cmd_langsmith_edit_project(self):
         repl = ChatREPL()
+        repl.langsmith_project = "old-project"
+
+        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
+             patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt:
+            mock_sel.return_value = "修改项目名称"
+            mock_txt.return_value = "new-project"
+            with patch("chcode.config.save_langsmith_config") as mock_save, \
+                 patch("chcode.chat.render_success"):
+                await repl._cmd_langsmith("")
+                assert repl.langsmith_project == "new-project"
+                mock_save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cmd_langsmith_edit_key(self):
+        repl = ChatREPL()
+
+        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
+             patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt:
+            mock_sel.return_value = "修改 API Key"
+            mock_txt.return_value = "lsv2_new_key_here"
+            with patch("chcode.config.save_langsmith_config") as mock_save, \
+                 patch("chcode.chat.render_success"):
+                await repl._cmd_langsmith("")
+                assert repl.langsmith_api_key == "lsv2_new_key_here"
+                mock_save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cmd_langsmith_edit_key_cancel(self):
+        repl = ChatREPL()
+        repl.langsmith_api_key = "old_key"
+
+        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
+             patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt:
+            mock_sel.return_value = "修改 API Key"
+            mock_txt.return_value = ""
+            with patch("chcode.config.save_langsmith_config") as mock_save:
+                await repl._cmd_langsmith("")
+                assert repl.langsmith_api_key == "old_key"
+                mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cmd_langsmith_short_key_masked(self):
+        """API Key 短于 10 字符时脱敏显示为 ***"""
+        repl = ChatREPL()
+        repl.langsmith_api_key = "short"
+
+        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
+             patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt, \
+             patch("chcode.chat.console.print") as mock_print:
+            mock_sel.return_value = "修改项目名称"
+            mock_txt.return_value = "proj"
+            with patch("chcode.config.save_langsmith_config"), \
+                 patch("chcode.chat.render_success"):
+                await repl._cmd_langsmith("")
+                # 验证状态显示时 Key 脱敏为 ***
+                printed = [str(c) for c in mock_print.call_args_list]
+                assert any("***" in p for p in printed)
+
+    @pytest.mark.asyncio
+    async def test_sync_langsmith_env(self):
+        repl = ChatREPL()
+        repl.langsmith_tracing = True
+        repl.langsmith_project = "test-proj"
+        repl.langsmith_api_key = "test-key"
+
+        with patch.dict(os.environ, {}, clear=True):
+            repl._sync_langsmith_env()
+            assert os.environ["LANGCHAIN_TRACING"] == "true"
+            assert os.environ["LANGCHAIN_PROJECT"] == "test-proj"
+            assert os.environ["LANGSMITH_API_KEY"] == "test-key"
+            assert os.environ["LANGCHAIN_ENDPOINT"] == "https://api.smith.langchain.com"
+
+    @pytest.mark.asyncio
+    async def test_sync_langsmith_env_disabled(self):
+        repl = ChatREPL()
+        repl.langsmith_tracing = False
+
+        with patch.dict(os.environ, {}, clear=True):
+            repl._sync_langsmith_env()
+            assert os.environ["LANGCHAIN_TRACING"] == "false"
 
         with patch("chcode.chat.console.print") as mock_print:
             with patch("chcode.utils.tools.ALL_TOOLS", []):
@@ -663,6 +765,16 @@ class TestChatREPLSlashCommands:
         with patch("chcode.chat.console.print") as mock_print:
             await repl._cmd_help("")
             assert mock_print.called  # Console should have been used
+
+    @pytest.mark.asyncio
+    async def test_cmd_homepage(self):
+        repl = ChatREPL()
+
+        with patch("webbrowser.open") as mock_open, \
+             patch("chcode.chat.render_success") as mock_success:
+            await repl._cmd_homepage("")
+            mock_success.assert_called_once_with("正在打开: https://github.com/ScarletMercy/chcode")
+            mock_open.assert_called_once_with("https://github.com/ScarletMercy/chcode")
 
     @pytest.mark.asyncio
     async def test_cmd_quit_raises_eof(self):
@@ -1647,7 +1759,7 @@ class TestChatREPLRun:
             with patch.object(repl, "_get_input", new_callable=AsyncMock) as mock_input:
                 mock_input.return_value = "hello"
                 with patch.object(repl, "_process_input", new_callable=AsyncMock) as mock_proc:
-                    with patch.dict(os.environ, {"LANGCHAIN_TRACING_V2": "false"}):
+                    with patch.dict(os.environ, {"LANGCHAIN_TRACING": "false"}):
                         # Should run once then loop
                         mock_input.side_effect = ["hello", EOFError()]
                         with patch.object(repl, "_handle_command", new_callable=AsyncMock):
@@ -1734,21 +1846,23 @@ class TestChatREPLRun:
     @pytest.mark.asyncio
     async def test_run_langsmith_auto_disable(self):
         repl = ChatREPL()
+        repl.langsmith_tracing = True
 
         with patch("chcode.chat.render_welcome"):
             with patch.object(repl, "_get_input", new_callable=AsyncMock) as mock_input:
                 mock_input.side_effect = ["test", EOFError()]
                 with patch.object(repl, "_process_input", new_callable=AsyncMock) as mock_proc:
                     async def side_effect(msg):
-                        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+                        os.environ["LANGCHAIN_TRACING"] = "false"
                     mock_proc.side_effect = side_effect
                     with patch("chcode.chat.render_warning") as mock_warn:
-                        with patch.dict(os.environ, {"LANGCHAIN_TRACING_V2": "true"}):
+                        with patch.dict(os.environ, {"LANGCHAIN_TRACING": "true"}):
                             try:
                                 await repl.run()
                             except EOFError:
                                 pass
 
+                            assert repl.langsmith_tracing is False
                             mock_warn.assert_called_once()
 
 

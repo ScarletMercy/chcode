@@ -729,7 +729,7 @@ class TestAgentParallelAndFailure:
 
         with patch("chcode.utils.tools.render_tool_call"), \
              patch("chcode.agents.loader.load_agents", return_value={"Explore": mock_def}), \
-             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value="done") as mock_run, \
+             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value=("done", False)) as mock_run, \
              patch("chcode.display._subagent_count_lock"), \
              patch("chcode.display._agent_progress_lock"), \
              patch("chcode.display._current_agent_tag"), \
@@ -771,7 +771,7 @@ class TestAgentParallelAndFailure:
 
         with patch("chcode.utils.tools.render_tool_call"), \
              patch("chcode.agents.loader.load_agents", return_value={"Explore": mock_def}), \
-             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value="Task timed out after 300s") as mock_run, \
+             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value=("Task timed out after 300s", True)) as mock_run, \
              patch("chcode.display._subagent_count_lock"), \
              patch("chcode.display._agent_progress_lock"), \
              patch("chcode.display._current_agent_tag"), \
@@ -810,7 +810,7 @@ class TestAgentParallelAndFailure:
 
         with patch("chcode.utils.tools.render_tool_call"), \
              patch("chcode.agents.loader.load_agents", return_value={"Explore": mock_def}), \
-             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value="error: something went wrong"), \
+             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value=("error: something went wrong", True)), \
              patch("chcode.display._subagent_count_lock"), \
              patch("chcode.display._agent_progress_lock"), \
              patch("chcode.display._current_agent_tag"), \
@@ -2377,7 +2377,7 @@ class TestAgentParallelProgressTask:
 
         with patch("chcode.utils.tools.render_tool_call"), \
              patch("chcode.agents.loader.load_agents", return_value={"Explore": mock_def}), \
-             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value="done"), \
+             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value=("done", False)), \
              patch("chcode.display._subagent_count_lock"), \
              patch("chcode.display._agent_progress_lock"), \
              patch("chcode.display._current_agent_tag"), \

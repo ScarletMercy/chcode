@@ -70,7 +70,7 @@ def _resolve_tools(
 ) -> list:
     result = []
     for t in all_tools:
-        name = getattr(t, "name", None) or getattr(t, "func", {}).get("__name__", "")
+        name = getattr(t, "name", None) or getattr(getattr(t, "func", None), "__name__", "")
         if name == "agent":
             continue
         if name in agent_def.disallowed_tools:
@@ -89,7 +89,7 @@ async def run_subagent(
     skill_loader: SkillLoader,
     timeout_seconds: int = 300,
     description: str = "",
-) -> str:
+) -> tuple[str, bool]:
     # 守卫：超时最小 300s
     timeout_seconds = max(timeout_seconds, 300)
     from chcode.utils.tools import ALL_TOOLS
@@ -142,11 +142,11 @@ async def run_subagent(
             timeout=timeout_seconds,
         )
     except asyncio.TimeoutError:
-        return f"Agent {agent_def.agent_type} timed out after {timeout_seconds}s."
+        return f"Agent {agent_def.agent_type} timed out after {timeout_seconds}s.", True
     except ModelSwitchError:
-        return f"Agent {agent_def.agent_type} 主模型失败，已切换备用模型，请重试"
+        return f"Agent {agent_def.agent_type} 主模型失败，已切换备用模型，请重试", True
     except Exception as e:
-        return f"Agent {agent_def.agent_type} error: {e}"
+        return f"Agent {agent_def.agent_type} error: {e}", True
 
     from chcode.utils import get_text_content
     messages = result.get("messages", [])
@@ -154,6 +154,6 @@ async def run_subagent(
         if msg.type == "ai" and msg.content:
             content = get_text_content(msg.content)
             if content.strip():
-                return content.strip()
+                return content.strip(), False
 
-    return "(Agent completed with no text output)"
+    return "(Agent completed with no text output)", False

@@ -91,8 +91,9 @@ SLASH_COMMANDS = {
     "/workdir": "切换工作目录",
     "/mode": "切换 Common/Yolo 模式",
     "/git": "Git 状态",
-    "/langsmith": "LangSmith 追踪开关",
+    "/langsmith": "LangSmith 追踪",
     "/tools": "显示内置工具",
+    "/homepage": "打开项目主页",
     "/help": "显示帮助",
     "/quit": "退出",
 }
@@ -251,6 +252,10 @@ class ChatREPL:
         self._skill_loader: SkillLoader | None = None
         # 上下文用量缓存
         self._context_text: str = ""
+        # LangSmith 配置
+        self.langsmith_tracing = False
+        self.langsmith_project = ""
+        self.langsmith_api_key = ""
         # Windows 保留名（不能作为文件名）
         self.WINDOWS_RESERVED_NAMES = {
             "nul",
@@ -298,6 +303,22 @@ class ChatREPL:
             if config is None:
                 return False
             self.model_config = config
+
+        # 加载 LangSmith 配置（非首次运行时从环境变量/配置文件恢复）
+        from chcode.config import load_langsmith_config, configure_langsmith
+
+        langsmith_cfg = load_langsmith_config()
+        if langsmith_cfg["api_key"]:
+            self.langsmith_tracing = langsmith_cfg["tracing"]
+            self.langsmith_project = langsmith_cfg["project"]
+            self.langsmith_api_key = langsmith_cfg["api_key"]
+            self._sync_langsmith_env()
+        else:
+            # 首次运行时引导配置（在 Tavily 之后）
+            langsmith_cfg = await configure_langsmith()
+            self.langsmith_tracing = langsmith_cfg["tracing"]
+            self.langsmith_project = langsmith_cfg["project"]
+            self.langsmith_api_key = langsmith_cfg["api_key"]
 
         # 创建 checkpointer
         db_path = self.workplace_path / ".chat" / "sessions" / "checkpointer.db"
@@ -389,11 +410,12 @@ class ChatREPL:
                     continue
 
                 # 正常对话
-                prev_tracing = os.environ.get("LANGCHAIN_TRACING_V2", "false").lower()
+                prev_tracing = os.environ.get("LANGCHAIN_TRACING", "false").lower()
                 await self._process_input(user_input)
 
                 # 检查 LangSmith 是否因 429 自动关闭
-                if prev_tracing == "true" and os.environ.get("LANGCHAIN_TRACING_V2", "false").lower() != prev_tracing:
+                if prev_tracing == "true" and os.environ.get("LANGCHAIN_TRACING", "false").lower() != prev_tracing:
+                    self.langsmith_tracing = False
                     render_warning(
                         "LangSmith 追踪已因配额耗尽自动关闭 "
                         "(/langsmith 可手动管理)"
@@ -579,6 +601,7 @@ class ChatREPL:
             "/tools": self._cmd_tools,
             "/langsmith": self._cmd_langsmith,
             "/messages": self._cmd_messages,
+            "/homepage": self._cmd_homepage,
             "/help": self._cmd_help,
             "/quit": self._cmd_quit,
         }
@@ -629,17 +652,60 @@ class ChatREPL:
             update_summarization_model(config)
             self._render_status_bar()
 
+    def _sync_langsmith_env(self) -> None:
+        """将 LangSmith 实例变量同步到环境变量"""
+        from chcode.config import LANGSMITH_ENDPOINT
+
+        os.environ["LANGCHAIN_TRACING"] = "true" if self.langsmith_tracing else "false"
+        os.environ.pop("LANGCHAIN_TRACING_V2", None)
+        os.environ["LANGCHAIN_PROJECT"] = self.langsmith_project
+        os.environ["LANGSMITH_API_KEY"] = self.langsmith_api_key
+        os.environ["LANGCHAIN_ENDPOINT"] = LANGSMITH_ENDPOINT
+
     async def _cmd_langsmith(self, _arg: str) -> None:
-        current = os.environ.get("LANGCHAIN_TRACING_V2", "false").lower() == "true"
-        state = "开启" if current else "关闭"
+        from chcode.config import save_langsmith_config
+
+        # 显示当前状态
+        state = "开启" if self.langsmith_tracing else "关闭"
+        masked = ""
+        if self.langsmith_api_key:
+            masked = self.langsmith_api_key[:6] + "..." + self.langsmith_api_key[-4:] if len(self.langsmith_api_key) > 10 else "***"
+        console.print(f"[bold]LangSmith 追踪: {state}[/bold]")
+        if self.langsmith_project:
+            console.print(f"  项目: {self.langsmith_project}")
+        if self.langsmith_api_key:
+            console.print(f"  Key:  {masked}")
+
         action = await select(
-            f"LangSmith 追踪: {state}",
-            ["开启追踪", "关闭追踪"],
+            "操作:",
+            ["开启追踪", "关闭追踪", "修改项目名称", "修改 API Key"],
         )
         if action is None:
             return
-        os.environ["LANGCHAIN_TRACING_V2"] = "true" if "开启" in action else "false"
-        render_success(f"LangSmith 追踪已{'开启' if '开启' in action else '关闭'}")
+
+        if "开启" in action:
+            if not self.langsmith_api_key:
+                console.print("[yellow]请先设置 LangSmith API Key[/yellow]")
+                return
+            self.langsmith_tracing = True
+        elif "关闭" in action:
+            self.langsmith_tracing = False
+        elif "项目" in action:
+            new_name = await text("请输入项目名称:", default=self.langsmith_project or "chcode")
+            if new_name is None:
+                return
+            self.langsmith_project = new_name.strip() or "chcode"
+        elif "Key" in action:
+            new_key = await text("请输入 LangSmith API Key:")
+            if new_key:
+                self.langsmith_api_key = new_key
+            else:
+                return
+
+        self._sync_langsmith_env()
+        save_langsmith_config(self.langsmith_tracing, self.langsmith_project, self.langsmith_api_key)
+        state = "开启" if self.langsmith_tracing else "关闭"
+        render_success(f"LangSmith 追踪已{state}")
 
     async def _cmd_tools(self, _arg: str) -> None:
         from chcode.utils.tools import ALL_TOOLS
@@ -952,6 +1018,13 @@ class ChatREPL:
         render_success(f"工作目录: {self.workplace_path}")
         self._render_status_bar()
 
+    async def _cmd_homepage(self, _arg: str) -> None:
+        import webbrowser
+
+        url = "https://github.com/ScarletMercy/chcode"
+        render_success(f"正在打开: {url}")
+        webbrowser.open(url)
+
     async def _cmd_help(self, _arg: str) -> None:
         from rich.table import Table
 
@@ -970,8 +1043,9 @@ class ChatREPL:
             ("/workdir", "切换工作目录"),
             ("/mode", "切换 Common/Yolo 模式"),
             ("/git", "Git 状态"),
-            ("/langsmith", "LangSmith 追踪开关"),
+            ("/langsmith", "LangSmith 追踪"),
             ("/tools", "显示内置工具"),
+            ("/homepage", "打开项目主页"),
             ("/help", "显示此帮助"),
             ("/quit", "退出"),
         ]
@@ -1345,6 +1419,9 @@ class ChatREPL:
             else:
                 input_data = {"messages": user_input}
 
+            # 保存原始输入，用于模型切换后重试时重置 input_data
+            _original_input_data = input_data
+
             if self._skill_loader is None:
                 from chcode.utils.skill_loader import SkillLoader
 
@@ -1415,6 +1492,16 @@ class ChatREPL:
                         console.print(f"[yellow]正在切换到备用模型: {fallback.get('model', 'unknown')}[/yellow]")
                         self.model_config = fallback
                         advance_fallback()
+                        # 持久化到 model.json，确保模型列表显示一致
+                        import copy
+                        from chcode.config import load_model_json, save_model_json
+                        _data = copy.deepcopy(load_model_json())
+                        _old_default = _data.get("default", {})
+                        _old_model = _old_default.get("model", "")
+                        if _old_model and _old_model not in _data.get("fallback", {}):
+                            _data.setdefault("fallback", {})[_old_model] = _old_default
+                        _data["default"] = fallback
+                        save_model_json(_data)
                         try:
                             self.agent = await asyncio.to_thread(
                                 build_agent,
@@ -1430,6 +1517,10 @@ class ChatREPL:
                                 model_config=self.model_config or INNER_MODEL_CONFIG,
                                 thread_id=self.session_mgr.thread_id,
                             )
+                            # 如果当前 input_data 是已消费的 Command(resume=...)，
+                            # 重置为原始输入，避免复用已消费的 Command
+                            if isinstance(input_data, Command):
+                                input_data = _original_input_data
                             console.print("[green]已切换到备用模型，自动重试中...[/green]")
                             continue  # 用备用模型重试当前请求
                         except Exception as e:

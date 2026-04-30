@@ -30,8 +30,9 @@ class TestCleanToolOutput:
         text = "\x1b]0;title\x07rest"
         assert clean_tool_output(text) == "rest"
 
-    def test_strips_html_tags(self):
-        assert clean_tool_output("<b>bold</b>") == "bold"
+    def test_preserves_angle_brackets(self):
+        assert clean_tool_output("#include <stdio.h>") == "#include <stdio.h>"
+        assert clean_tool_output("std::vector<int>") == "std::vector<int>"
 
     def test_list_input(self):
         assert clean_tool_output(["a", "b"]) == "a\nb"

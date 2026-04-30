@@ -26,7 +26,6 @@ def clean_tool_output(text: str) -> str:
         text = str(text)
     text = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", text)
     text = re.sub(r"\x1b\][^\x07]*\x07?", "", text)
-    text = re.sub(r"<[^>]+>", "", text)
     return text
 
 

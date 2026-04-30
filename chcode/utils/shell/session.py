@@ -151,7 +151,12 @@ def _kill_proc_tree(proc: subprocess.Popen) -> None:
         parent.kill()
     except ImportError:
         if os.name == "nt":
-            proc.kill()
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+            )
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.kill()
         else:
             with contextlib.suppress(OSError, ProcessLookupError):
                 os.killpg(pid, signal.SIGKILL)

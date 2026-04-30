@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage, RemoveMessage, BaseMessage
+from langgraph.types import Command
 
 from chcode.chat import ChatREPL, _collect_ids_from_group
 
@@ -2482,3 +2483,122 @@ class TestGetInputPreFillBuffers:
 
         # Should still be only 1 call (from first invocation)
         mock_session_cls.assert_called_once()
+
+
+# ============================================================================
+# ModelSwitchError + Command reuse bug
+# When ModelSwitchError occurs during HITL recovery (input_data is a Command),
+# the retry must reset input_data to the original user input, not reuse the
+# already-consumed Command.
+# ============================================================================
+
+class TestModelSwitchErrorCommandReset:
+    """Verify ModelSwitchError during HITL resets input_data to original."""
+
+    @pytest.mark.asyncio
+    async def test_model_switch_during_hitl_resets_input(self):
+        """When ModelSwitchError fires on Command(resume=...) iteration,
+        input_data must be reset to the original user message, not the stale Command."""
+        from chcode.agent_setup import ModelSwitchError
+
+        repl = ChatREPL()
+        repl.agent = Mock()
+        repl.session_mgr = Mock()
+        repl.session_mgr.config = {}
+        repl.session_mgr.thread_id = "test-thread"
+        repl.workplace_path = Path("/tmp")
+        repl.model_config = {"model": "gpt-4"}
+        repl.checkpointer = Mock()
+
+        call_count = 0
+        # LangGraph Interrupt objects have a .value attribute
+        _interrupt_obj = MagicMock()
+        _interrupt_obj.value = {"action_requests": []}
+
+        async def mock_astream(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call: normal stream, yield an interrupt
+                yield "updates", {"__interrupt__": [_interrupt_obj]}
+            elif call_count == 2:
+                # Second call: HITL recovery with Command(resume=...)
+                assert isinstance(args[0], Command), (
+                    f"Second call should receive Command, got {type(args[0])}"
+                )
+                raise ModelSwitchError("Switch during HITL")
+            elif call_count == 3:
+                # Third call: retry after model switch — must be original dict
+                assert isinstance(args[0], dict), (
+                    f"After model-switch retry, input_data should be dict, got {type(args[0])}"
+                )
+                assert "messages" in args[0], (
+                    "input_data should contain 'messages' key from original input"
+                )
+                # No interrupt this time — clean exit
+            return
+
+        repl.agent.astream = mock_astream
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={"messages": []}))
+
+        # The replacement agent (after model switch) also needs a working astream
+        _new_agent = Mock()
+        _new_agent.astream = mock_astream
+        _new_agent.aget_state = AsyncMock(return_value=Mock(values={"messages": []}))
+
+        # Bypass the real HITL prompt — just return empty decisions
+        async def fake_collect_decisions(self, interrupt_chunk):
+            return []
+
+        with patch.object(ChatREPL, "_collect_decisions_async", fake_collect_decisions), \
+             patch("chcode.chat.get_fallback_model", return_value={"model": "fallback"}), \
+             patch("chcode.chat.advance_fallback"), \
+             patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=_new_agent), \
+             patch("chcode.display.console.print"), \
+             patch("chcode.chat.asyncio.create_task"):
+            await repl._process_input("test input")
+
+        # Should have been called 3 times:
+        # 1. initial user input -> interrupt
+        # 2. Command(resume=...) -> ModelSwitchError
+        # 3. original input retry (not Command!)
+        assert call_count == 3, f"Expected 3 astream calls, got {call_count}"
+        assert repl.model_config["model"] == "fallback"
+
+    @pytest.mark.asyncio
+    async def test_model_switch_on_first_iteration_keeps_input(self):
+        """When ModelSwitchError fires on the first iteration (input_data is dict),
+        the retry should use the same dict input — no reset needed."""
+        from chcode.agent_setup import ModelSwitchError
+
+        repl = ChatREPL()
+        repl.agent = Mock()
+        repl.session_mgr = Mock()
+        repl.session_mgr.config = {}
+        repl.session_mgr.thread_id = "test-thread"
+        repl.workplace_path = Path("/tmp")
+        repl.model_config = {"model": "gpt-4"}
+        repl.checkpointer = Mock()
+
+        received_inputs = []
+
+        async def mock_astream(*args, **kwargs):
+            received_inputs.append(args[0])
+            raise ModelSwitchError("Switch on first")
+            yield  # make it a generator
+
+        repl.agent.astream = mock_astream
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={"messages": []}))
+
+        with patch("chcode.chat.get_fallback_model", return_value={"model": "fallback"}), \
+             patch("chcode.chat.advance_fallback"), \
+             patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=Mock()), \
+             patch("chcode.display.console.print"), \
+             patch("chcode.chat.asyncio.create_task"):
+            await repl._process_input("hello")
+
+        # No fallback available after first -> break (no retry loop in this path)
+        # Actually with fallback, it should retry. Let's verify the input is preserved.
+        assert len(received_inputs) >= 1
+        assert isinstance(received_inputs[0], dict)
+        assert received_inputs[0] == {"messages": "hello"}

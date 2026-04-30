@@ -372,7 +372,7 @@ async def glob(pattern: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     render_tool_call("glob", pattern)
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         matches = await loop.run_in_executor(None, lambda: sorted(cwd.glob(pattern)))
 
         if not matches:
@@ -555,7 +555,7 @@ async def grep(pattern: str, path: str, runtime: ToolRuntime[SkillAgentContext])
 
         return results, files_searched
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     results, files_searched = await loop.run_in_executor(None, _sync_grep)
 
     if not results:
@@ -662,7 +662,7 @@ async def list_dir(path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
                 result.append((entry.name, False, 0))
         return result
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     entries = await loop.run_in_executor(None, _sync_list_dir)
 
     result_lines = []
@@ -1388,7 +1388,7 @@ async def agent(
                 )
 
     try:
-        result = await run_subagent(
+        result, is_error = await run_subagent(
             prompt=prompt,
             agent_def=agent_def,
             model_config=model_config,
@@ -1400,8 +1400,7 @@ async def agent(
 
         with _display._agent_progress_lock:
             if tag in _display._agent_progress:
-                # 检查是否超时或出错
-                if result and ("timed out" in result or "error:" in result.lower()):
+                if is_error:
                     _display._agent_progress[tag]["failed"] = True
                 else:
                     _display._agent_progress[tag]["done"] = True
@@ -1615,7 +1614,7 @@ async def vision(
     try:
         from chcode.utils.multimodal import encode_media_as_base64
 
-        b64_image, mime_type = encode_media_as_base64(path)
+        b64_image, mime_type = await asyncio.to_thread(encode_media_as_base64, path)
     except Exception as e:
         return f"vision:\n[FAILED] Failed to read {'video' if is_video else 'image'}: {e}"
 

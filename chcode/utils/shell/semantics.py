@@ -46,7 +46,7 @@ def interpret_command_result(command: str, exit_code: int) -> Interpretation:
         return Interpretation(is_error=True, message=f"Exit code {exit_code}")
 
     for commands, exit_map in _RULES:
-        if base in commands or base.removesuffix("exe") in commands:
+        if base in commands or base.removesuffix(".exe") in commands:
             if exit_code in exit_map:
                 return Interpretation(is_error=False, message=exit_map[exit_code])
             if 1 in exit_map and exit_code > 1:

@@ -7,6 +7,10 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import warnings
+
+warnings.filterwarnings("ignore", message="urllib3.*doesn't match a supported version")
+warnings.filterwarnings("ignore", message="chardet.*doesn't match a supported version")
 
 
 def _setup_langsmith_guard():
@@ -27,7 +31,8 @@ def _setup_langsmith_guard():
                 "langsmith" in data.lower() and "429" in data
             ):
                 _disabled = True
-                os.environ["LANGCHAIN_TRACING_V2"] = "false"
+                os.environ["LANGCHAIN_TRACING"] = "false"
+                os.environ.pop("LANGCHAIN_TRACING_V2", None)
                 return len(data)
             if "langsmith" in data.lower() and (
                 "ConnectionError" in data
@@ -40,7 +45,8 @@ def _setup_langsmith_guard():
                 or "api.smith.langchain.com" in data
             ):
                 _disabled = True
-                os.environ["LANGCHAIN_TRACING_V2"] = "false"
+                os.environ["LANGCHAIN_TRACING"] = "false"
+                os.environ.pop("LANGCHAIN_TRACING_V2", None)
                 return len(data)
             return self._original.write(data)
 
@@ -50,10 +56,9 @@ def _setup_langsmith_guard():
         def __getattr__(self, name):
             return getattr(self._original, name)
 
-    _original = sys.__stderr__ or sys.stderr
+    _original = sys.stderr
     _guard = _Guard(_original)
     sys.stderr = _guard
-    sys.__stderr__ = _guard
 
 
 _setup_langsmith_guard()
@@ -130,6 +135,16 @@ async def _run_config(action: str) -> None:
     else:
         console.print(f"[yellow]未知操作: {action}[/yellow]")
         console.print("可用操作: new, edit, switch")
+
+
+@app.command()
+def homepage():
+    """打开项目主页"""
+    import webbrowser
+
+    url = "https://github.com/ScarletMercy/chcode"
+    console.print(f"正在打开: {url}")
+    webbrowser.open(url)
 
 
 @app.command()

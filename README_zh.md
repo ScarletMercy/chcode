@@ -135,22 +135,19 @@
 ### 安装
 
 ```bash
-# 方式一：使用 uv 全局安装（推荐）
-uv tool install git+https://github.com/ScarletMercy/chcode.git
+# 稳定版（PyPI）— 三选一
+pip install chcode        # pip
+uv tool install chcode    # uv（推荐）
+pipx install chcode       # pipx
 
-# 方式二：克隆并用 uv 安装
+# 最新版（GitHub）— 二选一
+uv tool install git+https://github.com/ScarletMercy/chcode.git    # uv（推荐）
+pipx install git+https://github.com/ScarletMercy/chcode.git       # pipx
+
+# 开发测试（从源码）
 git clone https://github.com/ScarletMercy/chcode.git
 cd chcode
-uv sync
-uv run chcode
-
-# 方式三：使用 pipx 全局安装
-pipx install git+https://github.com/ScarletMercy/chcode.git
-
-# 方式四：克隆并用 pip 安装
-git clone https://github.com/ScarletMercy/chcode.git
-cd chcode
-pip install -e .
+pip install -e .       # 或: uv sync && uv run chcode
 ```
 
 ### 运行
