@@ -112,7 +112,7 @@ async def _run_chat(yolo: bool) -> None:
     try:
         await repl.run()
     finally:
-        await repl.close()
+        await repl.close_checkpointer()
 
 
 @app.command()

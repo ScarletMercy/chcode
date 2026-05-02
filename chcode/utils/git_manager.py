@@ -13,7 +13,6 @@ class GitManager:
 
     def __init__(self, repo_path: str = "."):
         self.repo_path = Path(repo_path).resolve()
-        self.git_cmd = "git"
         self.checkpoints_file = self.repo_path / ".git" / "checkpoints.json"
         self.gitignore_file = self.repo_path / ".gitignore"
         self.current_id = 0
@@ -31,7 +30,7 @@ class GitManager:
         """
         try:
             result = subprocess.run(
-                [self.git_cmd] + args,
+                ["git"] + args,
                 cwd=str(self.repo_path),
                 capture_output=True,
                 text=True,

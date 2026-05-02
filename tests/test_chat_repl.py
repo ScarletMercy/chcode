@@ -122,7 +122,7 @@ class TestChatREPLClose:
         repl.checkpointer = Mock()
         repl.checkpointer.conn = mock_conn
 
-        await repl.close()
+        await repl.close_checkpointer()
 
         mock_conn.close.assert_called_once()
         assert repl.checkpointer is None
@@ -130,7 +130,7 @@ class TestChatREPLClose:
     @pytest.mark.asyncio
     async def test_close_without_checkpointer(self):
         repl = ChatREPL()
-        await repl.close()
+        await repl.close_checkpointer()
         assert repl.checkpointer is None
 
     @pytest.mark.asyncio
@@ -141,7 +141,7 @@ class TestChatREPLClose:
         repl.checkpointer = Mock()
         repl.checkpointer.conn = mock_conn
 
-        await repl.close()  # Should not raise
+        await repl.close_checkpointer()  # Should not raise
         assert repl.checkpointer is None
 
 

@@ -34,17 +34,25 @@ class SessionManager:
     # ─── names.json 读写 ─────────────────────────────────
 
     def _load_names(self) -> dict[str, str]:
-        if self._names_path.exists():
-            try:
-                return json.loads(self._names_path.read_text("utf-8"))
-            except Exception:
-                return {}
-        return {}
+        if not self._names_path.exists():
+            return {}
+        try:
+            return json.loads(self._names_path.read_text("utf-8"))
+        except json.JSONDecodeError:
+            return {}
 
     def _save_names(self, names: dict[str, str]) -> None:
-        self._names_path.write_text(
-            json.dumps(names, ensure_ascii=False, indent=2), "utf-8"
-        )
+        content = json.dumps(names, ensure_ascii=False, indent=2)
+        tmp = self._names_path.with_suffix(".tmp")
+        try:
+            tmp.write_text(content, "utf-8")
+            tmp.replace(self._names_path)
+        except Exception:
+            self._names_path.write_text(content, "utf-8")
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     # ─── 基础 ────────────────────────────────────────────
 
@@ -64,7 +72,11 @@ class SessionManager:
     # ─── 重命名 ──────────────────────────────────────────
 
     def rename_session(self, thread_id: str, new_name: str) -> None:
-        names = self._load_names()
+        try:
+            names = self._load_names()
+        except Exception:
+            console.print("[red]读取会话名称失败，无法重命名[/red]")
+            return
         if new_name:
             names[thread_id] = new_name
         else:
@@ -100,7 +112,10 @@ class SessionManager:
         thread_ids: list[str],
         agent: CompiledStateGraph,
     ) -> dict[str, str]:
-        names = self._load_names()
+        try:
+            names = self._load_names()
+        except Exception:
+            names = {}
         result: dict[str, str] = {}
         need_summary: list[str] = []
 

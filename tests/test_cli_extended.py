@@ -455,11 +455,12 @@ class TestRunChat:
         mock_repl.initialize = AsyncMock(return_value=True)
         mock_repl.run = AsyncMock()
         mock_repl.close = AsyncMock()
+        mock_repl.close_checkpointer = AsyncMock()
         with patch("chcode.chat.ChatREPL", return_value=mock_repl):
             await _run_chat(False)
         mock_repl.initialize.assert_called_once()
         mock_repl.run.assert_called_once()
-        mock_repl.close.assert_called_once()
+        mock_repl.close_checkpointer.assert_called_once()
 
     async def test_init_failure(self):
         from chcode.cli import _run_chat

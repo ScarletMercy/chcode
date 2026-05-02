@@ -16,6 +16,7 @@ from chcode.config import (
     load_langsmith_config,
     save_langsmith_config,
     _apply_langsmith_env,
+    _test_connection,
     LANGSMITH_ENDPOINT,
 )
 
@@ -278,3 +279,49 @@ class TestApplyLangsmithEnv:
         _apply_langsmith_env(False, "", "")
 
         assert os.environ["LANGCHAIN_TRACING_V2"] == "false"
+
+
+class TestTestConnectionNullValue:
+    @pytest.mark.asyncio
+    async def test_null_value_with_choices_is_success(self):
+        config = {"model": "test", "base_url": "http://x", "api_key": "k"}
+        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model:
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.side_effect = Exception("null value for 'choices'")
+            result = await _test_connection(config, quiet=True)
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_null_value_without_choices_is_failure(self):
+        config = {"model": "test", "base_url": "http://x", "api_key": "k"}
+        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model:
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.side_effect = Exception("null value for 'model'")
+            result = await _test_connection(config, quiet=True)
+            assert result is False
+
+
+class TestConfigureLangsmithBehavior:
+    @pytest.mark.asyncio
+    async def test_env_key_no_tracing_env_defaults_false(self, monkeypatch):
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_test_key")
+        monkeypatch.delenv("LANGCHAIN_PROJECT", raising=False)
+        monkeypatch.delenv("LANGCHAIN_TRACING_V2", raising=False)
+        monkeypatch.delenv("LANGCHAIN_TRACING", raising=False)
+
+        from chcode.config import configure_langsmith
+        cfg = await configure_langsmith()
+        assert cfg["tracing"] is False
+
+    @pytest.mark.asyncio
+    async def test_env_key_with_tracing_v2_true(self, monkeypatch):
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_test_key")
+        monkeypatch.setenv("LANGCHAIN_PROJECT", "my-proj")
+        monkeypatch.setenv("LANGCHAIN_TRACING_V2", "true")
+        monkeypatch.delenv("LANGCHAIN_TRACING", raising=False)
+
+        from chcode.config import configure_langsmith
+        cfg = await configure_langsmith()
+        assert cfg["tracing"] is True

@@ -61,10 +61,18 @@ def load_vision_json() -> dict:
 
 def save_vision_json(data: dict) -> None:
     global _vision_json_cache
+    content = json.dumps(data, indent=4, ensure_ascii=False)
     ensure_config_dir()
-    VISION_JSON.write_text(
-        json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
-    )
+    tmp = VISION_JSON.with_suffix(".tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        tmp.replace(VISION_JSON)
+    except Exception:
+        VISION_JSON.write_text(content, encoding="utf-8")
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
     _vision_json_cache = None
 
 

@@ -271,8 +271,7 @@ class ChatREPL:
             "lpt3",
         }
 
-    # ─── 清理 ────────────────────────────────────────
-
+    # 确保配置文件存在
     @staticmethod
     def _ensure_chat_dir(workplace: Path) -> None:
         """确保工作目录下 .chat/sessions 和 .chat/skills 子目录存在。"""
@@ -281,16 +280,8 @@ class ChatREPL:
         (chat_dir / "sessions").mkdir(exist_ok=True)
         (chat_dir / "skills").mkdir(exist_ok=True)
 
-    async def close(self) -> None:
-        """关闭资源（aiosqlite 连接等）"""
-        if self.checkpointer is not None:
-            try:
-                await self.checkpointer.conn.close()
-            except Exception:
-                pass
-            self.checkpointer = None
-
-    async def _close_checkpointer(self) -> None:
+    # ─── 清理 ────────────────────────────────────────
+    async def close_checkpointer(self) -> None:
         """安全关闭 checkpointer 连接"""
         if self.checkpointer is not None:
             try:
@@ -303,13 +294,13 @@ class ChatREPL:
 
     async def initialize(self) -> bool:
         """初始化：加载配置、设置工作目录、构建 agent"""
-        ensure_config_dir() # 确保配置目录.chat存在
+        ensure_config_dir() # 确保全局配置目录.chat存在
 
         self.workplace_path = Path.cwd() # 获取当前目录路径
 
-        self._ensure_chat_dir(self.workplace_path)
+        self._ensure_chat_dir(self.workplace_path) # 确保当前项目配置文件存在
 
-        self.session_mgr = SessionManager(self.workplace_path)
+        self.session_mgr = SessionManager(self.workplace_path) # 初始化历史会话管理器
 
         self.model_config = get_default_model_config() or {}
         if not self.model_config:
@@ -780,7 +771,10 @@ class ChatREPL:
             await self._load_conversation()
             self._render_status_bar()
         elif op == "重命名此会话":
-            cur = self.session_mgr._load_names().get(selected_tid, "")
+            try:
+                cur = self.session_mgr._load_names().get(selected_tid, "")
+            except Exception:
+                cur = ""
             new_name = await text("输入新名称（留空恢复默认）:", default=cur)
             if new_name is not None:
                 self.session_mgr.rename_session(selected_tid, new_name)
@@ -1006,7 +1000,7 @@ class ChatREPL:
         self._ensure_chat_dir(self.workplace_path)
 
         # 关闭旧 checkpointer 连接
-        await self._close_checkpointer()
+        await self.close_checkpointer()
 
         # 重建会话和 agent
         self.session_mgr = SessionManager(self.workplace_path)
@@ -1240,7 +1234,7 @@ class ChatREPL:
                         return
 
                 # 关闭旧 checkpointer 连接
-                await self._close_checkpointer()
+                await self.close_checkpointer()
 
                 self.session_mgr = SessionManager(self.workplace_path)
                 db_path = self.workplace_path / ".chat" / "sessions" / "checkpointer.db"

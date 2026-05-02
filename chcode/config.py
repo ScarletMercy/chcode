@@ -18,6 +18,7 @@ from chcode.prompts import select, confirm, model_config_form, text, configure_l
 
 console = Console()
 
+# 全局配置路径
 CONFIG_DIR = Path.home() / ".chat"
 MODEL_JSON = CONFIG_DIR / "model.json"
 SETTING_JSON = CONFIG_DIR / "chagent.json"
@@ -117,7 +118,7 @@ async def _test_connection(
         await asyncio.to_thread(model.invoke, "你好")
     except Exception as e:
         err_msg = str(e)
-        if "null value" in err_msg:
+        if "null value" in err_msg and "choices" in err_msg:
             return True
         if not quiet:
             console.print(f"[red]连接测试失败: {err_msg}[/red]")
@@ -534,12 +535,19 @@ async def configure_tavily() -> None:
 LANGSMITH_ENDPOINT = "https://api.smith.langchain.com"
 
 
+def _resolve_tracing_env() -> str:
+    """统一读取 LangSmith tracing 环境变量，优先 V2，其次 V1。"""
+    v2 = os.getenv("LANGCHAIN_TRACING_V2", "")
+    v1 = os.getenv("LANGCHAIN_TRACING", "")
+    if v2:
+        return v2
+    return v1
+
+
 def load_langsmith_config() -> dict:
     """加载 LangSmith 配置（环境变量优先，其次 SETTING_JSON）"""
     # 优先读取 LANGCHAIN_TRACING_V2，兼容旧的 LANGCHAIN_TRACING
-    tracing_v2 = os.getenv("LANGCHAIN_TRACING_V2", "")
-    tracing_v1 = os.getenv("LANGCHAIN_TRACING", "")
-    tracing_env = tracing_v2 if tracing_v1 == "" else (tracing_v1 if tracing_v2 == "" else tracing_v2)
+    tracing_env = _resolve_tracing_env()
     tracing_explicit = tracing_env.lower() in ("true", "false")
     config = {
         "tracing": tracing_env.lower() == "true",
@@ -587,9 +595,7 @@ async def configure_langsmith() -> dict:
     env_project = os.getenv("LANGCHAIN_PROJECT", "")
     if env_key:
         project = env_project or "chcode"
-        tracing_v2 = os.getenv("LANGCHAIN_TRACING_V2", "")
-        tracing_v1 = os.getenv("LANGCHAIN_TRACING", "true")
-        tracing_env = tracing_v2 if tracing_v2 != "" else tracing_v1
+        tracing_env = _resolve_tracing_env()
         tracing = tracing_env.lower() == "true"
         _apply_langsmith_env(tracing, project, env_key)
         console.print("[dim]检测到 LANGSMITH_API_KEY 环境变量，已自动配置 LangSmith[/dim]")

@@ -4,6 +4,7 @@ from chcode.config import (
     get_context_window_size,
     detect_env_api_keys,
     _DEFAULT_CONTEXT_WINDOW,
+    _resolve_tracing_env,
 )
 
 
@@ -59,3 +60,20 @@ class TestEnvToConfig:
             assert "name" in cfg
             assert "base_url" in cfg
             assert "models" in cfg
+
+
+class TestResolveTracingEnv:
+    def test_only_v2_set(self, monkeypatch):
+        monkeypatch.setenv("LANGCHAIN_TRACING_V2", "true")
+        monkeypatch.delenv("LANGCHAIN_TRACING", raising=False)
+        assert _resolve_tracing_env() == "true"
+
+    def test_both_set_v2_wins(self, monkeypatch):
+        monkeypatch.setenv("LANGCHAIN_TRACING_V2", "false")
+        monkeypatch.setenv("LANGCHAIN_TRACING", "true")
+        assert _resolve_tracing_env() == "false"
+
+    def test_neither_set(self, monkeypatch):
+        monkeypatch.delenv("LANGCHAIN_TRACING_V2", raising=False)
+        monkeypatch.delenv("LANGCHAIN_TRACING", raising=False)
+        assert _resolve_tracing_env() == ""

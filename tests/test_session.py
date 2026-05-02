@@ -121,3 +121,27 @@ class TestDeleteSession:
         checkpointer.adelete_thread = AsyncMock(side_effect=Exception("fail"))
         result = await sm.delete_session("t1", checkpointer)
         assert result is False
+
+
+class TestLoadNamesIOError:
+    def test_io_error_propagates(self, sm: SessionManager, monkeypatch):
+        sm._names_path.write_text('{"t1": "name"}', encoding="utf-8")
+        from unittest.mock import patch
+        with patch.object(Path, "read_text", side_effect=PermissionError("locked")):
+            with pytest.raises(PermissionError):
+                sm._load_names()
+
+
+class TestRenameSessionIOError:
+    def test_rename_does_not_overwrite_on_io_error(self, sm: SessionManager):
+        sm.rename_session("t1", "existing")
+        sm.rename_session("t2", "another")
+        original = sm._load_names
+
+        def _load_fail():
+            raise PermissionError("locked")
+
+        sm._load_names = _load_fail
+        sm.rename_session("t3", "should_not_save")
+        sm._load_names = original
+        assert sm._load_names() == {"t1": "existing", "t2": "another"}
