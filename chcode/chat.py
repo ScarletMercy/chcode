@@ -103,26 +103,23 @@ class SlashCommandCompleter(Completer):
     """斜杠命令自动补全器 - 输入 / 时触发下拉列表"""
 
     def get_completions(self, document, complete_event):
-
         # 获取光标前的完整文本
         text = document.text_before_cursor
 
         # 当输入 / 时触发补全
         if text.startswith("/"):
-
             # 把输入的文本中的字母转化成小写来处理（大小写不敏感）
             partial = text.lower()
-
             # 遍历预先定义的斜杠命令字典
             for cmd, desc in SLASH_COMMANDS.items():
                 # 如果转化成小写的输入框中文本 被字典里 命令名 的 前缀匹配 到
                 if cmd.startswith(partial):
                     # 生成命令
                     yield Completion(
-                        cmd, # 返回完整的命令
-                        start_position=-len(partial), # 返回前清空输入框已有输入
-                        display=cmd, # 下拉框显示的命令名
-                        display_meta=desc, # 下拉框显示的命令名的描述
+                        cmd,  # 返回完整的命令
+                        start_position=-len(partial),  # 返回前清空输入框已有输入
+                        display=cmd,  # 下拉框显示的命令名
+                        display_meta=desc,  # 下拉框显示的命令名的描述
                     )
 
 
@@ -190,15 +187,15 @@ def _group_messages_by_turn(messages: list) -> list[list]:
     current_group = []
 
     for msg in messages:
-        if msg.type == "human": # 下一组消息的第一个消息：HumanMessage
-            if current_group: # 当前消息组
+        if msg.type == "human":  # 下一组消息的第一个消息：HumanMessage
+            if current_group:  # 当前消息组
                 groups.append(current_group)
-            current_group = [msg] # 把下一组消息的第一个消息：HumanMessage，放入新的消息组
+            current_group = [msg]  # 把下一组消息的第一个消息：HumanMessage，放入新的消息组
         else:
-            current_group.append(msg) # 把下一组消息的其余消息也放入新的消息组
+            current_group.append(msg)  # 把下一组消息的其余消息也放入新的消息组
 
-    if current_group: # 所有消息都遍历完 还没放入消息组
-        groups.append(current_group) # 所以需要放入消息组
+    if current_group:  # 所有消息都遍历完 还没放入消息组
+        groups.append(current_group)  # 所以需要放入消息组
 
     return groups
 
@@ -231,16 +228,16 @@ def _collect_ids_from_group(
 
 class ChatREPL:
     def __init__(self):
-        self.workplace_path: Path | None = None # 工作目录路径
+        self.workplace_path: Path | None = None  # 工作目录路径
         self.model_config: dict = {}  # 模型参数
         self.yolo = False  # Yolo模式
         self.agent = None  # agent实例
-        self.checkpointer = None # 检查点实例
-        self.session_mgr: SessionManager | None = None # 会话管理器
+        self.checkpointer = None  # 检查点实例
+        self.session_mgr: SessionManager | None = None  # 会话管理器
         self.git_manager: GitManager | None = None  # git管理器
-        self.git = False # git是否激活
-        self._git_cp_count = 0 # git提交数
-        self._stop_requested = False # 暂停agent的flag
+        self.git = False  # git是否激活
+        self._git_cp_count = 0  # git提交数
+        self._stop_requested = False  # 暂停agent的flag
         self._processing = False
         # 初始化 prompt-toolkit 会话（用于命令自动补全）
         self._prompt_session = None
@@ -281,6 +278,7 @@ class ChatREPL:
         (chat_dir / "skills").mkdir(exist_ok=True)
 
     # ─── 清理 ────────────────────────────────────────
+
     async def close_checkpointer(self) -> None:
         """安全关闭 checkpointer 连接"""
         if self.checkpointer is not None:
@@ -290,17 +288,32 @@ class ChatREPL:
                 pass
             self.checkpointer = None
 
+    async def _rebuild_agent(self, *, rebuild_session: bool = False) -> None:
+        """重建 agent（可选重建 session/checkpointer）"""
+        if rebuild_session:
+            await self.close_checkpointer()
+            self.session_mgr = SessionManager(self.workplace_path)
+            db_path = self.workplace_path / ".chat" / "sessions" / "checkpointer.db"
+            self.checkpointer = await create_checkpointer(db_path)
+        self.agent = await asyncio.to_thread(
+            build_agent,
+            self.model_config,
+            self.checkpointer,
+            None,
+            self.yolo,
+        )
+
     # ─── 初始化 ────────────────────────────────────────
 
     async def initialize(self) -> bool:
         """初始化：加载配置、设置工作目录、构建 agent"""
-        ensure_config_dir() # 确保全局配置目录.chat存在
+        ensure_config_dir()  # 确保全局配置目录.chat存在
 
-        self.workplace_path = Path.cwd() # 获取当前目录路径
+        self.workplace_path = Path.cwd()  # 获取当前目录路径
 
-        self._ensure_chat_dir(self.workplace_path) # 确保当前项目配置文件存在
+        self._ensure_chat_dir(self.workplace_path)  # 确保当前项目配置文件存在
 
-        self.session_mgr = SessionManager(self.workplace_path) # 初始化历史会话管理器
+        self.session_mgr = SessionManager(self.workplace_path)  # 初始化历史会话管理器
 
         self.model_config = get_default_model_config() or {}
         if not self.model_config:
@@ -380,7 +393,6 @@ class ChatREPL:
             readline.write_history_file(str(history_path))
         except ImportError:
             pass
-
         return True
 
     async def _init_git(self) -> None:
@@ -390,6 +402,8 @@ class ChatREPL:
             self.git_manager = GitManager(str(self.workplace_path))
             if not self.git_manager.is_repo():
                 await asyncio.to_thread(self.git_manager.init)
+            else:
+                await asyncio.to_thread(self.git_manager._ensure_init_checkpoint)
             self.git = True
             self._git_cp_count = self.git_manager.count_checkpoints()
 
@@ -483,7 +497,7 @@ class ChatREPL:
                 parts = []
                 model = self.model_config.get("model", "未设置")
                 parts.append(model)
-                if hasattr(self, "_context_text") and self._context_text:
+                if self._context_text:
                     styled = _rich_to_html(self._context_text)
                     parts.append(styled)
                 parts.append(
@@ -841,7 +855,6 @@ class ChatREPL:
                 raw_resp = await asyncio.to_thread(
                     model.invoke, pre_messages + [human_msg]
                 )
-                import re
 
                 content = raw_resp.content.strip()
                 # 去除 markdown 代码块包裹
@@ -999,20 +1012,8 @@ class ChatREPL:
         # 重建子目录
         self._ensure_chat_dir(self.workplace_path)
 
-        # 关闭旧 checkpointer 连接
-        await self.close_checkpointer()
-
-        # 重建会话和 agent
-        self.session_mgr = SessionManager(self.workplace_path)
-        db_path = self.workplace_path / ".chat" / "sessions" / "checkpointer.db"
-        self.checkpointer = await create_checkpointer(db_path)
-        self.agent = await asyncio.to_thread(
-            build_agent,
-            self.model_config,
-            self.checkpointer,
-            None,
-            self.yolo,
-        )
+        # 关闭旧 checkpointer 连接，重建会话和 agent
+        await self._rebuild_agent(rebuild_session=True)
 
         await self._init_git()
         render_success(f"工作目录: {self.workplace_path}")
@@ -1031,25 +1032,7 @@ class ChatREPL:
         table = Table(title="命令列表")
         table.add_column("命令", style="cyan")
         table.add_column("说明")
-        cmds = [
-            ("/new", "新会话"),
-            ("/history", "历史会话"),
-            ("/model", "模型管理（新建/编辑/切换）"),
-            ("/vision", "视觉模型配置"),
-            ("/messages", "管理历史消息（编辑/分叉/删除）"),
-            ("/compress", "压缩会话"),
-            ("/skill", "技能管理"),
-            ("/search", "配置 Tavily 搜索 API Key"),
-            ("/workdir", "切换工作目录"),
-            ("/mode", "切换 Common/Yolo 模式"),
-            ("/git", "Git 状态"),
-            ("/langsmith", "LangSmith 追踪"),
-            ("/tools", "显示内置工具"),
-            ("/homepage", "打开项目主页"),
-            ("/help", "显示此帮助"),
-            ("/quit", "退出"),
-        ]
-        for cmd, desc in cmds:
+        for cmd, desc in SLASH_COMMANDS.items():
             table.add_row(cmd, desc)
         console.print(table)
 
@@ -1163,9 +1146,12 @@ class ChatREPL:
 
                 if self.git and self.git_manager:
                     try:
-                        await asyncio.to_thread(
+                        result = await asyncio.to_thread(
                             self.git_manager.rollback, no_need_ids, all_ids
                         )
+                        if result == "cross_session_blocked":
+                            render_warning("无法回滚：后面有其他会话的工作")
+                            continue
                     except Exception as e:
                         render_warning(f"Git 回滚失败: {e}")
 
@@ -1233,20 +1219,7 @@ class ChatREPL:
                         os.chdir(self.workplace_path)
                         return
 
-                # 关闭旧 checkpointer 连接
-                await self.close_checkpointer()
-
-                self.session_mgr = SessionManager(self.workplace_path)
-                db_path = self.workplace_path / ".chat" / "sessions" / "checkpointer.db"
-                self.checkpointer = await create_checkpointer(db_path)
-
-                self.agent = await asyncio.to_thread(
-                    build_agent,
-                    self.model_config,
-                    self.checkpointer,
-                    None,
-                    self.yolo,
-                )
+                await self._rebuild_agent(rebuild_session=True)
 
                 need_messages = []
                 for i, group in enumerate(groups):
@@ -1265,9 +1238,12 @@ class ChatREPL:
                 # 回滚工作目录
                 if self.git and self.git_manager:
                     try:
-                        await asyncio.to_thread(
+                        result = await asyncio.to_thread(
                             self.git_manager.rollback, no_need_ids, all_ids
                         )
+                        if result == "cross_session_blocked":
+                            render_warning("无法回滚：后面有其他会话的工作")
+                            continue
                     except Exception as e:
                         render_warning(f"Git 回滚失败: {e}")
 
@@ -1276,13 +1252,17 @@ class ChatREPL:
                 self._render_status_bar()
                 return
 
-    async def _handle_agent_error(self, error: Exception) -> None:
-        """Agent 出错时：当前组无 AIMessage 则删除整组，否则保存错误消息"""
+    async def _cleanup_last_turn(self, append_msg: str | None = None) -> list[BaseMessage] | None:
+        """查找最后一组消息：若无 AIMessage 则删除整组并返回该组，否则追加错误消息返回 None
+
+        用于统一 _handle_agent_error 和 _handle_cancel 的共同逻辑：
+        找到最后一组消息（以最后一个 HumanMessage 开头），
+        判断当前组是否有 AIMessage，分别处理。
+        """
         try:
             state = await self.agent.aget_state(self.session_mgr.config)
             messages: list[BaseMessage] = state.values.get("messages", [])
 
-            # 找到最后一组消息（以最后一个 HumanMessage 开头）
             last_human_idx = -1
             for i, msg in enumerate(messages):
                 if isinstance(msg, HumanMessage):
@@ -1293,57 +1273,33 @@ class ChatREPL:
                 has_ai = any(isinstance(m, AIMessage) for m in current_group)
 
                 if not has_ai:
-                    # 当前组没有 AIMessage，删除整组
                     await self._delete_messages([m.id for m in current_group])
-                    return
+                    return current_group
 
-            # 有 AIMessage，按原逻辑保存错误消息
-            error_msg = AIMessage(
-                f"Agent 执行错误: {error}",
-                additional_kwargs={"error": True, "composed": True},
-            )
-            await self.agent.aupdate_state(
-                self.session_mgr.config,
-                {"messages": [error_msg]},
-                as_node="model",
-            )
+            if append_msg:
+                error_msg = AIMessage(
+                    append_msg,
+                    additional_kwargs={"error": True, "composed": True},
+                )
+                await self.agent.aupdate_state(
+                    self.session_mgr.config,
+                    {"messages": [error_msg]},
+                    as_node="model",
+                )
         except Exception:
             pass
+        return None
+
+    async def _handle_agent_error(self, error: Exception) -> None:
+        """Agent 出错时：当前组无 AIMessage 则删除整组，否则保存错误消息"""
+        deleted = await self._cleanup_last_turn(f"Agent 执行错误: {error}")
+        # 如果没有删除整组（已有 AIMessage），错误消息已在 _cleanup_last_turn 中追加
 
     async def _handle_cancel(self, user_input: str) -> None:
         """取消时：当前组无 AIMessage 则删除整组并回填输入框，否则追加停止消息"""
-        try:
-            state = await self.agent.aget_state(self.session_mgr.config)
-            messages: list[BaseMessage] = state.values.get("messages", [])
-
-            # 找到最后一组消息（以最后一个 HumanMessage 开头）
-            last_human_idx = -1
-            for i, msg in enumerate(messages):
-                if isinstance(msg, HumanMessage):
-                    last_human_idx = i
-
-            if last_human_idx >= 0:
-                current_group = messages[last_human_idx:]
-                has_ai = any(isinstance(m, AIMessage) for m in current_group)
-
-                if not has_ai:
-                    # 当前组没有 AIMessage，删除整组并回填输入框
-                    await self._delete_messages([m.id for m in current_group])
-                    self._interrupt_buffer = user_input.strip()
-                    return
-
-            # 有 AIMessage，追加一条停止消息
-            error_msg = AIMessage(
-                "该消息意外停止",
-                additional_kwargs={"error": True, "composed": True},
-            )
-            await self.agent.aupdate_state(
-                self.session_mgr.config,
-                {"messages": [error_msg]},
-                as_node="model",
-            )
-        except Exception:
-            pass
+        deleted = await self._cleanup_last_turn("该消息意外停止")
+        if deleted is not None:
+            self._interrupt_buffer = user_input.strip()
 
     async def _delete_messages(self, message_ids: list[str]) -> None:
         """删除指定消息"""
@@ -1495,13 +1451,7 @@ class ChatREPL:
                         _data["default"] = fallback
                         save_model_json(_data)
                         try:
-                            self.agent = await asyncio.to_thread(
-                                build_agent,
-                                self.model_config,
-                                self.checkpointer,
-                                None,
-                                self.yolo,
-                            )
+                            await self._rebuild_agent()
                             # 重建 context 以使用新模型配置
                             skill_agent_context = SkillAgentContext(
                                 skill_loader=self._skill_loader,

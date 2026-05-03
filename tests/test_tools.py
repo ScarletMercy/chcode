@@ -9,7 +9,7 @@ from chcode.utils.tools import (
     _coerce_json_list,
     _html_to_markdown,
     _is_binary_content_type,
-    _ensure_tavily_key,
+    _load_tavily_key,
     resolve_path,
 )
 
@@ -65,27 +65,12 @@ class TestResolvePath:
         assert result == abs_path
 
 
-class TestEnsureTavilyKey:
-    def test_no_env_no_file(self, monkeypatch, tmp_path):
-        import chcode.utils.tools as mod
-        mod._tavily_api_key = ""
-        mod._tavily_key_loaded = False
+class TestLoadTavilyKey:
+    def test_no_env_no_file(self, monkeypatch):
         monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-        monkeypatch.setattr(mod, "SETTING_JSON", tmp_path / "nope.json")
-        _ensure_tavily_key()
-        assert mod._tavily_api_key == ""
+        with patch("chcode.config.load_tavily_api_key", return_value=""):
+            assert _load_tavily_key() == ""
 
-    def test_env_key(self, monkeypatch):
-        import chcode.utils.tools as mod
-        mod._tavily_api_key = ""
-        mod._tavily_key_loaded = False
-        monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")
-        _ensure_tavily_key()
-        assert mod._tavily_api_key == "tvly-test"
-
-    def test_cached(self):
-        import chcode.utils.tools as mod
-        mod._tavily_api_key = "cached_key"
-        mod._tavily_key_loaded = True
-        _ensure_tavily_key()
-        assert mod._tavily_api_key == "cached_key"
+    def test_from_config(self, monkeypatch):
+        with patch("chcode.config.load_tavily_api_key", return_value="tvly-test"):
+            assert _load_tavily_key() == "tvly-test"

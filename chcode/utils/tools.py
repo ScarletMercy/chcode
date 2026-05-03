@@ -37,50 +37,34 @@ from chcode.utils.shell import (
     interpret_command_result,
 )
 from chcode.utils.skill_loader import SkillAgentContext
+from chcode.utils.multimodal import _ALL_MEDIA_EXTS, _VIDEO_EXTS
 from tavily import TavilyClient
 
 console = Console()
 
-CONFIG_DIR = Path.home() / ".chat"
-SETTING_JSON = CONFIG_DIR / "chagent.json"
-
-_tavily_api_key = ""
-_tavily_key_loaded = False
 _tavily_client: TavilyClient | None = None
 
 
-def _ensure_tavily_key() -> None:
-    global _tavily_api_key, _tavily_key_loaded
-    if _tavily_key_loaded:
-        return
-    _tavily_key_loaded = True
-    _tavily_api_key = os.getenv("TAVILY_API_KEY", "")
-    if not _tavily_api_key and SETTING_JSON.exists():
-        try:
-            data = json.loads(SETTING_JSON.read_text(encoding="utf-8"))
-            api_key = data.get("tavily_api_key", "")
-            if api_key:
-                _tavily_api_key = api_key
-        except Exception:
-            pass
+def _load_tavily_key() -> str:
+    from chcode.config import load_tavily_api_key
+    return load_tavily_api_key()
 
 
 def get_tavily_client() -> TavilyClient | None:
     """获取 Tavily 客户端（懒加载）"""
     global _tavily_client
-    _ensure_tavily_key()
     if _tavily_client is not None:
         return _tavily_client
-    if not _tavily_api_key:
+    api_key = _load_tavily_key()
+    if not api_key:
         return None
-    _tavily_client = TavilyClient(api_key=_tavily_api_key)
+    _tavily_client = TavilyClient(api_key=api_key)
     return _tavily_client
 
 
 def update_tavily_api_key(api_key: str) -> None:
     """运行时更新 Tavily API Key"""
-    global _tavily_api_key, _tavily_client
-    _tavily_api_key = api_key
+    global _tavily_client
     if api_key:
         _tavily_client = TavilyClient(api_key=api_key)
     else:
@@ -149,7 +133,6 @@ uv run {scripts_dir}/script_name.py [args]
         else ""
     )
 
-    # 构建路径信息
     path_info = (
         f"""
 ## Skill Path Info
@@ -168,26 +151,15 @@ uv run {scripts_dir}/script_name.py [args]
 """
 
 
-def _create_shell_session(workdir: str) -> ShellSession:
-    is_windows = platform.system() == "Windows"
-    if is_windows:
-        bash_provider = BashProvider()
-        if bash_provider.is_available:
-            session = ShellSession(bash_provider)
+def _create_shell_session(workdir: str) -> ShellSession | None:
+    providers = [BashProvider()]
+    if platform.system() == "Windows":
+        providers.append(PowerShellProvider())
+    for provider in providers:
+        if provider.is_available:
+            session = ShellSession(provider)
             session.cwd = workdir
             return session
-        ps_provider = PowerShellProvider()
-        if ps_provider.is_available:
-            session = ShellSession(ps_provider)
-            session.cwd = workdir
-            return session
-    else:
-        bash_provider = BashProvider()
-        if bash_provider.is_available:
-            session = ShellSession(bash_provider)
-            session.cwd = workdir
-            return session
-
     return None
 
 
@@ -706,6 +678,13 @@ async def web_search(
     )
 
 
+_STATUS_MARKERS = {
+    "completed": "[x]",
+    "in_progress": "[>]",
+    "cancelled": "[-]",
+    "pending": "[ ]",
+}
+
 FETCH_TIMEOUT = 60.0
 MAX_MARKDOWN_LENGTH = 100_000
 MAX_URL_LENGTH = 2000
@@ -811,8 +790,6 @@ async def web_fetch(url: str) -> dict:
             )
 
         result = f"Content from {url}:\n\n{markdown_content}\n\n---"
-        # resp=model.invoke(f"Extract effective message from {url}:\n\n{markdown_content}")
-        # result=resp.content
 
         return {
             "url": url,
@@ -852,14 +829,19 @@ async def web_fetch(url: str) -> dict:
         }
 
 
-async def _checkbox_with_other_async(
-    question: str, options: list[str]
-) -> list[str] | None:
+async def _interactive_list_async(
+    question: str,
+    options: list[str],
+    *,
+    allow_multiple: bool = False,
+) -> list[str] | str | None:
     """
-    多选 + 自定义输入框（异步版本）
+    交互式列表选择（单选 / 多选） + 自定义输入框。
 
-    空格切换选中，Tab 切换列表/输入框焦点，Enter 提交。
-    输入行始终可见，用于输入不在列表中的自定义选项。
+    allow_multiple=False → 单选模式，返回 str | None
+    allow_multiple=True  → 多选模式，返回 list[str] | None
+
+    空格切换选中（仅多选），Tab 切换列表/输入框焦点，Enter 提交。
     """
     from prompt_toolkit import Application
     from prompt_toolkit.buffer import Buffer
@@ -875,7 +857,7 @@ async def _checkbox_with_other_async(
     input_buffer = Buffer()
     input_row_idx = len(options)
 
-    class _CheckboxControl(UIControl):
+    class _ListControl(UIControl):
         def __init__(self, opts: list[str]):
             self.opts = opts
             self.selected = 0
@@ -895,27 +877,24 @@ async def _checkbox_with_other_async(
         def create_content(self, width: int, height: int) -> UIContent:
             lines = []
             for i, opt in enumerate(self.opts):
-                marker = "[√]" if i in self.checked else "[ ]"
-                prefix = "  ❯ " if i == self.selected else "    "
-                line = f"{prefix}{marker} {opt}"
-                style = "bold" if i == self.selected else ""
-                lines.append([(style, line)])
+                if allow_multiple:
+                    marker = "[√]" if i in self.checked else "[ ]"
+                    line = f"{'  ❯ ' if i == self.selected else '    '}{marker} {opt}"
+                else:
+                    line = f"{'  ❯ ' if i == self.selected else '    '}{opt}"
+                lines.append([("bold" if i == self.selected else "", line)])
 
             input_text = input_buffer.text or ""
             input_prefix = "  ❯ " if self.selected == input_row_idx else "    "
-            input_line = f"{input_prefix}> {input_text}"
             input_style = "bold" if self.selected == input_row_idx else ""
-            lines.append([(input_style, input_line)])
+            lines.append([(input_style, f"{input_prefix}> {input_text}")])
 
             def get_line(i):
                 return lines[i] if i < len(lines) else [("", "")]
 
-            return UIContent(
-                get_line=get_line,
-                line_count=len(lines),
-            )
+            return UIContent(get_line=get_line, line_count=len(lines))
 
-    control = _CheckboxControl(options)
+    control = _ListControl(options)
 
     question_window = Window(
         height=1,
@@ -923,7 +902,6 @@ async def _checkbox_with_other_async(
         dont_extend_height=True,
     )
     control_window = Window(content=control)
-
     input_edit = Window(
         content=BufferControl(buffer=input_buffer),
         height=1,
@@ -934,6 +912,16 @@ async def _checkbox_with_other_async(
     kb = KeyBindings()
     _exiting = False
 
+    def _exit(e, result):
+        nonlocal _exiting
+        if _exiting:
+            return
+        _exiting = True
+        try:
+            e.app.exit(result=result)
+        except Exception:
+            pass
+
     @kb.add("up")
     def _up(e):
         nonlocal _exiting
@@ -941,10 +929,7 @@ async def _checkbox_with_other_async(
             return
         if control.selected > 0:
             control.selected -= 1
-            if control.selected < input_row_idx:
-                e.app.layout.focus(control_window)
-            else:
-                e.app.layout.focus(input_edit)
+            e.app.layout.focus(control_window if control.selected < input_row_idx else input_edit)
         e.app.invalidate()
 
     @kb.add("down")
@@ -971,174 +956,15 @@ async def _checkbox_with_other_async(
             e.app.layout.focus(input_edit)
         e.app.invalidate()
 
-    @kb.add(" ")
-    def _space(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        if control.selected < input_row_idx:
-            control.checked ^= {control.selected}
-        e.app.invalidate()
-
-    @kb.add("enter")
-    def _enter(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        _exiting = True
-        selected_names = [control.opts[i] for i in sorted(control.checked)]
-        custom = input_buffer.text.strip()
-        if custom:
-            selected_names.append(custom)
-        try:
-            e.app.exit(result=selected_names if selected_names else None)
-        except Exception:
-            pass
-
-    @kb.add("escape")
-    def _esc(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        _exiting = True
-        try:
-            e.app.exit(result=None)
-        except Exception:
-            pass
-
-    @kb.add("c-c")
-    def _cancel(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        _exiting = True
-        try:
-            e.app.exit(result=None)
-        except Exception:
-            pass
-
-    layout = Layout(HSplit([question_window, control_window, input_edit]))
-    app = Application(
-        layout=layout, key_bindings=kb, full_screen=False, erase_when_done=True
-    )
-    result = await app.run_async()
-    if result is not None:
-        console.print(f"[cyan]?[/cyan] {question} [bold]{', '.join(result)}[/bold]")
-    return result
-
-
-async def _select_with_other_async(question: str, options: list[str]) -> str | None:
-    """
-    下拉选择 + 自定义输入框（异步版本）。
-    输入行始终可见，用上下箭头或 Tab 移动到输入行直接输入。
-    """
-    from prompt_toolkit import Application
-    from prompt_toolkit.buffer import Buffer
-    from prompt_toolkit.key_binding import KeyBindings
-    from prompt_toolkit.layout import Layout, UIContent
-    from prompt_toolkit.layout.controls import (
-        FormattedTextControl,
-        BufferControl,
-        UIControl,
-    )
-    from prompt_toolkit.layout.containers import HSplit, Window
-
-    input_buffer = Buffer()
-    input_row_idx = len(options)
-
-    class _SelectControl(UIControl):
-        def __init__(self, opts: list[str]):
-            self.opts = opts
-            self.selected = 0
-
-        def is_focusable(self) -> bool:
-            return True
-
-        def get_invalidate_events(self):
-            yield input_buffer.on_text_changed
-
-        def preferred_height(
-            self, width, max_available_height, wrap_lines, get_line_prefix
-        ):
-            return len(self.opts) + 1
-
-        def create_content(self, width: int, height: int) -> UIContent:
-            lines = []
-            for i, opt in enumerate(self.opts):
-                prefix = "  ❯ " if i == self.selected else "    "
-                line = f"{prefix}{opt}"
-                style = "bold" if i == self.selected else ""
-                lines.append([(style, line)])
-
-            input_text = input_buffer.text or ""
-            input_prefix = "  ❯ " if self.selected == input_row_idx else "    "
-            input_line = f"{input_prefix}> {input_text}"
-            input_style = "bold" if self.selected == input_row_idx else ""
-            lines.append([(input_style, input_line)])
-
-            def get_line(i):
-                return lines[i] if i < len(lines) else [("", "")]
-
-            return UIContent(
-                get_line=get_line,
-                line_count=len(lines),
-            )
-
-    control = _SelectControl(options)
-
-    question_window = Window(
-        height=1,
-        content=FormattedTextControl(text=f"? {question}"),
-        dont_extend_height=True,
-    )
-    control_window = Window(content=control)
-
-    input_edit = Window(
-        content=BufferControl(buffer=input_buffer),
-        height=1,
-        dont_extend_height=True,
-        char=" ",
-    )
-
-    kb = KeyBindings()
-    _exiting = False
-
-    @kb.add("up")
-    def _up(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        if control.selected > 0:
-            control.selected -= 1
+    if allow_multiple:
+        @kb.add(" ")
+        def _space(e):
+            nonlocal _exiting
+            if _exiting:
+                return
             if control.selected < input_row_idx:
-                e.app.layout.focus(control_window)
-            else:
-                e.app.layout.focus(input_edit)
-        e.app.invalidate()
-
-    @kb.add("down")
-    def _down(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        if control.selected < input_row_idx:
-            control.selected += 1
-            if control.selected == input_row_idx:
-                e.app.layout.focus(input_edit)
-        e.app.invalidate()
-
-    @kb.add("tab")
-    def _tab(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        if control.selected == input_row_idx:
-            control.selected = 0
-            e.app.layout.focus(control_window)
-        else:
-            control.selected = input_row_idx
-            e.app.layout.focus(input_edit)
-        e.app.invalidate()
+                control.checked ^= {control.selected}
+            e.app.invalidate()
 
     @kb.add("enter")
     def _enter(e):
@@ -1146,42 +972,38 @@ async def _select_with_other_async(question: str, options: list[str]) -> str | N
         if _exiting:
             return
         _exiting = True
-        if control.selected == input_row_idx:
-            text = input_buffer.text.strip()
-            if text:
-                try:
-                    e.app.exit(result=text)
-                except Exception:
-                    pass
-            else:
-                _exiting = False
-        else:
+        if allow_multiple:
+            selected_names = [control.opts[i] for i in sorted(control.checked)]
+            custom = input_buffer.text.strip()
+            if custom:
+                selected_names.append(custom)
             try:
-                e.app.exit(result=control.opts[control.selected])
+                e.app.exit(result=selected_names if selected_names else None)
             except Exception:
                 pass
+        else:
+            if control.selected == input_row_idx:
+                text = input_buffer.text.strip()
+                if text:
+                    try:
+                        e.app.exit(result=text)
+                    except Exception:
+                        pass
+                else:
+                    _exiting = False
+            else:
+                try:
+                    e.app.exit(result=control.opts[control.selected])
+                except Exception:
+                    pass
 
     @kb.add("escape")
     def _esc(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        _exiting = True
-        try:
-            e.app.exit(result=None)
-        except Exception:
-            pass
+        _exit(e, None)
 
     @kb.add("c-c")
     def _cancel(e):
-        nonlocal _exiting
-        if _exiting:
-            return
-        _exiting = True
-        try:
-            e.app.exit(result=None)
-        except Exception:
-            pass
+        _exit(e, None)
 
     layout = Layout(HSplit([question_window, control_window, input_edit]))
     app = Application(
@@ -1189,7 +1011,8 @@ async def _select_with_other_async(question: str, options: list[str]) -> str | N
     )
     result = await app.run_async()
     if result is not None:
-        console.print(f"[cyan]?[/cyan] {question} [bold]{result}[/bold]")
+        display = ", ".join(result) if isinstance(result, list) else result
+        console.print(f"[cyan]?[/cyan] {question} [bold]{display}[/bold]")
     return result
 
 
@@ -1249,17 +1072,12 @@ async def ask_user(
         return f"user_answer:\n{answer}"
 
     try:
-        if is_multiple:
-            selected = await _checkbox_with_other_async(question, options)
-            if selected is None:
-                return "user_answer:\n(用户取消)"
-            result = ", ".join(selected)
-        else:
-            answer = await _select_with_other_async(question, options)
-            if answer is None:
-                return "user_answer:\n(用户取消)"
-            result = answer
-        return f"user_answer:\n{result}"
+        selected = await _interactive_list_async(question, options, allow_multiple=is_multiple)
+        if selected is None:
+            return "user_answer:\n(用户取消)"
+        if isinstance(selected, list):
+            selected = ", ".join(selected)
+        return f"user_answer:\n{selected}"
     except Exception as e:
         return f"user_answer:\n(询问失败: {e})"
 
@@ -1295,21 +1113,17 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
             answers.append(f"Q{i}: {answer}")
         else:
             try:
-                if q_multiple:
-                    selected = await _checkbox_with_other_async(
-                        "选择（空格选择，回车确认）:", q_options
-                    )
-                    if selected is None:
-                        answers.append(f"Q{i}: (用户取消)")
-                        continue
-                    result = ", ".join(selected)
-                else:
-                    selected = await _select_with_other_async(q_text, q_options)
-                    if selected is None:
-                        answers.append(f"Q{i}: (用户取消)")
-                        continue
-                    result = selected
-                answers.append(f"Q{i}: {result}")
+                selected = await _interactive_list_async(
+                    "选择（空格选择，回车确认）:" if q_multiple else q_text,
+                    q_options,
+                    allow_multiple=q_multiple,
+                )
+                if selected is None:
+                    answers.append(f"Q{i}: (用户取消)")
+                    continue
+                if isinstance(selected, list):
+                    selected = ", ".join(selected)
+                answers.append(f"Q{i}: {selected}")
             except Exception as e:
                 answers.append(f"Q{i}: (询问失败: {e})")
 
@@ -1513,9 +1327,7 @@ Args:
         status = t.get("status", "pending")
         content = t.get("content", "")
         priority = t.get("priority", "medium")
-        marker = {"completed": "[x]", "in_progress": "[>]", "cancelled": "[-]"}.get(
-            status, "[ ]"
-        )
+        marker = _STATUS_MARKERS.get(status, "[ ]")
         lines.append(f"  {marker} {content} (priority: {priority})")
 
     output = "\n".join(lines)
@@ -1524,21 +1336,13 @@ Args:
     else:
         output = "All todos completed." if todo_dicts else "Todo list cleared."
 
-    # 直接打印到终端（chat.py 流式循环不渲染 ToolMessage 结果）
-    # 使用 Text 对象避免 [x] 等方括号被 Rich markup 解析器吞掉
     if todo_dicts:
         console.print(Text(f"\n  {active} active todo(s):", style="bold green"))
         for t in todo_dicts:
             status = t.get("status", "pending")
             content = t.get("content", "")
             priority = t.get("priority", "medium")
-            marker_map = {
-                "completed": "[x]",
-                "in_progress": "[>]",
-                "cancelled": "[-]",
-                "pending": "[ ]",
-            }
-            marker = marker_map.get(status, "[ ]")
+            marker = _STATUS_MARKERS.get(status, "[ ]")
             ps = {"high": "red bold", "medium": "yellow", "low": "dim"}.get(
                 priority, ""
             )
@@ -1555,23 +1359,7 @@ Args:
 # vision — 视觉理解工具（通过 ModelScope API 调用视觉模型）
 # ---------------------------------------------------------------------------
 
-_VISION_SUPPORTED_EXTS = frozenset(
-    {
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".bmp",
-        ".webp",
-        ".tiff",
-        ".tif",
-        ".mp4",
-        ".mov",
-        ".avi",
-        ".mkv",
-        ".webm",
-    }
-)
+_VISION_SUPPORTED_EXTS = _ALL_MEDIA_EXTS
 @tool
 async def vision(
     image_path: str,
@@ -1607,10 +1395,10 @@ async def vision(
             f"Supported formats: {', '.join(sorted(_VISION_SUPPORTED_EXTS))}"
         )
 
-    # 读取并 base64 编码（使用共享工具函数）
     ext = path.suffix.lower().lstrip(".")
     is_video = ext in {"mp4", "mov", "avi", "mkv", "webm"}
 
+    # 读取并 base64 编码（使用共享工具函数）
     try:
         from chcode.utils.multimodal import encode_media_as_base64
 
@@ -1703,6 +1491,14 @@ async def vision(
             continue
 
     return f"vision:\n[FAILED] 所有视觉模型均调用失败\n最后错误: {last_error}"
+
+
+# Backward-compatible aliases
+async def _checkbox_with_other_async(question: str, options: list[str]) -> list[str] | None:
+    return await _interactive_list_async(question, options, allow_multiple=True)
+
+async def _select_with_other_async(question: str, options: list[str]) -> str | None:
+    return await _interactive_list_async(question, options, allow_multiple=False)
 
 
 ALL_TOOLS = [

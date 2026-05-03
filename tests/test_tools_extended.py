@@ -17,7 +17,7 @@ from chcode.utils.tools import (
     _is_binary_content_type,
     _ask_multi_questions,
     resolve_path,
-    _ensure_tavily_key,
+    _load_tavily_key,
     _todo_path,
     _save_todos,
     TodoItem,
@@ -38,63 +38,18 @@ def _make_runtime(**kwargs):
 
 
 # ============================================================================
-# Lines 59-64: _ensure_tavily_key — loading from SETTING_JSON file
+# _load_tavily_key — delegates to config.load_tavily_api_key
 # ============================================================================
 
 
-class TestEnsureTavilyKeyFromFile:
-    def test_loads_key_from_setting_json(self, tmp_path, monkeypatch):
-        """Lines 59-63: Valid JSON with tavily_api_key is read from file."""
-        import chcode.utils.tools as mod
-        mod._tavily_api_key = ""
-        mod._tavily_key_loaded = False
-        monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-        setting_file = tmp_path / "chagent.json"
-        setting_file.write_text(
-            json.dumps({"tavily_api_key": "tvly-filekey"}), encoding="utf-8"
-        )
-        monkeypatch.setattr(mod, "SETTING_JSON", setting_file)
-        _ensure_tavily_key()
-        assert mod._tavily_api_key == "tvly-filekey"
+class TestLoadTavilyKey:
+    def test_delegates_to_config(self):
+        with patch("chcode.config.load_tavily_api_key", return_value="tvly-filekey"):
+            assert _load_tavily_key() == "tvly-filekey"
 
-    def test_empty_key_in_setting_json(self, tmp_path, monkeypatch):
-        """Lines 59-63: JSON has tavily_api_key but it's empty string."""
-        import chcode.utils.tools as mod
-        mod._tavily_api_key = ""
-        mod._tavily_key_loaded = False
-        monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-        setting_file = tmp_path / "chagent.json"
-        setting_file.write_text(
-            json.dumps({"tavily_api_key": ""}), encoding="utf-8"
-        )
-        monkeypatch.setattr(mod, "SETTING_JSON", setting_file)
-        _ensure_tavily_key()
-        assert mod._tavily_api_key == ""
-
-    def test_missing_tavily_key_in_json(self, tmp_path, monkeypatch):
-        """Lines 59-63: JSON exists but has no tavily_api_key field."""
-        import chcode.utils.tools as mod
-        mod._tavily_api_key = ""
-        mod._tavily_key_loaded = False
-        monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-        setting_file = tmp_path / "chagent.json"
-        setting_file.write_text(json.dumps({"other": "value"}), encoding="utf-8")
-        monkeypatch.setattr(mod, "SETTING_JSON", setting_file)
-        _ensure_tavily_key()
-        assert mod._tavily_api_key == ""
-
-    def test_invalid_json_in_setting_file(self, tmp_path, monkeypatch):
-        """Line 64: Invalid JSON triggers except branch."""
-        import chcode.utils.tools as mod
-        mod._tavily_api_key = ""
-        mod._tavily_key_loaded = False
-        monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-        setting_file = tmp_path / "chagent.json"
-        setting_file.write_text("not json {{{", encoding="utf-8")
-        monkeypatch.setattr(mod, "SETTING_JSON", setting_file)
-        _ensure_tavily_key()
-        # Should not crash, key stays empty
-        assert mod._tavily_api_key == ""
+    def test_returns_empty(self):
+        with patch("chcode.config.load_tavily_api_key", return_value=""):
+            assert _load_tavily_key() == ""
 
 
 # ============================================================================
@@ -608,12 +563,12 @@ class TestWebFetchExtended:
 
 class TestAskUserExtended:
     async def test_multi_select_cancel(self):
-        """Line 1255: _checkbox_with_other_async returns None -> cancel."""
+        """Line 1255: _interactive_list_async returns None -> cancel."""
         from chcode.utils.tools import ask_user
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
         with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._checkbox_with_other_async", new_callable=AsyncMock, return_value=None):
+             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=None):
             out = await ask_user.coroutine("pick?", options=["A", "B"], is_multiple=True)
         assert "\u7528\u6237\u53d6\u6d88" in out  # Chinese for "user cancelled"
 
@@ -623,7 +578,7 @@ class TestAskUserExtended:
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
         with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._select_with_other_async", new_callable=AsyncMock, side_effect=RuntimeError("boom")):
+             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=RuntimeError("boom")):
             out = await ask_user.coroutine("pick?", options=["A"])
         assert "fail" in out.lower() or "boom" in out
 
@@ -633,37 +588,37 @@ class TestAskUserExtended:
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
         with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._checkbox_with_other_async", new_callable=AsyncMock, side_effect=RuntimeError("boom")):
+             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=RuntimeError("boom")):
             out = await ask_user.coroutine("pick?", options=["A"], is_multiple=True)
         assert "fail" in out.lower() or "boom" in out
 
 
 class TestAskMultiQuestionsExtended:
     async def test_checkbox_cancel_per_question(self):
-        """Lines 1302-1303: _checkbox returns None for a multi-select question."""
+        """Lines 1302-1303: _interactive_list returns None for a multi-select question."""
         qs = [{"question": "pick?", "options": ["A", "B"], "is_multiple": True}]
-        with patch("chcode.utils.tools._checkbox_with_other_async", new_callable=AsyncMock, return_value=None):
+        with patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=None):
             out = await _ask_multi_questions(qs)
         assert "\u7528\u6237\u53d6\u6d88" in out  # Chinese for "user cancelled"
 
     async def test_select_cancel_per_question(self):
-        """Lines 1308-1309: _select returns None for a single-select question."""
+        """Lines 1308-1309: _interactive_list returns None for a single-select question."""
         qs = [{"question": "pick?", "options": ["A", "B"]}]
-        with patch("chcode.utils.tools._select_with_other_async", new_callable=AsyncMock, return_value=None):
+        with patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=None):
             out = await _ask_multi_questions(qs)
         assert "\u7528\u6237\u53d6\u6d88" in out  # Chinese for "user cancelled"
 
     async def test_checkbox_exception_per_question(self):
         """Lines 1313-1314: Exception in checkbox question."""
         qs = [{"question": "pick?", "options": ["A"], "is_multiple": True}]
-        with patch("chcode.utils.tools._checkbox_with_other_async", new_callable=AsyncMock, side_effect=RuntimeError("err")):
+        with patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=RuntimeError("err")):
             out = await _ask_multi_questions(qs)
         assert "fail" in out.lower() or "err" in out
 
     async def test_select_exception_per_question(self):
         """Lines 1313-1314: Exception in select question."""
         qs = [{"question": "pick?", "options": ["A"]}]
-        with patch("chcode.utils.tools._select_with_other_async", new_callable=AsyncMock, side_effect=RuntimeError("err")):
+        with patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=RuntimeError("err")):
             out = await _ask_multi_questions(qs)
         assert "fail" in out.lower() or "err" in out
 
@@ -674,7 +629,7 @@ class TestAskMultiQuestionsExtended:
             {"question": "pick?", "options": ["A", "B"]},
         ]
         with patch("chcode.utils.tools.asyncio.to_thread", new_callable=AsyncMock, return_value="Alice"), \
-             patch("chcode.utils.tools._select_with_other_async", new_callable=AsyncMock, return_value="B"):
+             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value="B"):
             out = await _ask_multi_questions(qs)
         assert "Alice" in out
         assert "B" in out
@@ -1685,61 +1640,45 @@ class TestTodoWrite:
 
 
 class TestGetTavilyClient:
-    def test_returns_cached_client(self, monkeypatch):
-        """Lines 72-73: Returns cached client if already initialized."""
+    def test_returns_cached_client(self):
         import chcode.utils.tools as mod
 
         mock_client = MagicMock()
         mod._tavily_client = mock_client
-        mod._tavily_api_key = "cached_key"
-        monkeypatch.delenv("TAVILY_API_KEY", raising=False)
 
         result = mod.get_tavily_client()
         assert result is mock_client
 
-    def test_no_api_key_returns_none(self, monkeypatch, tmp_path):
-        """Lines 74-75: No API key configured returns None."""
+    def test_no_api_key_returns_none(self):
         import chcode.utils.tools as mod
 
         mod._tavily_client = None
-        mod._tavily_api_key = ""
-        mod._tavily_key_loaded = False
-        monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-        # Ensure no settings file exists
-        monkeypatch.setattr(mod, "SETTING_JSON", tmp_path / "nonexistent.json")
-
-        result = mod.get_tavily_client()
+        with patch("chcode.utils.tools._load_tavily_key", return_value=""):
+            result = mod.get_tavily_client()
         assert result is None
 
-    def test_creates_new_client_with_api_key(self, monkeypatch):
-        """Lines 76-77: Creates and returns new TavilyClient."""
+    def test_creates_new_client_with_api_key(self):
         import chcode.utils.tools as mod
-        from tavily import TavilyClient
 
         mod._tavily_client = None
-        mod._tavily_api_key = "tvly-test123"
-        mod._tavily_key_loaded = True
-
-        with patch("chcode.utils.tools.TavilyClient") as mock_tavily:
-            mock_client = MagicMock()
-            mock_tavily.return_value = mock_client
-            result = mod.get_tavily_client()
-            assert result is mock_client
-            mock_tavily.assert_called_once_with(api_key="tvly-test123")
+        with patch("chcode.utils.tools._load_tavily_key", return_value="tvly-test123"):
+            with patch("chcode.utils.tools.TavilyClient") as mock_tavily:
+                mock_client = MagicMock()
+                mock_tavily.return_value = mock_client
+                result = mod.get_tavily_client()
+                assert result is mock_client
+                mock_tavily.assert_called_once_with(api_key="tvly-test123")
 
 
 # ============================================================================
-# Lines 83-87: update_tavily_api_key — set key, create client, set to None
+# update_tavily_api_key — set key, create client, set to None
 # ============================================================================
 
 
 class TestUpdateTavilyApiKey:
-    def test_sets_api_key_and_creates_client(self, monkeypatch):
-        """Lines 83-85: Sets API key and creates new TavilyClient."""
+    def test_sets_api_key_and_creates_client(self):
         import chcode.utils.tools as mod
-        from tavily import TavilyClient
 
-        mod._tavily_api_key = ""
         mod._tavily_client = None
 
         with patch("chcode.utils.tools.TavilyClient") as mock_tavily:
@@ -1747,19 +1686,15 @@ class TestUpdateTavilyApiKey:
             mock_tavily.return_value = mock_client
             mod.update_tavily_api_key("tvly-newkey")
 
-        assert mod._tavily_api_key == "tvly-newkey"
         assert mod._tavily_client is mock_client
 
-    def test_sets_to_none_with_empty_key(self, monkeypatch):
-        """Lines 86-87: Empty API key sets client to None."""
+    def test_sets_to_none_with_empty_key(self):
         import chcode.utils.tools as mod
 
-        mod._tavily_api_key = "old_key"
         mod._tavily_client = MagicMock()
 
         mod.update_tavily_api_key("")
 
-        assert mod._tavily_api_key == ""
         assert mod._tavily_client is None
 
 
@@ -2203,7 +2138,7 @@ class TestAskUserCheckboxEmpty:
         from chcode.utils.tools import ask_user
 
         with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._checkbox_with_other_async", new_callable=AsyncMock, return_value=[]):
+             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=[]):
             result = await ask_user.ainvoke(
                 {"question": "Pick?", "options": ["A", "B"], "is_multiple": True}
             )
@@ -2217,7 +2152,7 @@ class TestAskUserSelectExceptions:
         from chcode.utils.tools import ask_user
 
         with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._select_with_other_async", new_callable=AsyncMock, side_effect=ValueError("UI error")):
+             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=ValueError("UI error")):
             result = await ask_user.ainvoke({"question": "Pick?", "options": ["A"]})
         assert "失败" in result or "UI error" in result
 
@@ -2226,7 +2161,7 @@ class TestAskUserSelectExceptions:
         from chcode.utils.tools import ask_user
 
         with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._checkbox_with_other_async", new_callable=AsyncMock, side_effect=RuntimeError("Check error")):
+             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=RuntimeError("Check error")):
             result = await ask_user.ainvoke(
                 {"question": "Pick?", "options": ["A", "B"], "is_multiple": True}
             )
@@ -2241,7 +2176,7 @@ class TestAskMultiQuestionsCheckbox:
         qs = [{"question": "Pick?", "options": ["A", "B", "C"], "is_multiple": True}]
 
         with patch("chcode.utils.tools.console"), \
-             patch("chcode.utils.tools._checkbox_with_other_async", new_callable=AsyncMock, return_value=["A", "C"]):
+             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=["A", "C"]):
             out = await _ask_multi_questions(qs)
         assert "A, C" in out
 
@@ -2341,7 +2276,7 @@ class TestAskUserSelectCancel:
         from chcode.utils.tools import ask_user
 
         with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._select_with_other_async", new_callable=AsyncMock, return_value=None):
+             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=None):
             out = await ask_user.coroutine("pick?", options=["A", "B"])
         assert "\u7528\u6237\u53d6\u6d88" in out  # Chinese for "user cancelled"
 
@@ -2531,7 +2466,7 @@ class TestAskUserSingleSelect:
         from chcode.utils.tools import ask_user
 
         with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._select_with_other_async", new_callable=AsyncMock, return_value="Option A"):
+             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value="Option A"):
             result = await ask_user.ainvoke(
                 {"question": "Pick one", "options": ["A", "B", "C"], "is_multiple": False}
             )
