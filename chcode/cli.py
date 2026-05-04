@@ -8,6 +8,7 @@ import asyncio
 import os
 import sys
 import warnings
+from importlib.metadata import version as _pkg_version
 
 warnings.filterwarnings("ignore", message="urllib3.*doesn't match a supported version")
 warnings.filterwarnings("ignore", message="chardet.*doesn't match a supported version")
@@ -84,7 +85,7 @@ def main(
 ):
     """ChCode — 终端 AI 编程助手"""
     if version:
-        console.print("chcode v0.1.0")
+        console.print(f"chcode v{_pkg_version('chcode')}")
         raise typer.Exit()
 
     if ctx.invoked_subcommand is not None:
@@ -150,7 +151,7 @@ def homepage():
 @app.command()
 def version():
     """显示版本"""
-    console.print("chcode v0.1.0")
+    console.print(f"chcode v{_pkg_version('chcode')}")
 
 
 if __name__ == "__main__":

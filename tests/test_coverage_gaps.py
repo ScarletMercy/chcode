@@ -1440,7 +1440,7 @@ class TestCLIMainVersion:
         runner = CliRunner()
         result = runner.invoke(app, ["version"])
         assert result.exit_code == 0
-        assert "chcode v0.1.0" in result.stdout
+        assert "chcode v" in result.stdout
 
 
 class TestCLIMainCallback:
