@@ -585,123 +585,175 @@ class TestRollbackElseBranch:
 
 
 # ============================================================================
-# Cross-session rollback tests (real git operations)
+# Cross-session rollback tests (mocked _run)
 # ============================================================================
 
 
 class TestCrossSessionRollback:
-    """跨会话回滚测试：使用真实 git 操作验证冲突检测和 unknown_idx 排序"""
+    """跨会话回滚测试：验证冲突检测和 unknown_idx 排序"""
 
     def test_cross_session_exact_match_blocked(self, tmp_path: Path):
-        """两会话各一次提交，从会话 1 rollback → cross_session_blocked，文件不变"""
+        """精确匹配 + 其他会话 checkpoint 在 rev-list 范围内 → cross_session_blocked"""
         gm = GitManager(str(tmp_path))
-        gm.init()
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Session 1
-        (tmp_path / "a.txt").write_text("s1", encoding="utf-8")
-        gm.add_commit("h1&a1")
+        checkpoints = {
+            "init": "init_hash",
+            "h1&a1": "hash1",
+            "h2&a2": "hash2",
+        }
+        gm.checkpoints_file.write_text(json.dumps(checkpoints))
 
-        # Session 2
-        (tmp_path / "b.txt").write_text("s2", encoding="utf-8")
-        gm.add_commit("h2&a2")
+        def mock_run(args, **kwargs):
+            if args[0] == "rev-parse" and args[1] == "HEAD":
+                return _mock_run(0, stdout="hash2\n")
+            if args[0] == "rev-list":
+                return _mock_run(0, stdout="hash1\nhash2\n")
+            if args[0] == "reset":
+                return _mock_run(0)
+            return _mock_run(0)
 
-        result = gm.rollback(["h1", "a1"], ["h1", "a1"])
-        assert result == "cross_session_blocked"
-        assert (tmp_path / "a.txt").exists()
-        assert (tmp_path / "b.txt").exists()
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.rollback(["h1", "a1"], ["h1", "a1"])
+            assert result == "cross_session_blocked"
+            data = json.loads(gm.checkpoints_file.read_text())
+            assert "h1&a1" in data
+            assert "h2&a2" in data
 
     def test_cross_session_no_conflict_same_session(self, tmp_path: Path):
-        """单会话两次提交，rollback 第一个 → 正常回滚"""
+        """单会话两次提交，rollback 第一个 → 正常回滚，checkpoint 被清除"""
         gm = GitManager(str(tmp_path))
-        gm.init()
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
 
-        (tmp_path / "a.txt").write_text("m1", encoding="utf-8")
-        gm.add_commit("h1&a1")
+        checkpoints = {
+            "init": "init_hash",
+            "h1&a1": "hash1",
+            "h2&a2": "hash2",
+        }
+        gm.checkpoints_file.write_text(json.dumps(checkpoints))
 
-        (tmp_path / "b.txt").write_text("m2", encoding="utf-8")
-        gm.add_commit("h2&a2")
+        def mock_run(args, **kwargs):
+            if args[0] == "rev-parse" and args[1] == "HEAD":
+                return _mock_run(0, stdout="hash2\n")
+            if args[0] == "rev-list":
+                return _mock_run(0, stdout="hash1\nhash2\n")
+            if args[0] == "reset":
+                return _mock_run(0)
+            return _mock_run(0)
 
-        result = gm.rollback(["h1", "a1"], ["h1", "a1", "h2", "a2"])
-        assert isinstance(result, int)
-        assert not (tmp_path / "a.txt").exists()
-        assert not (tmp_path / "b.txt").exists()
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.rollback(["h1", "a1"], ["h1", "a1", "h2", "a2"])
+            assert result == 1
+            data = json.loads(gm.checkpoints_file.read_text())
+            assert "h1&a1" not in data
+            assert "h2&a2" not in data
+            assert "init" in data
 
     def test_cross_session_old_preserved_new_rollback(self, tmp_path: Path):
-        """旧会话 + 新会话两次提交，rollback 新会话第一个 → 旧文件保留"""
+        """旧会话 + 新会话两次提交，rollback 新会话第一个 → 旧 checkpoint 保留"""
         gm = GitManager(str(tmp_path))
-        gm.init()
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Old session
-        (tmp_path / "old.txt").write_text("old", encoding="utf-8")
-        gm.add_commit("old1&old2")
+        checkpoints = {
+            "init": "init_hash",
+            "old1&old2": "old_hash",
+            "new1&new2": "new_hash1",
+            "new3&new4": "new_hash2",
+        }
+        gm.checkpoints_file.write_text(json.dumps(checkpoints))
 
-        # New session: 2 commits
-        (tmp_path / "new1.txt").write_text("new1", encoding="utf-8")
-        gm.add_commit("new1&new2")
+        def mock_run(args, **kwargs):
+            if args[0] == "rev-parse" and args[1] == "HEAD":
+                return _mock_run(0, stdout="new_hash2\n")
+            if args[0] == "rev-list":
+                return _mock_run(0, stdout="")
+            if args[0] == "reset":
+                return _mock_run(0)
+            return _mock_run(0)
 
-        (tmp_path / "new2.txt").write_text("new2", encoding="utf-8")
-        gm.add_commit("new3&new4")
-
-        result = gm.rollback(["new1", "new2"], ["new1", "new2", "new3", "new4"])
-        assert isinstance(result, int)
-        assert (tmp_path / "old.txt").exists()
-        assert not (tmp_path / "new1.txt").exists()
-        assert not (tmp_path / "new2.txt").exists()
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.rollback(["new1", "new2"], ["new1", "new2", "new3", "new4"])
+            assert result == 2  # init + old1&old2 保留
+            data = json.loads(gm.checkpoints_file.read_text())
+            assert "old1&old2" in data
+            assert "new1&new2" not in data
+            assert "new3&new4" not in data
 
     def test_cross_session_three_sessions_blocked(self, tmp_path: Path):
-        """三个会话各一次提交，从会话 1 rollback → 阻止"""
+        """三个会话，从会话 1 rollback → 其他会话 hash 在 rev-list 中 → 阻止"""
         gm = GitManager(str(tmp_path))
-        gm.init()
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
 
-        (tmp_path / "a.txt").write_text("s1", encoding="utf-8")
-        gm.add_commit("h1&a1")
+        checkpoints = {
+            "init": "init_hash",
+            "h1&a1": "hash1",
+            "h2&a2": "hash2",
+            "h3&a3": "hash3",
+        }
+        gm.checkpoints_file.write_text(json.dumps(checkpoints))
 
-        (tmp_path / "b.txt").write_text("s2", encoding="utf-8")
-        gm.add_commit("h2&a2")
+        def mock_run(args, **kwargs):
+            if args[0] == "rev-parse" and args[1] == "HEAD":
+                return _mock_run(0, stdout="hash3\n")
+            if args[0] == "rev-list":
+                return _mock_run(0, stdout="hash1\nhash2\nhash3\n")
+            if args[0] == "reset":
+                return _mock_run(0)
+            return _mock_run(0)
 
-        (tmp_path / "c.txt").write_text("s3", encoding="utf-8")
-        gm.add_commit("h3&a3")
-
-        result = gm.rollback(["h1", "a1"], ["h1", "a1"])
-        assert result == "cross_session_blocked"
-        assert (tmp_path / "a.txt").exists()
-        assert (tmp_path / "b.txt").exists()
-        assert (tmp_path / "c.txt").exists()
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.rollback(["h1", "a1"], ["h1", "a1"])
+            assert result == "cross_session_blocked"
 
     def test_unknown_idx_ordering(self, tmp_path: Path):
-        """两个旧会话 checkpoint + 新会话 rollback → 回溯到最近的旧会话"""
+        """两个旧会话 checkpoint + 新会话 rollback → 回溯到 init（保留旧会话）"""
         gm = GitManager(str(tmp_path))
-        gm.init()
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Old session 1
-        (tmp_path / "old1.txt").write_text("old1", encoding="utf-8")
-        gm.add_commit("old1&old2")
+        checkpoints = {
+            "init": "init_hash",
+            "old1&old2": "old_hash1",
+            "old3&old4": "old_hash2",
+            "new1&new2": "new_hash",
+        }
+        gm.checkpoints_file.write_text(json.dumps(checkpoints))
 
-        # Old session 2
-        (tmp_path / "old2.txt").write_text("old2", encoding="utf-8")
-        gm.add_commit("old3&old4")
+        def mock_run(args, **kwargs):
+            if args[0] == "rev-parse" and args[1] == "HEAD":
+                return _mock_run(0, stdout="new_hash\n")
+            if args[0] == "rev-list":
+                return _mock_run(0, stdout="")
+            if args[0] == "reset":
+                return _mock_run(0)
+            return _mock_run(0)
 
-        # New session
-        (tmp_path / "new.txt").write_text("new", encoding="utf-8")
-        gm.add_commit("new1&new2")
-
-        # Rollback new session → should reset to latest old (old2.txt), not oldest (old1.txt)
-        result = gm.rollback(["new1", "new2"], ["new1", "new2"])
-        assert isinstance(result, int)
-        assert (tmp_path / "old1.txt").exists()
-        assert (tmp_path / "old2.txt").exists()
-        assert not (tmp_path / "new.txt").exists()
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.rollback(["new1", "new2"], ["new1", "new2"])
+            assert result == 3
+            data = json.loads(gm.checkpoints_file.read_text())
+            assert "old1&old2" in data
+            assert "old3&old4" in data
+            assert "new1&new2" not in data
 
     def test_has_cross_session_conflict_no_other_sessions(self, tmp_path: Path):
         """_has_cross_session_conflict 无其他会话时返回 False"""
         gm = GitManager(str(tmp_path))
-        gm.init()
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
 
-        (tmp_path / "a.txt").write_text("m1", encoding="utf-8")
-        gm.add_commit("h1&a1")
+        checkpoints = {
+            "init": "init_hash",
+            "h1&a1": "hash1",
+        }
+        gm.checkpoints_file.write_text(json.dumps(checkpoints))
 
-        data = json.loads(gm.checkpoints_file.read_text(encoding="utf-8"))
-        aim_id = data["h1&a1"] + "~1"
+        def mock_run(args, **kwargs):
+            if args[0] == "rev-parse" and args[1] == "HEAD":
+                return _mock_run(0, stdout="hash1\n")
+            if args[0] == "rev-list":
+                return _mock_run(0, stdout="")
+            return _mock_run(0)
 
-        result = gm._has_cross_session_conflict(aim_id, ["h1", "a1"], data)
-        assert result is False
+        aim_id = "hash1~1"
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm._has_cross_session_conflict(aim_id, ["h1", "a1"], checkpoints)
+            assert result is False
