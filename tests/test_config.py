@@ -24,13 +24,13 @@ from chcode.config import (
 class TestLoadModelJson:
     def test_no_file(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
-        mod._model_json_cache = None
+        mod._model_json.invalidate()
         monkeypatch.setattr(mod, "MODEL_JSON", tmp_path / "model.json")
         assert load_model_json() == {}
 
     def test_valid_file(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
-        mod._model_json_cache = None
+        mod._model_json.invalidate()
         f = tmp_path / "model.json"
         f.write_text(json.dumps({"default": {"model": "gpt-4o"}}))
         monkeypatch.setattr(mod, "MODEL_JSON", f)
@@ -39,7 +39,7 @@ class TestLoadModelJson:
 
     def test_mtime_cache(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
-        mod._model_json_cache = None
+        mod._model_json.invalidate()
         f = tmp_path / "model.json"
         f.write_text(json.dumps({"default": {"model": "a"}}))
         monkeypatch.setattr(mod, "MODEL_JSON", f)
@@ -49,7 +49,7 @@ class TestLoadModelJson:
 
     def test_invalid_json(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
-        mod._model_json_cache = None
+        mod._model_json.invalidate()
         f = tmp_path / "model.json"
         f.write_text("not json{{{")
         monkeypatch.setattr(mod, "MODEL_JSON", f)
@@ -59,14 +59,14 @@ class TestLoadModelJson:
 class TestSaveModelJson:
     def test_saves_and_invalidates_cache(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
-        mod._model_json_cache = None
+        mod._model_json.invalidate()
         f = tmp_path / "model.json"
         monkeypatch.setattr(mod, "MODEL_JSON", f)
         save_model_json({"default": {"model": "test"}})
         assert f.exists()
         data = json.loads(f.read_text())
         assert data["default"]["model"] == "test"
-        assert mod._model_json_cache is None
+        assert mod._model_json._cache is None
 
 
 class TestLoadWorkplace:

@@ -199,51 +199,28 @@ class SkillLoader:
 
     # 解析skill元数据
     def _parse_skill_metadata(self, skill_md_path: Path) -> Optional[SkillMetadata]:
-        """
-        解析 SKILL.md 的 YAML frontmatter
-
-        SKILL.md 格式：
-            ---
-            name: skill-name
-            description: Brief description when to use it
-            ---
-            # Instructions...
-
-        Args:
-            skill_md_path: SKILL.md 文件路径
-
-        Returns:
-            解析后的元数据，解析失败返回 None
-        """
         try:
             content = skill_md_path.read_text(encoding="utf-8")
         except Exception:
             return None
 
-        # 使用正则提取 YAML frontmatter
-        # 格式: ---\n...yaml...\n---
-        frontmatter_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+        from chcode.utils.frontmatter import parse_frontmatter
 
-        if not frontmatter_match:
+        result = parse_frontmatter(content)
+        if not result:
             return None
 
         try:
-            # 解析 YAML
-            frontmatter = yaml.safe_load(
-                frontmatter_match.group(1)
-            )  # group:['匹配的完成的内容','第一个组的内容']
-            name = frontmatter.get("name", "")
-            description = frontmatter.get("description", "")
-
+            name = result.frontmatter.get("name", "")
+            description = result.frontmatter.get("description", "")
             if not name:
                 return None
-
             return SkillMetadata(
                 name=name,
                 description=description,
                 skill_path=skill_md_path.parent,
             )
-        except yaml.YAMLError:
+        except Exception:
             return None
 
     # 从skill字典读取skill完整数据
@@ -279,9 +256,10 @@ class SkillLoader:
         except Exception:
             return None
 
-        # 提取 body（去除 frontmatter）
-        body_match = re.match(r"^---\s*\n.*?\n---\s*\n(.*)$", content, re.DOTALL)
-        instructions = body_match.group(1).strip() if body_match else content
+        from chcode.utils.frontmatter import parse_frontmatter
+
+        fm_result = parse_frontmatter(content)
+        instructions = fm_result.body if fm_result else content
 
         # 只返回 instructions，让大模型从指令中自己发现脚本和文档
         return SkillContent(

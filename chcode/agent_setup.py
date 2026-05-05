@@ -5,7 +5,10 @@ Agent 构建 — 中间件注册、checkpointer 初始化
 from __future__ import annotations
 
 import asyncio
+import json
+import socket
 import sys
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -41,6 +44,7 @@ from chcode.utils.tool_result_pipeline import (
 )
 
 import aiosqlite
+
 
 # ─── 内置默认模型配置 ──────────────────────────────────
 
@@ -97,6 +101,91 @@ def _load_fallback_config() -> dict | None:
 
 
 # ─── 中间件 ──────────────────────────────────────────
+
+
+_IPC_SOCK: socket.socket | None = None
+_IPC_ADDR = ("127.0.0.1", 19876)
+
+
+def _ipc_send(event: dict) -> None:
+    global _IPC_SOCK
+    try:
+        if _IPC_SOCK is None:
+            _IPC_SOCK = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        data = json.dumps(event, ensure_ascii=False).encode("utf-8")
+        _IPC_SOCK.sendto(data, _IPC_ADDR)
+    except Exception:
+        pass
+
+
+@wrap_tool_call
+async def emit_tool_events(
+    request: ToolCallRequest, handler: Callable[[ToolCallRequest], Command]
+) -> Command | ToolMessage:
+    tool_name = request.tool_call.get("name", "")
+    args = request.tool_call.get("args", {})
+    summary = ""
+    for key in ("command", "file_path", "pattern", "query", "url", "question",
+                "task", "filePath", "skill_name", "path", "prompt", "image_path"):
+        if key in args:
+            summary = str(args[key])[:80]
+            break
+    if not summary and "todos" in args:
+        todos = args["todos"]
+        if isinstance(todos, list) and todos:
+            first = todos[0]
+            if isinstance(first, dict):
+                summary = first.get("content", str(first))[:80]
+            else:
+                summary = str(first)[:80]
+
+    start_evt: dict = {"type": "tool_start", "tool": tool_name, "summary": summary, "ts": time.time()}
+    if tool_name == "agent":
+        sa_type = args.get("subagent_type", "general-purpose")
+        sa_desc = args.get("description", "")[:30]
+        start_evt["subagent_type"] = sa_type
+        start_evt["subagent_tag"] = f"{sa_type}: {sa_desc}"
+    try:
+        from chcode.display import _current_agent_tag
+        tag = _current_agent_tag.get(None)
+    except Exception:
+        tag = None
+    if tag:
+        start_evt["subagent"] = tag
+
+    _ipc_send(start_evt)
+    try:
+        result = await handler(request)
+        ok = not (isinstance(result, ToolMessage) and getattr(result, "status", None) == "error")
+        end_evt: dict = {"type": "tool_end", "tool": tool_name, "success": ok, "ts": time.time()}
+        if tool_name == "agent":
+            end_evt["subagent_type"] = args.get("subagent_type", "general-purpose")
+            end_evt["subagent_tag"] = start_evt.get("subagent_tag", "")
+        if tag:
+            end_evt["subagent"] = tag
+        _ipc_send(end_evt)
+        return result
+    except Exception:
+        end_evt = {"type": "tool_end", "tool": tool_name, "success": False, "ts": time.time()}
+        if tool_name == "agent":
+            end_evt["subagent_type"] = args.get("subagent_type", "general-purpose")
+            end_evt["subagent_tag"] = start_evt.get("subagent_tag", "")
+        _ipc_send(end_evt)
+        raise
+
+
+@wrap_model_call
+async def emit_thinking_events(
+    request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
+) -> ModelResponse:
+    _ipc_send({"type": "thinking_start", "ts": time.time()})
+    try:
+        result = await handler(request)
+        _ipc_send({"type": "thinking_end", "ts": time.time()})
+        return result
+    except Exception:
+        _ipc_send({"type": "thinking_end", "ts": time.time()})
+        raise
 
 
 @wrap_tool_call
@@ -334,8 +423,10 @@ def build_agent(
         model,
         _get_all_tools() + (mcp_tools or []),
         middleware=[
+            emit_tool_events,
             handle_tool_errors,
             filter_vision_tool,
+            emit_thinking_events,
             tool_result_budget,
             load_skills,
             load_model,

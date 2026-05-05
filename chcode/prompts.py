@@ -12,9 +12,10 @@ import os
 from typing import Any
 
 import questionary
-from rich.console import Console
 
-console = Console()
+from chcode.display import console
+from chcode.utils.text_utils import mask_api_key
+from chcode.utils.json_utils import build_default_fallback_config
 
 
 async def select(
@@ -258,11 +259,7 @@ async def model_config_form(
     ]
 
     if is_editing:
-        _masked = (
-            existing_api_key[:6] + "****" + existing_api_key[-4:]
-            if len(existing_api_key) > 10
-            else "****"
-        )
+        _masked = mask_api_key(existing_api_key, mask="****", short_mask="****") if existing_api_key else "****"
         env_choices.insert(0, f"保持当前 Key ({_masked})")
 
     env_choices.append("手动输入 API Key...")
@@ -464,17 +461,7 @@ async def configure_modelscope() -> dict | None:
         return None
     api_key = api_key.strip()
 
-    # 用预设模型 + api_key 构建配置
-    default_cfg = dict(MODELSCOPE_PRESETS[0])
-    default_cfg["api_key"] = api_key
-
-    fallback = {}
-    for preset in MODELSCOPE_PRESETS[1:]:
-        cfg = dict(preset)
-        cfg["api_key"] = api_key
-        fallback[cfg["model"]] = cfg
-
-    return {"default": default_cfg, "fallback": fallback}
+    return build_default_fallback_config(MODELSCOPE_PRESETS, api_key)
 
 
 LONGCAT_BASE_URL = "https://api.longcat.chat/openai/v1"
@@ -536,13 +523,4 @@ async def configure_longcat() -> dict | None:
         return None
     api_key = api_key.strip()
 
-    default_cfg = dict(LONGCAT_PRESETS[0])
-    default_cfg["api_key"] = api_key
-
-    fallback = {}
-    for preset in LONGCAT_PRESETS[1:]:
-        cfg = dict(preset)
-        cfg["api_key"] = api_key
-        fallback[cfg["model"]] = cfg
-
-    return {"default": default_cfg, "fallback": fallback}
+    return build_default_fallback_config(LONGCAT_PRESETS, api_key)

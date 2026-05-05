@@ -30,7 +30,7 @@ from langchain_core.messages import (
     HumanMessage,
     BaseMessage,
 )
-from chcode.utils import get_text_content
+from chcode.utils import get_text_content, mask_api_key
 from langgraph.types import Command
 
 import chcode.display as _display
@@ -672,14 +672,8 @@ class ChatREPL:
             self._render_status_bar()
 
     def _sync_langsmith_env(self) -> None:
-        """将 LangSmith 实例变量同步到环境变量"""
-        from chcode.config import LANGSMITH_ENDPOINT
-
-        os.environ.pop("LANGCHAIN_TRACING", None)
-        os.environ["LANGCHAIN_TRACING_V2"] = "true" if self.langsmith_tracing else "false"
-        os.environ["LANGCHAIN_PROJECT"] = self.langsmith_project
-        os.environ["LANGSMITH_API_KEY"] = self.langsmith_api_key
-        os.environ["LANGCHAIN_ENDPOINT"] = LANGSMITH_ENDPOINT
+        from chcode.config import _apply_langsmith_env
+        _apply_langsmith_env(self.langsmith_tracing, self.langsmith_project, self.langsmith_api_key)
 
     async def _cmd_langsmith(self, _arg: str) -> None:
         from chcode.config import save_langsmith_config
@@ -688,7 +682,7 @@ class ChatREPL:
         state = "开启" if self.langsmith_tracing else "关闭"
         masked = ""
         if self.langsmith_api_key:
-            masked = self.langsmith_api_key[:6] + "..." + self.langsmith_api_key[-4:] if len(self.langsmith_api_key) > 10 else "***"
+            masked = mask_api_key(self.langsmith_api_key)
         console.print(f"[bold]LangSmith 追踪: {state}[/bold]")
         if self.langsmith_project:
             console.print(f"  项目: {self.langsmith_project}")
@@ -948,7 +942,7 @@ class ChatREPL:
 
         current = load_tavily_api_key()
         masked = (
-            f"{current[:6]}...{current[-4:]}"
+            mask_api_key(current)
             if current and len(current) > 10
             else (current or "未配置")
         )
@@ -1022,9 +1016,10 @@ class ChatREPL:
     async def _cmd_homepage(self, _arg: str) -> None:
         import webbrowser
 
-        url = "https://github.com/ScarletMercy/chcode"
-        render_success(f"正在打开: {url}")
-        webbrowser.open(url)
+        from chcode.config import HOMEPAGE_URL
+
+        render_success(f"正在打开: {HOMEPAGE_URL}")
+        webbrowser.open(HOMEPAGE_URL)
 
     async def _cmd_help(self, _arg: str) -> None:
         from rich.table import Table
@@ -1146,12 +1141,9 @@ class ChatREPL:
 
                 if self.git and self.git_manager:
                     try:
-                        result = await asyncio.to_thread(
+                        await asyncio.to_thread(
                             self.git_manager.rollback, no_need_ids, all_ids
                         )
-                        if result == "cross_session_blocked":
-                            render_warning("无法回滚：后面有其他会话的工作")
-                            continue
                     except Exception as e:
                         render_warning(f"Git 回滚失败: {e}")
 
@@ -1238,12 +1230,9 @@ class ChatREPL:
                 # 回滚工作目录
                 if self.git and self.git_manager:
                     try:
-                        result = await asyncio.to_thread(
+                        await asyncio.to_thread(
                             self.git_manager.rollback, no_need_ids, all_ids
                         )
-                        if result == "cross_session_blocked":
-                            render_warning("无法回滚：后面有其他会话的工作")
-                            continue
                     except Exception as e:
                         render_warning(f"Git 回滚失败: {e}")
 

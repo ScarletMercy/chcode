@@ -2,66 +2,24 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Callable
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
     dynamic_prompt,
-    wrap_tool_call,
-    wrap_model_call,
     ModelRequest,
-    ModelResponse,
 )
-from langchain_core.messages import HumanMessage, ToolMessage
-from langchain.tools.tool_node import ToolCallRequest
+from langchain_core.messages import HumanMessage
 
 from chcode.agents.definitions import AgentDefinition
 from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
 from chcode.utils.skill_loader import SkillLoader, SkillAgentContext
-from chcode.utils.tool_result_pipeline import (
-    clean_tool_output,
-    truncate_large_result,
-    enforce_per_turn_budget,
-)
-
-
-@wrap_tool_call
-async def _handle_tool_errors(
-    request: ToolCallRequest, handler: Callable[[ToolCallRequest], object]
-) -> object:
-    try:
-        return await handler(request)
-    except Exception as e:
-        return ToolMessage(
-            f"Tool error: Please check your input and try again ({e})",
-            tool_call_id=request.tool_call["id"],
-            status="error",
-        )
+from chcode.agent_setup import handle_tool_errors, tool_result_budget
+from chcode.agent_setup import emit_tool_events
 
 
 @dynamic_prompt
 async def _subagent_system_prompt(request: ModelRequest) -> str:
     return request.runtime.context.extra.get("system_prompt", "")
-
-
-@wrap_model_call
-async def _tool_result_budget(
-    request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
-) -> ModelResponse:
-    workplace = request.runtime.context.working_directory
-    messages = list(request.messages)
-    for i, msg in enumerate(messages):
-        if isinstance(msg, ToolMessage) and msg.content:
-            cleaned = clean_tool_output(msg.content)
-            truncated = truncate_large_result(
-                cleaned,
-                msg.name or "",
-                msg.tool_call_id,
-                workplace=workplace,
-            )
-            messages[i] = msg.model_copy(update={"content": truncated})
-    messages = enforce_per_turn_budget(messages, budget=200_000, workplace=workplace)
-    return await handler(request.override(messages=messages))
 
 
 def _resolve_tools(
@@ -90,7 +48,6 @@ async def run_subagent(
     timeout_seconds: int = 300,
     description: str = "",
 ) -> tuple[str, bool]:
-    # 守卫：超时最小 300s
     timeout_seconds = max(timeout_seconds, 300)
     from chcode.utils.tools import ALL_TOOLS
 
@@ -110,15 +67,15 @@ async def run_subagent(
     )
 
     middleware = [
-        _handle_tool_errors,
-        _tool_result_budget,
+        emit_tool_events,
+        handle_tool_errors,
+        tool_result_budget,
         _subagent_system_prompt,
     ]
 
     from chcode.agent_setup import model_retry_with_backoff, ModelSwitchError
 
     middleware.append(model_retry_with_backoff)
-    # 非 read-only 子代理继承主 agent 的 HITL 配置
     if not agent_def.read_only:
         from chcode.agent_setup import _hitl_middleware
 

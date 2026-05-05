@@ -2137,8 +2137,7 @@ class TestAgentRunnerToolErrorsHandler:
     """Cover lines 32-35: _handle_tool_errors middleware."""
 
     async def test_tool_error_handler_catches_exception(self):
-        """Cover lines 32-35: tool exception caught and returns error message."""
-        from chcode.agents.runner import _handle_tool_errors
+        from chcode.agent_setup import handle_tool_errors
         from unittest.mock import AsyncMock, MagicMock
         from langchain.tools.tool_node import ToolCallRequest
 
@@ -2148,7 +2147,7 @@ class TestAgentRunnerToolErrorsHandler:
         async def failing_handler(req):
             raise ValueError("tool failed")
 
-        result = await _handle_tool_errors.awrap_tool_call(request, failing_handler)
+        result = await handle_tool_errors.awrap_tool_call(request, failing_handler)
         assert result.status == "error"
         assert "tool failed" in result.content
 
@@ -2175,16 +2174,15 @@ class TestAgentRunnerToolResultBudget:
     """Cover lines 51-64: _tool_result_budget middleware."""
 
     async def test_tool_result_budget_processing(self):
-        """Cover lines 51-64: processes tool messages and enforces budget."""
-        from chcode.agents.runner import _tool_result_budget
+        from chcode.agent_setup import tool_result_budget
         from unittest.mock import AsyncMock, MagicMock
         from langchain_core.messages import ToolMessage
 
-        # Create mock request with tool message
         tool_msg = MagicMock(spec=ToolMessage)
         tool_msg.content = "large output"
         tool_msg.name = "bash"
         tool_msg.tool_call_id = "tc_1"
+        tool_msg.additional_kwargs = {}
         tool_msg.model_copy = lambda update=None: tool_msg
 
         request = MagicMock()
@@ -2194,10 +2192,10 @@ class TestAgentRunnerToolResultBudget:
         async def mock_handler(req):
             return MagicMock()
 
-        with patch("chcode.agents.runner.clean_tool_output", return_value="cleaned"), \
-             patch("chcode.agents.runner.truncate_large_result", return_value="truncated"), \
-             patch("chcode.agents.runner.enforce_per_turn_budget", return_value=[tool_msg]) as mock_budget:
-            result = await _tool_result_budget.awrap_model_call(request, mock_handler)
+        with patch("chcode.agent_setup.clean_tool_output", return_value="cleaned"), \
+             patch("chcode.agent_setup.truncate_large_result", return_value="truncated"), \
+             patch("chcode.agent_setup.enforce_per_turn_budget", return_value=[tool_msg]) as mock_budget:
+            result = await tool_result_budget.awrap_model_call(request, mock_handler)
             mock_budget.assert_called_once()
 
 

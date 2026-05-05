@@ -7,11 +7,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.table import Table
 
+from chcode.display import console
 from chcode.prompts import select, confirm, text
 from chcode.utils.skill_loader import (
     scan_all_skills,
@@ -21,8 +21,6 @@ from chcode.utils.skill_loader import (
 
 if TYPE_CHECKING:
     from chcode.session import SessionManager
-
-console = Console()
 
 
 async def manage_skills(session: SessionManager) -> None:

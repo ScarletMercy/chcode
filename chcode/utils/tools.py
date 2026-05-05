@@ -26,9 +26,8 @@ from urllib.parse import urlparse
 import httpx
 from langchain.tools import tool, ToolRuntime
 from pydantic import BaseModel, BeforeValidator, Field
-from rich.console import Console
+from chcode.display import console, render_tool_call
 from rich.text import Text
-from chcode.display import render_tool_call
 
 from chcode.utils.shell import (
     BashProvider,
@@ -39,8 +38,6 @@ from chcode.utils.shell import (
 from chcode.utils.skill_loader import SkillAgentContext
 from chcode.utils.multimodal import _ALL_MEDIA_EXTS, _VIDEO_EXTS
 from tavily import TavilyClient
-
-console = Console()
 
 _tavily_client: TavilyClient | None = None
 
@@ -1477,6 +1474,7 @@ async def vision(
             if "top_p" in model_config:
                 llm_kwargs["top_p"] = model_config["top_p"]
 
+            from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
             llm = EnhancedChatOpenAI(**llm_kwargs)
             result = await llm.ainvoke(messages, config={"callbacks": []})
             content = result.content

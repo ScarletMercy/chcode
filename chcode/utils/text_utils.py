@@ -12,3 +12,11 @@ def get_text_content(content: str | list) -> str:
                 text_parts.append(part)
         return "".join(text_parts).strip()
     return str(content)
+
+
+def mask_api_key(key: str, mask: str = "...", short_mask: str = "***") -> str:
+    if not key:
+        return "未配置"
+    if len(key) <= 10:
+        return short_mask
+    return f"{key[:6]}{mask}{key[-4:]}"

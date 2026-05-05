@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-import yaml
-
 from chcode.agents.definitions import AgentDefinition
+from chcode.utils.frontmatter import parse_frontmatter
 
 DEFAULT_AGENT_PATHS = [
     Path.cwd() / ".chat" / "agents",
@@ -19,45 +17,37 @@ def _parse_agent_md(md_path: Path) -> AgentDefinition | None:
     except Exception:
         return None
 
-    fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
-    if not fm_match:
+    fm_result = parse_frontmatter(content)
+    if not fm_result:
         return None
 
-    try:
-        frontmatter = yaml.safe_load(fm_match.group(1))
-    except yaml.YAMLError:
+    fm = fm_result.frontmatter
+    system_prompt = fm_result.body
+    if not system_prompt:
         return None
 
-    if not isinstance(frontmatter, dict):
-        return None
-
-    agent_type = frontmatter.get("name", "")
-    description = frontmatter.get("description", "")
+    agent_type = fm.get("name", "")
+    description = fm.get("description", "")
 
     if not agent_type or not description:
         return None
 
-    body = content[fm_match.end() :]
-    system_prompt = body.strip()
-    if not system_prompt:
-        return None
-
-    tools_raw = frontmatter.get("tools")
+    tools_raw = fm.get("tools")
     tools = (
         [t.strip() for t in tools_raw.split(",") if t.strip()]
         if isinstance(tools_raw, str)
         else None
     )
 
-    disallowed_raw = frontmatter.get("disallowed_tools")
+    disallowed_raw = fm.get("disallowed_tools")
     disallowed_tools = (
         [t.strip() for t in disallowed_raw.split(",") if t.strip()]
         if isinstance(disallowed_raw, str)
         else []
     )
 
-    model = frontmatter.get("model") or None
-    read_only = bool(frontmatter.get("read_only", False))
+    model = fm.get("model") or None
+    read_only = bool(fm.get("read_only", False))
 
     return AgentDefinition(
         agent_type=agent_type,

@@ -11,14 +11,14 @@ import copy
 import json
 import os
 
-from rich.console import Console
-
 from chcode.config import CONFIG_DIR, ensure_config_dir
+from chcode.display import console
 from chcode.prompts import select, confirm, password
-
-console = Console()
+from chcode.utils.json_utils import CachedJsonFile, build_default_fallback_config
+from chcode.utils.text_utils import mask_api_key
 
 VISION_JSON = CONFIG_DIR / "vision_model.json"
+_vision_json = CachedJsonFile(VISION_JSON, ensure_dir=True)
 
 MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1"
 
@@ -40,40 +40,15 @@ VISION_MODEL_PRESETS = [
 ]
 
 
-_vision_json_cache: tuple[float, dict] | None = None
-
-
 def load_vision_json() -> dict:
-    """加载 vision_model.json，带 mtime 缓存"""
-    global _vision_json_cache
-    if not VISION_JSON.exists():
-        return {}
-    try:
-        mtime = VISION_JSON.stat().st_mtime
-        if _vision_json_cache and _vision_json_cache[0] == mtime:
-            return _vision_json_cache[1]
-        data = json.loads(VISION_JSON.read_text(encoding="utf-8"))
-        _vision_json_cache = (mtime, data)
-        return data
-    except Exception:
-        return {}
+    _vision_json.path = VISION_JSON
+    return _vision_json.load()
 
 
 def save_vision_json(data: dict) -> None:
-    global _vision_json_cache
-    content = json.dumps(data, indent=4, ensure_ascii=False)
+    _vision_json.path = VISION_JSON
     ensure_config_dir()
-    tmp = VISION_JSON.with_suffix(".tmp")
-    try:
-        tmp.write_text(content, encoding="utf-8")
-        tmp.replace(VISION_JSON)
-    except Exception:
-        VISION_JSON.write_text(content, encoding="utf-8")
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
-    _vision_json_cache = None
+    _vision_json.save(data)
 
 
 def get_vision_default_model() -> dict | None:
@@ -117,17 +92,7 @@ def _detect_modelscope_api_key() -> str | None:
 
 
 def _build_vision_config(api_key: str) -> dict:
-    """用预设模型 + api_key 构建完整视觉配置"""
-    default_cfg = dict(VISION_MODEL_PRESETS[0])
-    default_cfg["api_key"] = api_key
-
-    fallback = {}
-    for preset in VISION_MODEL_PRESETS[1:]:
-        cfg = dict(preset)
-        cfg["api_key"] = api_key
-        fallback[cfg["model"]] = cfg
-
-    return {"default": default_cfg, "fallback": fallback}
+    return build_default_fallback_config(VISION_MODEL_PRESETS, api_key)
 
 
 def _detect_api_keys() -> list[tuple[str, list[dict]]]:
@@ -236,7 +201,7 @@ async def _configure_vision_wizard() -> dict | None:
     env_key = os.getenv("ModelScopeToken", "")
     choices = []
     if env_key:
-        choices.append(f"使用环境变量 ModelScopeToken ({env_key[:6]}...{env_key[-4:]})")
+        choices.append(f"使用环境变量 ModelScopeToken ({mask_api_key(env_key)})")
     choices.append("手动输入 API Key")
 
     result = await select("选择 API Key 来源:", choices)
@@ -257,33 +222,21 @@ async def _configure_vision_wizard() -> dict | None:
     if default_choice is None:
         return None
 
-    # 构建：用户选的模型作为 default，其余作为 fallback
-    all_presets = {p["model"]: p for p in VISION_MODEL_PRESETS}
-    default_preset = all_presets[default_choice]
-    default_cfg = dict(default_preset)
-    default_cfg["api_key"] = api_key
+    default_idx = preset_names.index(default_choice)
+    config = build_default_fallback_config(VISION_MODEL_PRESETS, api_key, default_index=default_idx)
 
-    fallback = {}
-    for model_name, preset in all_presets.items():
-        if model_name == default_choice:
-            continue
-        cfg = dict(preset)
-        cfg["api_key"] = api_key
-        fallback[model_name] = cfg
-
-    # 合并已有配置（保留其他提供商的 fallback）
     existing_data = load_vision_json()
     existing_fallback = existing_data.get("fallback", {})
-    merged_fallback = {**existing_fallback, **fallback}
-
-    config = {"default": default_cfg, "fallback": merged_fallback}
+    merged_fallback = {**existing_fallback, **config["fallback"]}
+    config["fallback"] = merged_fallback
     save_vision_json(config)
 
+    fallback = config["fallback"]
     console.print(f"[green]视觉模型配置完成: {default_choice} (默认)[/green]")
     fallback_names = ", ".join(fallback.keys())
     console.print(f"[dim]备用模型 ({len(fallback)} 个): {fallback_names}[/dim]")
 
-    return default_cfg
+    return config["default"]
 
 
 async def _switch_vision_model() -> dict | None:

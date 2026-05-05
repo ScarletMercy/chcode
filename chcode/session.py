@@ -10,15 +10,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from rich.console import Console
+from chcode.display import console
+from chcode.utils.json_utils import atomic_write_json
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from langchain_core.messages import HumanMessage
-
-console = Console()
 
 _SUMMARY_MAX_LEN = 40
 
@@ -42,17 +41,7 @@ class SessionManager:
             return {}
 
     def _save_names(self, names: dict[str, str]) -> None:
-        content = json.dumps(names, ensure_ascii=False, indent=2)
-        tmp = self._names_path.with_suffix(".tmp")
-        try:
-            tmp.write_text(content, "utf-8")
-            tmp.replace(self._names_path)
-        except Exception:
-            self._names_path.write_text(content, "utf-8")
-            try:
-                tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
+        atomic_write_json(self._names_path, names, indent=2)
 
     # ─── 基础 ────────────────────────────────────────────
 

@@ -35,6 +35,20 @@ if TYPE_CHECKING:
 
 console = Console()
 
+
+def _suppress_in_subagent(fn):
+    """Decorator: suppress output when subagents are active (parallel or count > 0)."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if _subagent_parallel or _subagent_count > 0:
+            return
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
 # ─── 消息渲染 ──────────────────────────────────────────
 
 
@@ -51,10 +65,9 @@ def render_human(message: str) -> None:
     )
 
 
+@_suppress_in_subagent
 def render_ai_chunk(content: str) -> None:
     """渲染 AI 回复片段（流式）"""
-    if _subagent_parallel or _subagent_count > 0:
-        return
     console.print(content, end="", style="white")
 
 
@@ -71,17 +84,15 @@ def render_ai_start():
     console.print()
 
 
+@_suppress_in_subagent
 def render_ai_end() -> None:
     """AI 回复结束"""
-    if _subagent_parallel or _subagent_count > 0:
-        return
     console.print()
 
 
+@_suppress_in_subagent
 def render_reasoning(reasoning: str) -> None:
     """渲染推理/思考内容（灰色斜体，折叠）"""
-    if _subagent_parallel or _subagent_count > 0:
-        return
     console.print(
         Panel(
             Text(reasoning, style="dim italic"),
@@ -176,10 +187,9 @@ def render_tool_call(name: str, summary: str) -> None:
     console.print(Text(f"\n[{name}] {summary}", style="bold cyan"))
 
 
+@_suppress_in_subagent
 def render_tool(name: str, content: str) -> None:
     """渲染工具调用结果"""
-    if _subagent_parallel or _subagent_count > 0:
-        return
     # 截断过长内容
     lines = content.split("\n")
     if len(lines) > 50:
@@ -195,31 +205,27 @@ def render_tool(name: str, content: str) -> None:
     )
 
 
+@_suppress_in_subagent
 def render_error(message: str) -> None:
     """渲染错误信息"""
-    if _subagent_parallel or _subagent_count > 0:
-        return
     console.print(Text("Error: ", style="red bold"), Text(message, style="red bold"))
 
 
+@_suppress_in_subagent
 def render_info(message: str) -> None:
     """渲染信息"""
-    if _subagent_parallel or _subagent_count > 0:
-        return
     console.print(f"[cyan]{message}[/cyan]")
 
 
+@_suppress_in_subagent
 def render_success(message: str) -> None:
     """渲染成功信息"""
-    if _subagent_parallel or _subagent_count > 0:
-        return
     console.print(f"[green]{message}[/green]")
 
 
+@_suppress_in_subagent
 def render_warning(message: str) -> None:
     """渲染警告信息"""
-    if _subagent_parallel or _subagent_count > 0:
-        return
     console.print(f"[yellow]{message}[/yellow]")
 
 

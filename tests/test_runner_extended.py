@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from chcode.agents.definitions import AgentDefinition
-from chcode.agents.runner import _resolve_tools, _handle_tool_errors, _subagent_system_prompt, _tool_result_budget
+from chcode.agents.runner import _resolve_tools, _subagent_system_prompt
+from chcode.agent_setup import handle_tool_errors, tool_result_budget
 
 
 def _tool(name):
@@ -19,7 +20,7 @@ class TestHandleToolErrors:
         mock_handler = AsyncMock(return_value="ok")
         mock_request = MagicMock()
         mock_request.tool_call = {"id": "123"}
-        result = await _handle_tool_errors.awrap_tool_call(mock_request, mock_handler)
+        result = await handle_tool_errors.awrap_tool_call(mock_request, mock_handler)
         assert result == "ok"
 
     async def test_exception_returns_tool_message(self):
@@ -27,7 +28,7 @@ class TestHandleToolErrors:
         mock_request = MagicMock()
         mock_request.tool_call = {"id": "123"}
         from langchain_core.messages import ToolMessage
-        result = await _handle_tool_errors.awrap_tool_call(mock_request, mock_handler)
+        result = await handle_tool_errors.awrap_tool_call(mock_request, mock_handler)
         assert isinstance(result, ToolMessage)
         assert result.tool_call_id == "123"
         assert "err" in result.content
@@ -66,8 +67,8 @@ class TestToolResultBudget:
         mock_request.messages = [HumanMessage(content="hi")]
         mock_request.runtime.context.working_directory = Path("/w")
         mock_handler = AsyncMock(return_value="response")
-        with patch("chcode.agents.runner.enforce_per_turn_budget", return_value=[HumanMessage(content="hi")]):
-            result = await _tool_result_budget.awrap_model_call(mock_request, mock_handler)
+        with patch("chcode.agent_setup.enforce_per_turn_budget", return_value=[HumanMessage(content="hi")]):
+            result = await tool_result_budget.awrap_model_call(mock_request, mock_handler)
         mock_handler.assert_called_once()
 
     async def test_processes_tool_messages(self):
@@ -82,10 +83,10 @@ class TestToolResultBudget:
         mock_request.messages = [mock_msg]
         mock_request.runtime.context.working_directory = Path("/w")
         mock_handler = AsyncMock(return_value="response")
-        with patch("chcode.agents.runner.clean_tool_output", return_value="cleaned"), \
-             patch("chcode.agents.runner.truncate_large_result", return_value="truncated"), \
-             patch("chcode.agents.runner.enforce_per_turn_budget", return_value=[mock_msg]):
-            await _tool_result_budget.awrap_model_call(mock_request, mock_handler)
+        with patch("chcode.agent_setup.clean_tool_output", return_value="cleaned"), \
+             patch("chcode.agent_setup.truncate_large_result", return_value="truncated"), \
+             patch("chcode.agent_setup.enforce_per_turn_budget", return_value=[mock_msg]):
+            await tool_result_budget.awrap_model_call(mock_request, mock_handler)
         assert mock_handler.called
 
 

@@ -65,14 +65,13 @@ def _setup_langsmith_guard():
 _setup_langsmith_guard()
 
 import typer  # noqa: E402
-from rich.console import Console  # noqa: E402
+from chcode.display import console  # noqa: E402
 
 app = typer.Typer(
     name="chcode",
     help="Terminal-based AI coding agent",
     no_args_is_help=False,
 )
-console = Console()
 
 
 @app.callback(invoke_without_command=True)
@@ -143,9 +142,10 @@ def homepage():
     """打开项目主页"""
     import webbrowser
 
-    url = "https://github.com/ScarletMercy/chcode"
-    console.print(f"正在打开: {url}")
-    webbrowser.open(url)
+    from chcode.config import HOMEPAGE_URL
+
+    console.print(f"正在打开: {HOMEPAGE_URL}")
+    webbrowser.open(HOMEPAGE_URL)
 
 
 @app.command()

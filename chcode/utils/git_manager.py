@@ -127,44 +127,13 @@ class GitManager:
                 return count
         return False
 
-    def _has_cross_session_conflict(
-        self, aim_id: str, all_ids: list[str], checkpointer_dict: dict
-    ) -> bool:
-        """检查回滚到 aim_id 是否会破坏其他会话的 checkpoint。
-        aim_id 可以是 'hash' 或 'hash~1' 格式。"""
-        target = aim_id.removesuffix("~1")
-
-        other_session_hashes = set()
-        for k, v in checkpointer_dict.items():
-            if k == "init":
-                continue
-            first_msg_id = k.split("&")[0]
-            if first_msg_id not in all_ids:
-                other_session_hashes.add(v)
-
-        if not other_session_hashes:
-            return False
-
-        head_result = self._run(["rev-parse", "HEAD"])
-        if head_result.returncode != 0:
-            return False
-        if head_result.stdout.strip() == target:
-            return False
-
-        log_result = self._run(["rev-list", f"{target}..HEAD"])
-        if log_result.returncode != 0:
-            return False
-
-        commits_after = set(log_result.stdout.strip().split("\n"))
-        return bool(other_session_hashes & commits_after)
-
-    def rollback(self, message_ids: list[str], all_ids: list[str]) -> bool | int | str:
+    def rollback(self, message_ids: list[str], all_ids: list[str]) -> bool | int:
         """回滚到指定检查点
         第一步：检查是否存在精确匹配（存在于JSON中有对应提交的ID），如果有则直接回溯到其上一次提交
         第二步：如果没有精确匹配，才进入模糊匹配逻辑，按以下三种情况进行处理：
         前有提交后有提交：直接回溯到前面最近的提交
         前无提交：回溯到初始提交
-        前有提交后无提交：不回溯，返回当前计数
+        前有提交后无提交：不回溯
         """
         if not self.checkpoints_file.exists():
             return False
@@ -203,10 +172,6 @@ class GitManager:
         if message_ids_str in checkpointer_dict:
             aim_id = checkpointer_dict[message_ids_str] + "~1"
 
-            # 跨会话冲突检查（在 pop 之前，dict 完整）
-            if self._has_cross_session_conflict(aim_id, all_ids, checkpointer_dict):
-                return "cross_session_blocked"
-
             _, keys_to_remove = _classify_checkpoint_keys()
             keys_to_remove_set = set(keys_to_remove)
             keys_to_remove_set.add(message_ids_str)
@@ -230,7 +195,6 @@ class GitManager:
 
         # -- 第二步：模糊匹配 --
         before_keys, at_or_after_keys = _classify_checkpoint_keys()
-        original_dict = dict(checkpointer_dict)
 
         has_before = len(before_keys) > 0
         has_after = len(at_or_after_keys) > 0
@@ -259,10 +223,6 @@ class GitManager:
             return count
 
         count = len(checkpointer_dict)
-
-        # 跨会话冲突检查（在 git reset 之前，用原始 dict 快照）
-        if self._has_cross_session_conflict(aim_id, all_ids, original_dict):
-            return "cross_session_blocked"
 
         try:
             reset_result = self._run(["reset", "--hard", aim_id])

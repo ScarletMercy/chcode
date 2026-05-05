@@ -11,17 +11,23 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from rich.console import Console
 from rich.panel import Panel
 
+from chcode.display import console
 from chcode.prompts import select, confirm, model_config_form, text, configure_longcat
+from chcode.utils.json_utils import CachedJsonFile
+from chcode.utils.text_utils import mask_api_key
 
-console = Console()
-
-# 全局配置路径
 CONFIG_DIR = Path.home() / ".chat"
 MODEL_JSON = CONFIG_DIR / "model.json"
 SETTING_JSON = CONFIG_DIR / "chagent.json"
+HOMEPAGE_URL = "https://github.com/ScarletMercy/chcode"
+
+def _log_model_json_error(e: Exception, path: Path) -> None:
+    console.print(f"[red]Warning: 加载 {path} 失败: {e}[/red]")
+
+
+_model_json = CachedJsonFile(MODEL_JSON, ensure_dir=True, on_error=_log_model_json_error)
 
 
 ENV_TO_CONFIG: dict[str, dict[str, str | list[str]]] = {
@@ -63,41 +69,15 @@ def ensure_config_dir() -> Path:
     return CONFIG_DIR
 
 
-_model_json_cache: tuple[float, dict] | None = None
-
-
 def load_model_json() -> dict:
-    """加载 model.json，带 mtime 缓存"""
-    global _model_json_cache
-    if not MODEL_JSON.exists():
-        return {}
-    try:
-        mtime = MODEL_JSON.stat().st_mtime
-        if _model_json_cache and _model_json_cache[0] == mtime:
-            return _model_json_cache[1]
-        data = json.loads(MODEL_JSON.read_text(encoding="utf-8"))
-        _model_json_cache = (mtime, data)
-        return data
-    except Exception as e:
-        console.print(f"[red]Warning: 加载 {MODEL_JSON} 失败: {e}[/red]")
-        return {}
+    _model_json.path = MODEL_JSON
+    return _model_json.load()
 
 
 def save_model_json(data: dict) -> None:
-    global _model_json_cache
-    content = json.dumps(data, indent=4, ensure_ascii=False)
+    _model_json.path = MODEL_JSON
     ensure_config_dir()
-    tmp = MODEL_JSON.with_suffix(".tmp")
-    try:
-        tmp.write_text(content, encoding="utf-8")
-        tmp.replace(MODEL_JSON)
-    except Exception:
-        MODEL_JSON.write_text(content, encoding="utf-8")
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
-    _model_json_cache = None
+    _model_json.save(data)
 
 
 async def _test_connection(
@@ -435,7 +415,9 @@ def save_workplace(path: Path) -> None:
 def load_tavily_api_key() -> str:
     """加载 Tavily API Key"""
     data = _load_setting()
-    return data.get("tavily_api_key", "") or os.getenv("TAVILY_API_KEY", "")
+    if "tavily_api_key" in data:
+        return data["tavily_api_key"]
+    return os.getenv("TAVILY_API_KEY", "")
 
 
 def save_tavily_api_key(api_key: str) -> None:
@@ -509,7 +491,7 @@ async def configure_tavily() -> None:
 
         update_tavily_api_key(current)
         console.print(
-            f"[dim]已配置 Tavily: {current[:6]}...{current[-4:]}[/dim]"
+            f"[dim]已配置 Tavily: {mask_api_key(current)}[/dim]"
         )
         return
 
@@ -608,7 +590,7 @@ async def configure_langsmith() -> dict:
     if saved_key and saved_project:
         tracing = bool(data.get("langsmith_tracing", True))
         _apply_langsmith_env(tracing, saved_project, saved_key)
-        masked = saved_key[:6] + "..." + saved_key[-4:] if len(saved_key) > 10 else "***"
+        masked = mask_api_key(saved_key)
         console.print(
             f"[dim]已配置 LangSmith: 项目={saved_project}, Key={masked}[/dim]"
         )

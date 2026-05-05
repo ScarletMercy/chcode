@@ -9,7 +9,7 @@ def reset_global_state():
         set_fallback_models([])
 
         import chcode.config as config_mod
-        config_mod._model_json_cache = None
+        config_mod._model_json.invalidate()
 
         import chcode.utils.tools as tools_mod
         tools_mod._tavily_api_key = ""

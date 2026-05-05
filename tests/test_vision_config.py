@@ -17,7 +17,7 @@ def mock_config_dir(tmp_path: Path, monkeypatch):
     config_dir.mkdir()
     monkeypatch.setattr(mod, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(mod, "VISION_JSON", config_dir / "vision_model.json")
-    mod._vision_json_cache = None
+    mod._vision_json.invalidate()
     return config_dir
 
 
@@ -55,8 +55,8 @@ class TestLoadVisionJson:
         result2 = mod.load_vision_json()
 
         assert result1 == result2
-        assert mod._vision_json_cache is not None
-        assert mod._vision_json_cache[1] == data
+        assert mod._vision_json._cache is not None
+        assert mod._vision_json._cache[1] == data
 
     def test_returns_empty_dict_on_invalid_json(self, mock_config_dir):
         """Invalid JSON should return empty dict."""
@@ -89,11 +89,11 @@ class TestSaveVisionJson:
 
         mod.VISION_JSON.write_text(json.dumps({"test": True}), encoding="utf-8")
         mod.load_vision_json()
-        assert mod._vision_json_cache is not None
+        assert mod._vision_json._cache is not None
 
         mod.save_vision_json({"new": True})
 
-        assert mod._vision_json_cache is None
+        assert mod._vision_json._cache is None
 
 
 class TestGetVisionDefaultModel:
