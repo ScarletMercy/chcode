@@ -59,7 +59,7 @@ from chcode.config import (
     ensure_config_dir,
     get_context_window_size,
 )
-from chcode.session import SessionManager
+from chcode.utils.session import SessionManager
 from chcode.utils.skill_loader import SkillAgentContext, SkillLoader
 from chcode.agent_setup import (
     build_agent,
@@ -67,11 +67,10 @@ from chcode.agent_setup import (
     INNER_MODEL_CONFIG,
     reset_budget_state,
     get_fallback_model,
-    set_fallback_models,  # noqa: F401  # 重新导出供其他模块使用
     advance_fallback,
     ModelSwitchError,
 )
-from chcode.skill_manager import manage_skills
+from chcode.utils.skill_manager import manage_skills
 from chcode.utils.git_checker import check_git_availability
 from chcode.utils.git_manager import GitManager
 from chcode.utils.modelscope_ratelimit import get_ratelimit, is_modelscope_model
@@ -141,6 +140,7 @@ _RICH_TAG_MAP = {
 }
 
 
+# 将BBCode 风格标记语言 渲染成 html 样式
 def _rich_to_html(text: str) -> str:
     parts = _RE_TAG_SPLIT.split(text)
     opened: list[str] = []
@@ -202,9 +202,9 @@ def _group_messages_by_turn(messages: list) -> list[list]:
 # 历史会话的会话名显示
 def _get_group_display(group: list) -> str:
     """获取消息组的显示文本（以 HumanMessage 内容为代表）"""
-    for msg in group:
-        if msg.type == "human":
-            text_content = get_text_content(msg.content)
+    for msg in group: # 遍历消息组
+        if msg.type == "human": # 遇到HumanMessage的话
+            text_content = get_text_content(msg.content)   # 获取消息文本内容前60字当场会话名显示
             content = text_content[:60].replace("\n", " ")
             if len(text_content) > 60:
                 content += "..."
@@ -212,9 +212,7 @@ def _get_group_display(group: list) -> str:
     return "(空消息组)"
 
 # 收集即将被压缩的消息的消息id组
-def _collect_ids_from_group(
-    group_index: int, groups: list, mode: str = "edit"
-) -> tuple[list[str], list[str]]:
+def _collect_ids_from_group(group_index: int, groups: list) -> tuple[list[str], list[str]]:
     all_ids = [m.id for group in groups for m in group]
     no_need_ids = []
     for i, group in enumerate(groups):
@@ -239,16 +237,11 @@ class ChatREPL:
         self._git_cp_count = 0  # git提交数
         self._stop_requested = False  # 暂停agent的flag
         self._processing = False
-        # 初始化 prompt-toolkit 会话（用于命令自动补全）
-        self._prompt_session = None
-        # 编辑缓冲区（用于 /edit 命令）
-        self._edit_buffer: str | None = None
-        # 中断恢复缓冲区（中断时将内容填回输入框，不进入编辑模式）
-        self._interrupt_buffer: str | None = None
-        # SkillLoader 复用，避免每条消息重建
-        self._skill_loader: SkillLoader | None = None
-        # 上下文用量缓存
-        self._context_text: str = ""
+        self._prompt_session = None # 初始化 prompt-toolkit 会话（用于命令自动补全）
+        self._edit_buffer: str | None = None # 编辑缓冲区（用于 /edit 命令）
+        self._interrupt_buffer: str | None = None # 中断恢复缓冲区（中断时将内容填回输入框，不进入编辑模式）
+        self._skill_loader: SkillLoader | None = None # SkillLoader 复用，避免每条消息重建
+        self._context_text: str = "" # 上下文用量缓存
         # LangSmith 配置
         self.langsmith_tracing = False
         self.langsmith_project = ""
@@ -286,20 +279,20 @@ class ChatREPL:
                 await self.checkpointer.conn.close()
             except Exception:
                 pass
-            self.checkpointer = None
+            finally:
+                self.checkpointer = None
 
     async def _rebuild_agent(self, *, rebuild_session: bool = False) -> None:
         """重建 agent（可选重建 session/checkpointer）"""
         if rebuild_session:
-            await self.close_checkpointer()
-            self.session_mgr = SessionManager(self.workplace_path)
-            db_path = self.workplace_path / ".chat" / "sessions" / "checkpointer.db"
-            self.checkpointer = await create_checkpointer(db_path)
-        self.agent = await asyncio.to_thread(
+            await self.close_checkpointer() # 关闭当前会话数据库连接
+            self.session_mgr:SessionManager = SessionManager(self.workplace_path) # 创建会话管理器
+            db_path = self.session_mgr.sessions_dir/ "checkpointer.db" # 创建新的会话数据库（一般是进入新工作目录才这样）
+            self.checkpointer = await create_checkpointer(db_path) # 创建数据库连接
+        self.agent = await asyncio.to_thread(  # 异步新线程构建agent
             build_agent,
             self.model_config,
             self.checkpointer,
-            None,
             self.yolo,
         )
 
@@ -313,33 +306,25 @@ class ChatREPL:
 
         self._ensure_chat_dir(self.workplace_path)  # 确保当前项目配置文件存在
 
-        self.session_mgr = SessionManager(self.workplace_path)  # 初始化历史会话管理器
+        self.session_mgr:SessionManager = SessionManager(self.workplace_path)  # 初始化历史会话管理器
 
-        self.model_config = get_default_model_config() or {}
-        if not self.model_config:
-            config = await first_run_configure()
-            if config is None:
-                return False
-            self.model_config = config
+        self.model_config = get_default_model_config() or {} # 尝试从model.json配置文件中获取默认模型配置，如果获取失败则返回空字典
+        if not self.model_config: # 如果默认模型配置不存在
+            config = await first_run_configure() # 进行初始化引导
+            if config is None: # 如果配置依旧为空
+                return False # 返回False
+            self.model_config = config # 否则缓存模型配置
 
-        # 加载 LangSmith 配置（非首次运行时从环境变量/配置文件恢复）
-        from chcode.config import load_langsmith_config, configure_langsmith
-
+        # 从环境变量恢复 LangSmith 配置
+        from chcode.config import load_langsmith_config
         langsmith_cfg = load_langsmith_config()
-        if langsmith_cfg["api_key"]:
-            self.langsmith_tracing = langsmith_cfg["tracing"]
-            self.langsmith_project = langsmith_cfg["project"]
-            self.langsmith_api_key = langsmith_cfg["api_key"]
-            self._sync_langsmith_env()
-        else:
-            # 首次运行时引导配置（在 Tavily 之后）
-            langsmith_cfg = await configure_langsmith()
+        if langsmith_cfg["api_key"] or langsmith_cfg["tracing"]:
             self.langsmith_tracing = langsmith_cfg["tracing"]
             self.langsmith_project = langsmith_cfg["project"]
             self.langsmith_api_key = langsmith_cfg["api_key"]
 
         # 创建 checkpointer
-        db_path = self.workplace_path / ".chat" / "sessions" / "checkpointer.db"
+        db_path = self.session_mgr.sessions_dir / "checkpointer.db"
         self.checkpointer = await create_checkpointer(db_path)
 
         # 构建 agent（可能较慢，放线程）
@@ -356,7 +341,6 @@ class ChatREPL:
             build_agent,
             self.model_config,
             self.checkpointer,
-            None,
             self.yolo,
         )
 
@@ -397,21 +381,21 @@ class ChatREPL:
 
     async def _init_git(self) -> None:
         """初始化 Git"""
-        is_available, status, version = await asyncio.to_thread(check_git_availability)
-        if is_available:
-            self.git_manager = GitManager(str(self.workplace_path))
-            if not self.git_manager.is_repo():
-                await asyncio.to_thread(self.git_manager.init)
-            else:
-                await asyncio.to_thread(self.git_manager._ensure_init_checkpoint)
-            self.git = True
-            self._git_cp_count = self.git_manager.count_checkpoints()
+        is_available, status, version = await asyncio.to_thread(check_git_availability) # 检查是否安装了Git且为可用状态
+        if is_available: # 如果可用
+            self.git_manager = GitManager(str(self.workplace_path)) # 初始Git管理器
+            if not self.git_manager.is_repo(): # 如果没有Git仓库
+                await asyncio.to_thread(self.git_manager.init) # 就初始化Git
+            else: # 如果已经有Git仓库了
+                await asyncio.to_thread(self.git_manager._ensure_init_checkpoint) # 就确保 仓库至少有一条提交供回溯
+            self.git = True # 设置Git为可用状态，此后回溯消息会自动回溯工作目录
+            self._git_cp_count = self.git_manager.count_checkpoints() # 记录提交数
 
     # ─── 主循环 ────────────────────────────────────────
 
     async def run(self) -> None:
         """主聊天循环"""
-        render_welcome()
+        render_welcome() # 渲染欢迎界面
 
         while True:
             try:
@@ -429,11 +413,11 @@ class ChatREPL:
                     continue
 
                 # 正常对话
-                prev_tracing = os.environ.get("LANGCHAIN_TRACING_V2", os.environ.get("LANGCHAIN_TRACING", "false")).lower()
+                prev_tracing = os.environ.get("LANGSMITH_TRACING", "false").lower()
                 await self._process_input(user_input)
 
                 # 检查 LangSmith 是否因 429 自动关闭
-                if prev_tracing == "true" and os.environ.get("LANGCHAIN_TRACING_V2", os.environ.get("LANGCHAIN_TRACING", "false")).lower() != prev_tracing:
+                if prev_tracing == "true" and os.environ.get("LANGSMITH_TRACING", "false").lower() != prev_tracing:
                     self.langsmith_tracing = False
                     render_warning(
                         "LangSmith 追踪已因配额耗尽自动关闭 "
@@ -676,8 +660,6 @@ class ChatREPL:
         _apply_langsmith_env(self.langsmith_tracing, self.langsmith_project, self.langsmith_api_key)
 
     async def _cmd_langsmith(self, _arg: str) -> None:
-        from chcode.config import save_langsmith_config
-
         # 显示当前状态
         state = "开启" if self.langsmith_tracing else "关闭"
         masked = ""
@@ -691,12 +673,17 @@ class ChatREPL:
 
         action = await select(
             "操作:",
-            ["开启追踪", "关闭追踪", "修改项目名称", "修改 API Key"],
+            ["打开面板", "开启追踪", "关闭追踪", "修改项目名称", "修改 API Key"],
         )
         if action is None:
             return
 
-        if "开启" in action:
+        if "面板" in action:
+            import webbrowser
+
+            webbrowser.open("https://smith.langchain.com")
+            return
+        elif "开启" in action:
             if not self.langsmith_api_key:
                 console.print("[yellow]请先设置 LangSmith API Key[/yellow]")
                 return
@@ -716,9 +703,7 @@ class ChatREPL:
                 return
 
         self._sync_langsmith_env()
-        save_langsmith_config(self.langsmith_tracing, self.langsmith_project, self.langsmith_api_key)
-        state = "开启" if self.langsmith_tracing else "关闭"
-        render_success(f"LangSmith 追踪已{state}")
+        render_success("LangSmith 配置已更新，重启后生效")
 
     async def _cmd_tools(self, _arg: str) -> None:
         from chcode.utils.tools import ALL_TOOLS
@@ -1136,7 +1121,7 @@ class ChatREPL:
                     continue
 
                 no_need_ids, all_ids = _collect_ids_from_group(
-                    sel_idx, groups, mode="edit"
+                    sel_idx, groups
                 )
 
                 if self.git and self.git_manager:
@@ -1161,7 +1146,7 @@ class ChatREPL:
                     continue
 
                 no_need_ids, all_ids = _collect_ids_from_group(
-                    sel_idx, groups, mode="fork"
+                    sel_idx, groups
                 )
 
                 saved = load_workplace()

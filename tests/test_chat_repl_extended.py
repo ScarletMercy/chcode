@@ -1215,7 +1215,7 @@ class TestCmdMessagesForkPathChoices:
                         with patch("chcode.chat.select_or_custom", new_callable=AsyncMock, return_value=str(saved)) as mock_soc:
                             with patch("chcode.chat.os.chdir"):
                                 with patch("chcode.chat.save_workplace"):
-                                    with patch("chcode.chat.SessionManager", return_value=Mock()):
+                                    with patch("chcode.chat.SessionManager", return_value=MagicMock()):
                                         with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock, return_value=Mock()):
                                             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=new_agent):
                                                 with patch.object(repl, "_init_git", new_callable=AsyncMock):
@@ -1343,7 +1343,7 @@ class TestCmdMessagesForkFullFlow:
                         with patch("chcode.chat.select_or_custom", new_callable=AsyncMock, return_value=str(old_path)):
                             with patch("chcode.chat.os.chdir"):
                                 with patch("chcode.chat.save_workplace"):
-                                    with patch("chcode.chat.SessionManager", return_value=Mock()):
+                                    with patch("chcode.chat.SessionManager", return_value=MagicMock()):
                                         with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock, return_value=Mock()):
                                             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                 with patch.object(repl, "_init_git", new_callable=AsyncMock):
@@ -1381,7 +1381,7 @@ class TestCmdMessagesForkFullFlow:
                             with patch("chcode.chat.os.chdir"):
                                 with patch("chcode.chat.save_workplace"):
                                     with patch("chcode.chat.render_info"):
-                                        with patch("chcode.chat.SessionManager", return_value=Mock()):
+                                        with patch("chcode.chat.SessionManager", return_value=MagicMock()):
                                             with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock, return_value=Mock()):
                                                 with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                     with patch.object(repl, "_init_git", new_callable=AsyncMock):
@@ -1428,7 +1428,7 @@ class TestCmdMessagesForkFullFlow:
                             with patch("chcode.chat.os.chdir"):
                                 with patch("chcode.chat.save_workplace"):
                                     with patch("chcode.chat.render_info"):
-                                        with patch("chcode.chat.SessionManager", return_value=Mock()):
+                                        with patch("chcode.chat.SessionManager", return_value=MagicMock()):
                                             with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock, return_value=Mock()):
                                                 with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                     with patch.object(repl, "_init_git", new_callable=AsyncMock):
@@ -1477,7 +1477,7 @@ class TestCmdMessagesForkFullFlow:
                             with patch("chcode.chat.os.chdir"):
                                 with patch("chcode.chat.save_workplace"):
                                     with patch("chcode.chat.render_info"):
-                                        with patch("chcode.chat.SessionManager", return_value=Mock()):
+                                        with patch("chcode.chat.SessionManager", return_value=MagicMock()):
                                             with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock, return_value=Mock()):
                                                 with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                     with patch.object(repl, "_init_git", new_callable=AsyncMock):
@@ -1544,7 +1544,7 @@ class TestCmdMessagesForkFullFlow:
                             with patch("chcode.chat.os.chdir"):
                                 with patch("chcode.chat.save_workplace"):
                                     with patch("chcode.chat.render_info"):
-                                        with patch("chcode.chat.SessionManager", return_value=Mock()):
+                                        with patch("chcode.chat.SessionManager", return_value=MagicMock()):
                                             with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock, return_value=Mock()):
                                                 with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=new_agent):
                                                     with patch.object(repl, "_init_git", new_callable=AsyncMock):
@@ -1582,7 +1582,7 @@ class TestCmdMessagesForkFullFlow:
                         with patch("chcode.chat.select_or_custom", new_callable=AsyncMock, return_value=str(new_path)):
                             with patch("chcode.chat.os.chdir"):
                                 with patch("chcode.chat.save_workplace"):
-                                    with patch("chcode.chat.SessionManager", return_value=Mock()):
+                                    with patch("chcode.chat.SessionManager", return_value=MagicMock()):
                                         with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock, return_value=Mock()):
                                             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=new_agent):
                                                 with patch.object(repl, "_init_git", new_callable=AsyncMock) as mock_init_git:
@@ -1620,7 +1620,7 @@ class TestCmdMessagesForkFullFlow:
                         with patch("chcode.chat.select_or_custom", new_callable=AsyncMock, return_value=str(new_path)):
                             with patch("chcode.chat.os.chdir"):
                                 with patch("chcode.chat.save_workplace"):
-                                    with patch("chcode.chat.SessionManager", return_value=Mock()):
+                                    with patch("chcode.chat.SessionManager", return_value=MagicMock()):
                                         with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock, return_value=Mock()):
                                             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                 with patch.object(repl, "_init_git", new_callable=AsyncMock):
@@ -1657,7 +1657,7 @@ class TestCmdMessagesForkFullFlow:
                         with patch("chcode.chat.select_or_custom", new_callable=AsyncMock, return_value=str(new_path)):
                             with patch("chcode.chat.os.chdir"):
                                 with patch("chcode.chat.save_workplace"):
-                                    with patch("chcode.chat.SessionManager", return_value=Mock()):
+                                    with patch("chcode.chat.SessionManager", return_value=MagicMock()):
                                         with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock, return_value=Mock()):
                                             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                 with patch.object(repl, "_init_git", new_callable=AsyncMock):

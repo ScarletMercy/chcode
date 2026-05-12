@@ -32,8 +32,7 @@ def _setup_langsmith_guard():
                 "langsmith" in data.lower() and "429" in data
             ):
                 _disabled = True
-                os.environ.pop("LANGCHAIN_TRACING", None)
-                os.environ["LANGCHAIN_TRACING_V2"] = "false"
+                os.environ["LANGSMITH_TRACING"] = "false"
                 return len(data)
             if "langsmith" in data.lower() and (
                 "ConnectionError" in data
@@ -46,8 +45,7 @@ def _setup_langsmith_guard():
                 or "api.smith.langchain.com" in data
             ):
                 _disabled = True
-                os.environ.pop("LANGCHAIN_TRACING", None)
-                os.environ["LANGCHAIN_TRACING_V2"] = "false"
+                os.environ["LANGSMITH_TRACING"] = "false"
                 return len(data)
             return self._original.write(data)
 

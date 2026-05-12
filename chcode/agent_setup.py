@@ -427,7 +427,6 @@ def _dummy_model():
 def build_agent(
     model_config: dict | None = None,
     checkpointer: AsyncSqliteSaver | None = None,
-    mcp_tools: list | None = None,
     yolo: bool = False,
 ) -> object:
     """构建 agent 实例"""
@@ -456,7 +455,7 @@ def build_agent(
 
     agent = create_agent(
         model,
-        _get_all_tools() + (mcp_tools or []),
+        _get_all_tools(),
         middleware=[
             restrict_agent_type,
             emit_tool_events,

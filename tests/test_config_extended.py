@@ -46,7 +46,9 @@ class TestFirstRunConfigure:
         # Mock prompts
         with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
             "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock):
+        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock), patch(
+            "chcode.config.configure_langsmith", new_callable=AsyncMock
+        ):
 
             mock_select.side_effect = [
                 "OpenAI (检测到 OPENAI_API_KEY)",  # Config choice
@@ -529,7 +531,7 @@ class TestGetContextWindowSize:
         """Test Qwen model context windows"""
         import chcode.config as mod
 
-        assert mod.get_context_window_size("qwen3.5-plus") == 1000000
+        assert mod.get_context_window_size("qwen3.5-plus") == 1048576
         assert mod.get_context_window_size("qwen") == 256000
 
 
@@ -887,7 +889,8 @@ class TestConfigureModelscope:
 
         with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
              patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock):
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+             patch("chcode.config.configure_langsmith", new_callable=AsyncMock):
             ms_result = {
                 "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
                 "fallback": {
@@ -923,7 +926,8 @@ class TestConfigureModelscope:
 
         with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
              patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock):
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+             patch("chcode.config.configure_langsmith", new_callable=AsyncMock):
             ms_result = {
                 "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
                 "fallback": {

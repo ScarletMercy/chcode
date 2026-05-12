@@ -25,7 +25,7 @@ from chcode.prompts import (
     password,
 )
 from chcode.agent_setup import tool_result_budget
-from chcode.session import SessionManager
+from chcode.utils.session import SessionManager
 from chcode.utils.skill_loader import (
     SkillLoader,
     _extract_archive,
@@ -1264,7 +1264,7 @@ class TestGetSummaryListContent:
 
     async def test_truncation_long_text(self):
         """Text longer than _SUMMARY_MAX_LEN gets truncated."""
-        from chcode.session import _SUMMARY_MAX_LEN
+        from chcode.utils.session import _SUMMARY_MAX_LEN
         from langchain_core.messages import HumanMessage
         sm = SessionManager.__new__(SessionManager)
         agent = AsyncMock()
@@ -1402,6 +1402,7 @@ class TestPowerShellProviderIsAvailable:
 # ────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="LangSmith guard requires Windows")
 class TestCLILangSmithGuard:
     """Cover lines 23-40: _setup_langsmith_guard behavior.
 
@@ -1449,9 +1450,8 @@ class TestCLIMainCallback:
     @patch("chcode.cli._run_chat")
     def test_main_with_subcommand_returns_early(self, mock_run_chat):
         """Cover line 75: when subcommand is invoked, return early."""
-        from chcode.cli import app, main
+        from chcode.cli import app
         from typer.testing import CliRunner
-        from typer import Context
 
         runner = CliRunner()
         # When a subcommand is used, main returns early
@@ -1679,7 +1679,7 @@ class TestSkillManagerDescTruncation:
 
     async def test_skill_description_truncated(self):
         """Cover line 60: description longer than 60 chars gets truncated."""
-        from chcode.skill_manager import _list_skills
+        from chcode.utils.skill_manager import _list_skills
         from unittest.mock import MagicMock
 
         # Create a mock session with long skill description
@@ -1688,7 +1688,7 @@ class TestSkillManagerDescTruncation:
 
         # Mock scan_all_skills to return a skill with long description
         long_desc = "a" * 100  # 100 character description
-        with patch("chcode.skill_manager.scan_all_skills") as mock_scan:
+        with patch("chcode.utils.skill_manager.scan_all_skills") as mock_scan:
             mock_scan.return_value = [{
                 "name": "test",
                 "type": "test",
@@ -1697,7 +1697,7 @@ class TestSkillManagerDescTruncation:
             }]
 
             # Mock select to return "返回" to exit early
-            with patch("chcode.skill_manager.select", AsyncMock(return_value="返回")):
+            with patch("chcode.utils.skill_manager.select", AsyncMock(return_value="返回")):
                 result = await _list_skills(session)
                 # Should complete without error
                 assert result is None
@@ -1708,13 +1708,13 @@ class TestSkillManagerSkillNotFound:
 
     async def test_skill_not_found_after_selection(self):
         """Cover line 77: selected skill not found in list."""
-        from chcode.skill_manager import _list_skills
+        from chcode.utils.skill_manager import _list_skills
         from unittest.mock import MagicMock
 
         session = MagicMock()
         session.workplace_path = MagicMock()
 
-        with patch("chcode.skill_manager.scan_all_skills") as mock_scan:
+        with patch("chcode.utils.skill_manager.scan_all_skills") as mock_scan:
             mock_scan.return_value = [{
                 "name": "skill1",
                 "type": "test",
@@ -1732,7 +1732,7 @@ class TestSkillManagerSkillNotFound:
                     return "nonexistent (test)"  # This won't match any skill
                 return "返回"
 
-            with patch("chcode.skill_manager.select", side_effect=mock_select):
+            with patch("chcode.utils.skill_manager.select", side_effect=mock_select):
                 result = await _list_skills(session)
                 # Should handle not-found case gracefully
                 assert result is None
@@ -1743,12 +1743,12 @@ class TestSkillManagerDeleteCancelled:
 
     async def test_delete_skill_cancelled(self):
         """Cover lines 85-88: user cancels skill deletion."""
-        from chcode.skill_manager import _delete_skill
+        from chcode.utils.skill_manager import _delete_skill
         from unittest.mock import MagicMock
 
         skill = {"name": "test", "path": "/tmp/test"}
 
-        with patch("chcode.skill_manager.confirm", AsyncMock(return_value=False)):
+        with patch("chcode.utils.skill_manager.confirm", AsyncMock(return_value=False)):
             result = await _delete_skill(skill, MagicMock())
             # Should return early without deleting
             assert result is None
@@ -1759,13 +1759,13 @@ class TestSkillManagerInstallCancelled:
 
     async def test_install_skill_cancelled(self):
         """Cover line 151: user cancels at file path input."""
-        from chcode.skill_manager import _install_skill
+        from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock
 
         session = MagicMock()
         session.workplace_path = MagicMock()
 
-        with patch("chcode.skill_manager.text", AsyncMock(return_value="")):
+        with patch("chcode.utils.skill_manager.text", AsyncMock(return_value="")):
             result = await _install_skill(session)
             # Should return early
             assert result is None
@@ -1776,13 +1776,13 @@ class TestSkillManagerFileNotExists:
 
     async def test_install_skill_file_not_exists(self):
         """Cover line 156: specified file doesn't exist."""
-        from chcode.skill_manager import _install_skill
+        from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock
 
         session = MagicMock()
         session.workplace_path = MagicMock()
 
-        with patch("chcode.skill_manager.text", AsyncMock(return_value="/nonexistent/file.zip")):
+        with patch("chcode.utils.skill_manager.text", AsyncMock(return_value="/nonexistent/file.zip")):
             with patch("pathlib.Path.exists", return_value=False):
                 result = await _install_skill(session)
                 # Should handle non-existent file gracefully
@@ -1794,7 +1794,7 @@ class TestSkillManagerInstallFails:
 
     async def test_install_skill_installation_fails(self):
         """Cover line 165: installation returns False."""
-        from chcode.skill_manager import _install_skill
+        from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock, patch
         import tempfile
 
@@ -1807,10 +1807,10 @@ class TestSkillManagerInstallFails:
             temp_path = f.name
 
         try:
-            with patch("chcode.skill_manager.text", AsyncMock(return_value=temp_path)):
+            with patch("chcode.utils.skill_manager.text", AsyncMock(return_value=temp_path)):
                 with patch("pathlib.Path.exists", return_value=True):
-                    with patch("chcode.skill_manager.select", AsyncMock(return_value="项目级")):
-                        with patch("chcode.skill_manager.validate_skill_package", return_value=None):
+                    with patch("chcode.utils.skill_manager.select", AsyncMock(return_value="项目级")):
+                        with patch("chcode.utils.skill_manager.validate_skill_package", return_value=None):
                             result = await _install_skill(session)
                             # Should handle installation failure gracefully
                             assert result is None
@@ -1833,7 +1833,7 @@ class TestAgentLoaderParseAgentMDReadError:
     def test_parse_agent_md_read_error(self):
         """Cover lines 28-29: read_text raises exception."""
         from chcode.agents.loader import _parse_agent_md
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
         import tempfile
 
         with tempfile.NamedTemporaryFile(suffix=".md", delete=False) as f:
@@ -2138,8 +2138,7 @@ class TestAgentRunnerToolErrorsHandler:
 
     async def test_tool_error_handler_catches_exception(self):
         from chcode.agent_setup import handle_tool_errors
-        from unittest.mock import AsyncMock, MagicMock
-        from langchain.tools.tool_node import ToolCallRequest
+        from unittest.mock import MagicMock
 
         request = MagicMock()
         request.tool_call = {"id": "tc_123"}
@@ -2157,8 +2156,7 @@ class TestAgentRunnerSubagentSystemPrompt:
 
     async def test_subagent_system_prompt_extraction(self):
         """Cover line 44: extracts system_prompt from context.extra."""
-        from chcode.agents.runner import _subagent_system_prompt
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import MagicMock
 
         request = MagicMock()
         request.runtime.context.extra = {"system_prompt": "You are helpful."}
@@ -2175,7 +2173,7 @@ class TestAgentRunnerToolResultBudget:
 
     async def test_tool_result_budget_processing(self):
         from chcode.agent_setup import tool_result_budget
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import MagicMock
         from langchain_core.messages import ToolMessage
 
         tool_msg = MagicMock(spec=ToolMessage)
@@ -2310,7 +2308,6 @@ class TestShellSessionWindowsPathConversion:
         """Cover lines 89-96: convert /c/ style path to C:\\ on Windows."""
         from chcode.utils.shell.session import ShellSession
         from unittest.mock import MagicMock, patch
-        import tempfile
 
         mock_provider = MagicMock()
         mock_provider.shell_path = "cmd.exe"
@@ -2500,13 +2497,13 @@ class TestSkillManagerDeleteSelectReturns:
 
     async def test_delete_select_returns_none(self):
         """Cover lines 85-88: select returns None -> early return."""
-        from chcode.skill_manager import _delete_skill
+        from chcode.utils.skill_manager import _delete_skill
         from unittest.mock import MagicMock
 
         skill = {"name": "test", "path": "/tmp/test"}
 
-        with patch("chcode.skill_manager.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.skill_manager.select", AsyncMock(return_value=None)):
+        with patch("chcode.utils.skill_manager.confirm", AsyncMock(return_value=True)), \
+             patch("chcode.utils.skill_manager.select", AsyncMock(return_value=None)):
             result = await _delete_skill(skill, MagicMock())
             # Should return early after select
             assert result is None
@@ -2517,7 +2514,7 @@ class TestSkillManagerInstallLocationNone:
 
     async def test_install_location_returns_none(self):
         """Cover line 151: location select returns None -> early return."""
-        from chcode.skill_manager import _install_skill
+        from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock, patch
         import tempfile
 
@@ -2529,10 +2526,10 @@ class TestSkillManagerInstallLocationNone:
         zip_path.close()
 
         try:
-            with patch("chcode.skill_manager.text", AsyncMock(return_value=zip_path.name)), \
+            with patch("chcode.utils.skill_manager.text", AsyncMock(return_value=zip_path.name)), \
                  patch("pathlib.Path.exists", return_value=True), \
-                 patch("chcode.skill_manager.validate_skill_package", return_value={"name": "test"}), \
-                 patch("chcode.skill_manager.select", AsyncMock(return_value=None)):
+                 patch("chcode.utils.skill_manager.validate_skill_package", return_value={"name": "test"}), \
+                 patch("chcode.utils.skill_manager.select", AsyncMock(return_value=None)):
                 result = await _install_skill(session)
                 # Should return early
                 assert result is None
@@ -2820,9 +2817,8 @@ class TestSkillManagerInstallFailurePrint:
 
     async def test_install_failure_message(self, tmp_path):
         """Cover line 165: install_skill returns False, print failure message."""
-        from chcode.skill_manager import _install_skill
+        from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock, patch, AsyncMock
-        from pathlib import Path
 
         session = MagicMock()
         session.workplace_path = tmp_path
@@ -2830,11 +2826,11 @@ class TestSkillManagerInstallFailurePrint:
         zip_path = tmp_path / "test.zip"
         zip_path.write_bytes(b"PK")
 
-        with patch("chcode.skill_manager.text", AsyncMock(return_value=str(zip_path))), \
+        with patch("chcode.utils.skill_manager.text", AsyncMock(return_value=str(zip_path))), \
              patch("pathlib.Path.exists", return_value=True), \
-             patch("chcode.skill_manager.validate_skill_package", return_value={"name": "test"}), \
-             patch("chcode.skill_manager.select", AsyncMock(return_value="项目级")), \
-             patch("chcode.skill_manager.install_skill", return_value=False):
+             patch("chcode.utils.skill_manager.validate_skill_package", return_value={"name": "test"}), \
+             patch("chcode.utils.skill_manager.select", AsyncMock(return_value="项目级")), \
+             patch("chcode.utils.skill_manager.install_skill", return_value=False):
             result = await _install_skill(session)
             # Should print failure message and complete
             assert result is None
@@ -2849,7 +2845,6 @@ class TestCliMainEntry:
     def test_main_entry_calls_app(self):
         """Line 131: if __name__ == '__main__': app().
         Use importlib to execute the module as __main__."""
-        import importlib
         import types
 
         mock_app = MagicMock()

@@ -20,7 +20,7 @@ from chcode.utils.skill_loader import (
 )
 
 if TYPE_CHECKING:
-    from chcode.session import SessionManager
+    from chcode.utils.session import SessionManager
 
 
 async def manage_skills(session: SessionManager) -> None:

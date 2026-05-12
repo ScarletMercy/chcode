@@ -1,10 +1,9 @@
-import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from chcode.session import SessionManager
+from chcode.utils.session import SessionManager
 
 
 @pytest.fixture

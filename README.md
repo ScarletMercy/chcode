@@ -9,231 +9,231 @@
  ╚══════╝  ╚═╝   ╚═╝   ╚══════╝   ╚═════╝   ╚════╝      ╚══════╝
 ```
 
-Terminal-based AI coding agent, built with LangChain + Typer + Rich.
+基于终端的 AI 编程代理，使用 LangChain + Typer + Rich 构建。
 
-> **Why "ChCode"?** The original prototype was a tkinter + LangChain app called **chat-agent** (chagent). When it evolved into a CLI tool, the name became **ChCode** — chat-agent, meet code.
+> **为什么叫 "ChCode"？** 最初的原型是一个 tkinter + LangChain 应用，名为 **chat-agent**（chagent）。当它演变为 CLI 工具后，名字变成了 **ChCode** — chat-agent 遇上 code。
 
 <details>
-<summary>📸 chagent — the original tkinter prototype</summary>
+<summary>📸 chagent — 最初的 tkinter 原型</summary>
 <img src="https://raw.githubusercontent.com/ScarletMercy/chcode/main/assets/chagent.png" alt="chagent prototype" width="600"/>
 </details>
 
-> 7000+ lines of Python, 14 built-in tools, full session persistence, git-aware workflow.
+> 7000+ 行 Python 代码，14 个内置工具，完整会话持久化，Git 感知工作流。
 
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-[中文文档](README_zh.md)
+[English](README_en.md)
 
-<img src="https://raw.githubusercontent.com/ScarletMercy/chcode/main/assets/chcode.png" alt="ChCode main interface" width="800"/>
+<img src="https://raw.githubusercontent.com/ScarletMercy/chcode/main/assets/chcode.png" alt="ChCode 主界面" width="800"/>
 
-## Features
+## 功能特性
 
-### Model Management
+### 模型管理
 
-- Compatible with **all OpenAI-compatible APIs** (OpenAI, DeepSeek, Qwen, GLM, Claude via proxy, etc.)
-- Built-in quick setup for **ModelScope**, **LongCat**, and major providers
-- **ModelScope**: 2000 free model calls/day
-- **LongCat**: 50M+ free tokens/day minimum
-- First-run wizard with **env auto-detection** (scans `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `ModelScopeToken`, etc.)
-- Native **reasoning/thinking model** support — thinking tokens displayed in real time
-- Create / edit / switch models at runtime
-- Per-model hyperparameter tuning (temperature, top_p, top_k, max_completion_tokens, stop_sequences, etc.)
-- Automatic **retry with exponential backoff** (3/10/30/60s) and fallback model switching on persistent failure
+- 兼容**所有 OpenAI 兼容 API**（OpenAI、DeepSeek、Qwen、GLM、Claude 代理等）
+- 内置 **ModelScope**、**LongCat** 等主流平台快捷配置
+- **ModelScope**：每天 2000 次免费模型调用
+- **LongCat**：每天最低 5000 万+ 免费 token
+- 首次运行向导，**自动检测环境变量**（扫描 `OPENAI_API_KEY`、`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`、`ModelScopeToken` 等）
+- 原生支持 **reasoning/thinking 模型** — 实时显示思考过程
+- 运行时创建 / 编辑 / 切换模型
+- 每个模型独立调参（temperature、top_p、top_k、max_completion_tokens、stop_sequences 等）
+- **指数退避自动重试**（3/10/30/60s），持续失败时自动切换备用模型
 
-### Vision & Multimodal
+### 视觉与多模态
 
-- Dedicated vision model configuration via `/vision` command (independent from main model)
-- Image analysis with **automatic media encoding** and base64 embedding
-- **Video support** — send videos directly to vision models for analysis (MP4, MOV, AVI, MKV, WebM)
-- Automatic image resizing for oversized inputs
-- Supported image formats: PNG, JPG, JPEG, GIF, BMP, WebP, TIFF
+- 通过 `/vision` 命令独立配置视觉模型（与主模型分离）
+- 图片分析，支持**自动媒体编码**和 base64 嵌入
+- **视频支持** — 直接将视频发送给视觉模型进行分析（MP4、MOV、AVI、MKV、WebM）
+- 大尺寸图片自动缩放
+- 支持的图片格式：PNG、JPG、JPEG、GIF、BMP、WebP、TIFF
 
-### Session & History
+### 会话与历史
 
-- **Persistent sessions** with SQLite-backed checkpoints (LangGraph)
-- Session list, switch, rename, delete
-- **Context compression** — auto-summarize when approaching token limit
-- Real-time **context usage display** in status bar
+- **持久化会话**，基于 SQLite 的检查点存储（LangGraph）
+- 会话列表、切换、重命名、删除
+- **上下文压缩** — 接近 token 上限时自动摘要
+- 状态栏实时显示**上下文使用量**
 
-### Git Integration
+### Git 集成
 
-- Working directory **rolls back with message edits**
-- Create **branches from any message** (fork)
-- Edit / fork / delete history messages via `/messages`
-- Checkpoint counter in status bar
+- 编辑消息时工作目录**自动回滚**
+- 从任意消息**创建分支**（fork）
+- 通过 `/messages` 编辑 / fork / 删除历史消息
+- 状态栏显示检查点计数
 
-### Human-in-the-Loop
+### 人工审核
 
-- **Common mode** — every tool call requires approval, with diff preview for edits. Only Explore and Plan sub-agents available.
-- **YOLO mode** — auto-approve everything. All sub-agents available including General-purpose.
-- Toggle with `Tab` key or `/mode` command
-- Available sub-agents update dynamically when switching modes
+- **Common 模式** — 每次工具调用需要确认，编辑操作显示 diff 预览。仅可使用 Explore 和 Plan 子代理
+- **YOLO 模式** — 自动批准所有操作。所有子代理可用，包括 General-purpose
+- 通过 `Tab` 键或 `/mode` 命令切换
+- 切换模式时自动更新可用子代理列表
 
-### Work Environment Isolation
+### 工作环境隔离
 
-- Per-project `.chat/` directory for sessions, skills, agents
-- Global `~/.chat/` for shared skills and settings
-- `/workdir` to switch project root
+- 每个项目独立的 `.chat/` 目录存放会话、技能、代理
+- 全局 `~/.chat/` 存放共享技能和设置
+- `/workdir` 切换项目根目录
 
-### Cross-Platform
+### 跨平台
 
-- **Windows** — defaults to Git Bash, falls back to PowerShell
-- **Linux / Mac** — native bash/zsh
-- Persistent shell sessions with **automatic CWD tracking**
+- **Windows** — 默认使用 Git Bash，回退到 PowerShell
+- **Linux / Mac** — 原生 bash/zsh
+- 持久化 Shell 会话，**自动追踪 CWD**
 
-### Rich Terminal UI
+### 终端 UI
 
-- Real-time **status bar** — context usage %, git checkpoint count, ModelScope API quota
-- **Streaming output** with token-by-token rendering
-- Slash command auto-completion
-- Color-coded tool approval UI with **inline diff preview** for file edits
+- 实时**状态栏** — 上下文使用率、Git 检查点数、ModelScope API 配额
+- **流式输出**，逐 token 渲染
+- 斜杠命令自动补全
+- 彩色工具审核界面，文件编辑显示**行内 diff 预览**
 
-### Observability
+### 可观测性
 
-- **LangSmith tracing** — toggle on/off via `/langsmith` command
-- Auto-disable tracing on 429 rate limit with user notification
+- **LangSmith 追踪** — 通过 `/langsmith` 命令开关
+- 遇到 429 限流时自动禁用追踪并通知用户
 
-### Sub-Agent System
+### 子代理系统
 
-- Three built-in agent types: **Explore** (codebase search, read-only), **Plan** (architecture design, read-only), **General-purpose** (full-capability coding)
-- **Mode-aware availability** — Common mode: Explore + Plan only; YOLO mode: all three + custom agents
-- **Parallel execution** — launch multiple agents concurrently for independent tasks, with live spinner progress display
-- Sub-agents run with **isolated context**, protecting the main conversation from context pollution
-- Read-only agents (Explore, Plan) have **bash command restrictions** to prevent accidental modifications
-- **Custom agents** — define your own agent types in `.chat/agents/` with dedicated tools and instructions
+- 三种内置代理类型：**Explore**（代码库搜索，只读）、**Plan**（架构设计，只读）、**General-purpose**（全能力编程）
+- **模式感知可用性** — 普通模式：仅 Explore + Plan；YOLO 模式：全部三种 + 自定义代理
+- **并行执行** — 同时启动多个代理处理独立任务，带实时旋转进度显示
+- 子代理运行在**隔离上下文**中，保护主对话不被上下文污染
+- 只读代理（Explore、Plan）具有 **bash 命令限制**，防止误修改
+- **自定义代理** — 在 `.chat/agents/` 中定义自己的代理类型，配备专属工具和指令
 
-### Skill System
+### 技能系统
 
-- Install / delete / manage skills via `/skill`
-- Skills are injected into system prompt via LangChain middleware
-- Supports project-level and global skill directories
+- 通过 `/skill` 安装 / 删除 / 管理技能
+- 技能通过 LangChain 中间件注入系统提示
+- 支持项目级和全局技能目录
 
-### ModelScope Rate Limit
+### ModelScope 限额监控
 
-- Real-time **API quota display** in status bar (daily limit remaining, per-model remaining)
-- Auto-enabled when using ModelScope models
+- 状态栏实时显示 **API 配额**（每日剩余额度、每模型剩余额度）
+- 使用 ModelScope 模型时自动启用
 
-## Built-in Tools (14)
+## 内置工具（14 个）
 
-| Tool | Description |
-|------|-------------|
-| `read` | Read file content with line numbers and offset |
-| `write` | Create or overwrite files |
-| `edit` | Surgical string replacement in existing files |
-| `glob` | Find files by name pattern |
-| `grep` | Search file contents with regex |
-| `list_dir` | Browse directory structure |
-| `bash` | Execute shell commands (Git Bash / PowerShell / bash) |
-| `load_skill` | Dynamically load skill instructions via middleware |
-| `web_fetch` | Fetch and convert URL content to markdown |
-| `web_search` | Web search via [Tavily](https://tavily.com) |
-| `ask_user` | Single-select, multi-select, batch questions for user interaction |
-| `agent` | Launch sub-agents (Explore, Plan, General-purpose in YOLO mode, custom), supports parallel execution |
-| `todo_write` | Structured task tracking for complex multi-step work |
-| `vision` | Analyze images and videos via ModelScope vision models |
+| 工具 | 说明 |
+|------|------|
+| `read` | 读取文件内容，支持行号和偏移量 |
+| `write` | 创建或覆盖文件 |
+| `edit` | 精准字符串替换编辑现有文件 |
+| `glob` | 按文件名模式查找文件 |
+| `grep` | 用正则搜索文件内容 |
+| `list_dir` | 浏览目录结构 |
+| `bash` | 执行 Shell 命令（Git Bash / PowerShell / bash） |
+| `load_skill` | 通过中间件动态加载技能指令 |
+| `web_fetch` | 抓取 URL 内容并转换为 Markdown |
+| `web_search` | 通过 [Tavily](https://tavily.com) 进行网络搜索 |
+| `ask_user` | 单选、多选、批量问题与用户交互 |
+| `agent` | 启动子代理（Explore、Plan、YOLO 模式下含 General-purpose、custom），支持并行执行 |
+| `todo_write` | 结构化任务追踪，适用于复杂多步骤工作 |
+| `vision` | 通过视觉模型分析图片和视频 |
 
-## Quick Start
+## 快速开始
 
-### Install
+### 安装
 
 ```bash
-# Stable release (PyPI) — choose one
+# 稳定版（PyPI）— 三选一
 pip install chcode        # pip
-uv tool install chcode    # uv (recommended)
+uv tool install chcode    # uv（推荐）
 pipx install chcode       # pipx
 
-# Latest version (GitHub) — choose one
-uv tool install git+https://github.com/ScarletMercy/chcode.git    # uv (recommended)
+# 最新版（GitHub）— 二选一
+uv tool install git+https://github.com/ScarletMercy/chcode.git    # uv（推荐）
 pipx install git+https://github.com/ScarletMercy/chcode.git       # pipx
 
-# Development (from source)
+# 开发测试（从源码）
 git clone https://github.com/ScarletMercy/chcode.git
 cd chcode
-pip install -e .       # or: uv sync && uv run chcode
+pip install -e .       # 或: uv sync && uv run chcode
 ```
 
-### Run
+### 运行
 
 ```bash
-# Start interactive session
+# 启动交互式会话
 chcode
 
-# Start in YOLO mode
+# 以 YOLO 模式启动
 chcode --yolo
 
-# Model management
-chcode config new    # add new model
-chcode config edit   # edit current model
-chcode config switch # switch model
+# 模型管理
+chcode config new    # 添加新模型
+chcode config edit   # 编辑当前模型
+chcode config switch # 切换模型
 ```
 
-### First Run
+### 首次运行
 
-On first launch, ChCode will:
+首次启动时，ChCode 会：
 
-1. Scan environment variables for known API keys
-2. Guide you through model configuration
-3. Optionally configure Tavily for web search
+1. 扫描环境变量中的已知 API Key
+2. 引导你完成模型配置
+3. 可选配置 Tavily 用于网络搜索
 
-## Commands
+## 命令
 
-| Command | Description |
-|---------|-------------|
-| `/new` | Start new session |
-| `/history` | Browse and switch sessions |
-| `/model` | Model management (new / edit / switch) |
-| `/vision` | Visual model configuration |
-| `/messages` | Edit / fork / delete history messages |
-| `/compress` | Compress current session |
-| `/skill` | Manage skills |
-| `/search` | Configure Tavily API key |
-| `/workdir` | Switch working directory |
-| `/mode` | Toggle Common / YOLO mode |
-| `/git` | Show git status |
-| `/langsmith` | Toggle LangSmith tracing |
-| `/tools` | List built-in tools |
-| `/quit` | Exit |
+| 命令 | 说明 |
+|------|------|
+| `/new` | 新建会话 |
+| `/history` | 浏览和切换会话 |
+| `/model` | 模型管理（新建 / 编辑 / 切换） |
+| `/vision` | 视觉模型配置 |
+| `/messages` | 编辑 / fork / 删除历史消息 |
+| `/compress` | 压缩当前会话 |
+| `/skill` | 管理技能 |
+| `/search` | 配置 Tavily API Key |
+| `/workdir` | 切换工作目录 |
+| `/mode` | 切换 Common / YOLO 模式 |
+| `/git` | 显示 Git 状态 |
+| `/langsmith` | 开关 LangSmith 追踪 |
+| `/tools` | 列出内置工具 |
+| `/quit` | 退出 |
 
-## Keybindings
+## 快捷键
 
-| Key | Action |
-|-----|--------|
-| `Enter` | Send message |
-| `Ctrl+Enter` | New line |
-| `Tab` | Toggle Common/YOLO mode (when input empty) |
-| `Ctrl+C` | Interrupt generation |
+| 按键 | 操作 |
+|------|------|
+| `Enter` | 发送消息 |
+| `Ctrl+Enter` | 换行 |
+| `Tab` | 切换 Common/YOLO 模式（输入为空时） |
+| `Ctrl+C` | 中断生成 |
 
-## Why No MCP?
+## 为什么不用 MCP？
 
-ChCode intentionally does not integrate MCP (Model Context Protocol). The combination of **Skills + CLI tools** covers 95%+ of real-world coding agent scenarios. Skills provide structured, reusable instructions injected via middleware — simpler, faster, and more portable than MCP servers.
+ChCode 故意不集成 MCP（Model Context Protocol）。**技能 + CLI 工具**的组合覆盖了 95%+ 的真实编程代理场景。技能通过中间件注入结构化、可复用的指令 — 比 MCP 服务器更简单、更快、更轻量。
 
-## Architecture
+## 架构
 
 ```
 chcode/
-├── cli.py                  # Typer CLI entry
-├── chat.py                 # REPL main loop, slash commands, HITL
-├── agent_setup.py          # Agent construction, middleware, model retry with fallback
-├── config.py               # Model config, Tavily, env detection
-├── display.py              # Rich rendering, streaming, status bar
-├── prompts.py              # Interactive prompts (select/confirm/text)
-├── session.py              # Session manager (SQLite)
-├── skill_manager.py        # Skill install/delete UI
+├── cli.py                  # Typer CLI 入口
+├── chat.py                 # REPL 主循环、斜杠命令、人工审核
+├── agent_setup.py          # 代理构建、中间件、模型重试与回退
+├── config.py               # 模型配置、Tavily、环境变量检测
+├── display.py              # Rich 渲染、流式输出、状态栏
+├── prompts.py              # 交互式提示（选择/确认/文本）
+├── session.py              # 会话管理器（SQLite）
+├── skill_manager.py        # 技能安装/删除 UI
 ├── agents/
-│   ├── definitions.py      # Agent types (explore, plan, general)
-│   ├── loader.py           # Load custom agents from .chat/agents/
-│   └── runner.py           # Sub-agent execution with middleware
+│   ├── definitions.py      # 代理类型（explore、plan、general）
+│   ├── loader.py           # 从 .chat/agents/ 加载自定义代理
+│   └── runner.py           # 子代理执行（含中间件）
 └── utils/
-    ├── tools.py            # 14 built-in tools
-    ├── shell/              # Shell abstraction (Bash/PowerShell providers)
-    ├── enhanced_chat_openai.py  # Extended ChatOpenAI with reasoning support
-    ├── git_manager.py      # Git checkpoint management
-    ├── skill_loader.py     # Skill discovery and loading
-    ├── modelscope_ratelimit.py  # ModelScope API rate limit monitor
-    └── tool_result_pipeline.py  # Output truncation and budget enforcement
+    ├── tools.py            # 14 个内置工具
+    ├── shell/              # Shell 抽象层（Bash/PowerShell 提供者）
+    ├── enhanced_chat_openai.py  # 扩展 ChatOpenAI，支持 reasoning
+    ├── git_manager.py      # Git 检查点管理
+    ├── skill_loader.py     # 技能发现与加载
+    ├── modelscope_ratelimit.py  # ModelScope API 限额监控
+    └── tool_result_pipeline.py  # 输出截断与预算控制
 ```
 
-## License
+## 许可证
 
 MIT
