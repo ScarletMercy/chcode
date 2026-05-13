@@ -544,7 +544,6 @@ class TestChatREPLSlashCommands:
                     assert repl.model_config == {}
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
     async def test_cmd_langsmith_enable_no_key(self):
         repl = ChatREPL()
 
@@ -558,7 +557,6 @@ class TestChatREPLSlashCommands:
             assert any("请先设置" in p for p in printed)
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
     async def test_cmd_langsmith_enable(self):
         repl = ChatREPL()
         repl.langsmith_api_key = "lsv2_test_key"
@@ -566,7 +564,8 @@ class TestChatREPLSlashCommands:
         with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
             mock_sel.return_value = "开启追踪"
             with patch("chcode.chat.render_success") as mock_success, \
-                 patch("chcode.config._persist_env"):
+                 patch("chcode.config._persist_env"), \
+                 patch("chcode.config._update_setting"):
                 await repl._cmd_langsmith("")
 
                 assert repl.langsmith_tracing is True
@@ -574,7 +573,6 @@ class TestChatREPLSlashCommands:
                 mock_success.assert_called_once()
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
     async def test_cmd_langsmith_disable(self):
         repl = ChatREPL()
         repl.langsmith_tracing = True
@@ -582,7 +580,8 @@ class TestChatREPLSlashCommands:
         with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
             mock_sel.return_value = "关闭追踪"
             with patch("chcode.chat.render_success") as mock_success, \
-                 patch("chcode.config._persist_env"):
+                 patch("chcode.config._persist_env"), \
+                 patch("chcode.config._update_setting"):
                 await repl._cmd_langsmith("")
 
                 assert repl.langsmith_tracing is False
@@ -590,7 +589,6 @@ class TestChatREPLSlashCommands:
                 mock_success.assert_called_once()
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
     async def test_cmd_langsmith_cancel(self):
         repl = ChatREPL()
         original = os.environ.get("LANGSMITH_TRACING", "false")
@@ -602,7 +600,6 @@ class TestChatREPLSlashCommands:
             assert os.environ.get("LANGSMITH_TRACING") == original
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
     async def test_cmd_langsmith_edit_project(self):
         repl = ChatREPL()
         repl.langsmith_project = "old-project"
@@ -612,12 +609,12 @@ class TestChatREPLSlashCommands:
             mock_sel.return_value = "修改项目名称"
             mock_txt.return_value = "new-project"
             with patch("chcode.chat.render_success"), \
-                 patch("chcode.config._persist_env"):
+                 patch("chcode.config._persist_env"), \
+                 patch("chcode.config._update_setting"):
                 await repl._cmd_langsmith("")
                 assert repl.langsmith_project == "new-project"
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
     async def test_cmd_langsmith_edit_key(self):
         repl = ChatREPL()
 
@@ -626,12 +623,12 @@ class TestChatREPLSlashCommands:
             mock_sel.return_value = "修改 API Key"
             mock_txt.return_value = "lsv2_new_key_here"
             with patch("chcode.chat.render_success"), \
-                 patch("chcode.config._persist_env"):
+                 patch("chcode.config._persist_env"), \
+                 patch("chcode.config._update_setting"):
                 await repl._cmd_langsmith("")
                 assert repl.langsmith_api_key == "lsv2_new_key_here"
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
     async def test_cmd_langsmith_edit_key_cancel(self):
         repl = ChatREPL()
         repl.langsmith_api_key = "old_key"
@@ -644,7 +641,6 @@ class TestChatREPLSlashCommands:
             assert repl.langsmith_api_key == "old_key"
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
     async def test_cmd_langsmith_short_key_masked(self):
         """API Key 短于 10 字符时脱敏显示为 ***"""
         repl = ChatREPL()
@@ -656,14 +652,14 @@ class TestChatREPLSlashCommands:
             mock_sel.return_value = "修改项目名称"
             mock_txt.return_value = "proj"
             with patch("chcode.chat.render_success"), \
-                 patch("chcode.config._persist_env"):
+                 patch("chcode.config._persist_env"), \
+                 patch("chcode.config._update_setting"):
                 await repl._cmd_langsmith("")
                 # 验证状态显示时 Key 脱敏为 ***
                 printed = [str(c) for c in mock_print.call_args_list]
                 assert any("***" in p for p in printed)
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
     async def test_sync_langsmith_env(self):
         repl = ChatREPL()
         repl.langsmith_tracing = True
@@ -671,20 +667,21 @@ class TestChatREPLSlashCommands:
         repl.langsmith_api_key = "test-key"
 
         with patch.dict(os.environ, {}, clear=True), \
-             patch("chcode.config._persist_env"):
+             patch("chcode.config._persist_env"), \
+             patch("chcode.config._update_setting"):
             repl._sync_langsmith_env()
             assert os.environ["LANGSMITH_TRACING"] == "true"
             assert os.environ["LANGSMITH_PROJECT"] == "test-proj"
             assert os.environ["LANGSMITH_API_KEY"] == "test-key"
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
     async def test_sync_langsmith_env_disabled(self):
         repl = ChatREPL()
         repl.langsmith_tracing = False
 
         with patch.dict(os.environ, {}, clear=True), \
-             patch("chcode.config._persist_env"):
+             patch("chcode.config._persist_env"), \
+             patch("chcode.config._update_setting"):
             repl._sync_langsmith_env()
             assert os.environ["LANGSMITH_TRACING"] == "false"
 
@@ -1855,8 +1852,7 @@ class TestChatREPLRun:
                     mock_err.assert_called_once()
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
-    async def test_run_langsmith_auto_disable(self):
+    async def test_run_langsmith_env_not_mutated_by_guard(self):
         repl = ChatREPL()
         repl.langsmith_tracing = True
 
@@ -1864,18 +1860,13 @@ class TestChatREPLRun:
             with patch.object(repl, "_get_input", new_callable=AsyncMock) as mock_input:
                 mock_input.side_effect = ["test", EOFError()]
                 with patch.object(repl, "_process_input", new_callable=AsyncMock) as mock_proc:
-                    async def side_effect(msg):
-                        os.environ["LANGSMITH_TRACING"] = "false"
-                    mock_proc.side_effect = side_effect
-                    with patch("chcode.chat.render_warning") as mock_warn:
-                        with patch.dict(os.environ, {"LANGSMITH_TRACING": "true"}, clear=False):
-                            try:
-                                await repl.run()
-                            except EOFError:
-                                pass
+                    with patch.dict(os.environ, {"LANGSMITH_TRACING": "true"}, clear=False):
+                        try:
+                            await repl.run()
+                        except EOFError:
+                            pass
 
-                            assert repl.langsmith_tracing is False
-                            mock_warn.assert_called_once()
+                        assert repl.langsmith_tracing is True
 
 
 # ============================================================================

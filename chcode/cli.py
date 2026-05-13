@@ -15,24 +15,23 @@ warnings.filterwarnings("ignore", message="chardet.*doesn't match a supported ve
 
 
 def _setup_langsmith_guard():
-    """自动检测 LangSmith 429 并禁用追踪，防止 stderr 污染终端 UI"""
-    _disabled = False
+    """静默吞掉 LangSmith SDK 的 429/连接错误 stderr 输出，防止污染终端 UI"""
+    _suppressed = False
 
     class _Guard:
         def __init__(self, original):
             self._original = original
 
         def write(self, data):
-            nonlocal _disabled
+            nonlocal _suppressed
             if not data:
                 return 0
-            if _disabled and ("LangSmith" in data or "langsmith" in data.lower()):
+            if _suppressed and ("LangSmith" in data or "langsmith" in data.lower()):
                 return len(data)
             if "LangSmithRateLimitError" in data or (
                 "langsmith" in data.lower() and "429" in data
             ):
-                _disabled = True
-                os.environ["LANGSMITH_TRACING"] = "false"
+                _suppressed = True
                 return len(data)
             if "langsmith" in data.lower() and (
                 "ConnectionError" in data
@@ -42,10 +41,8 @@ def _setup_langsmith_guard():
                 or "Connection aborted" in data
                 or "ConnectionAbortedError" in data
                 or "ConnectionResetError" in data
-                or "api.smith.langchain.com" in data
             ):
-                _disabled = True
-                os.environ["LANGSMITH_TRACING"] = "false"
+                _suppressed = True
                 return len(data)
             return self._original.write(data)
 

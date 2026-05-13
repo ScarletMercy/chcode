@@ -1402,7 +1402,6 @@ class TestPowerShellProviderIsAvailable:
 # ────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="LangSmith guard requires Windows")
 class TestCLILangSmithGuard:
     """Cover lines 23-40: _setup_langsmith_guard behavior.
 

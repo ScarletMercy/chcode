@@ -8,7 +8,6 @@ import click
 import pytest
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="LangSmith guard requires Windows")
 class TestLangSmithGuard:
     """Cover lines 23, 25-27, 31-33, 37, 40: _Guard class behavior.
 
@@ -68,66 +67,56 @@ class TestLangSmithGuard:
             self._cleanup(old_s, old__s)
 
     def test_guard_detects_langsmith_rate_limit_error(self):
-        """Lines 28-33: LangSmithRateLimitError triggers disable."""
-        old_env = os.environ.pop("LANGSMITH_TRACING", None)
+        """LangSmithRateLimitError is suppressed (not written to stderr)."""
+        os.environ.pop("LANGSMITH_TRACING", None)
         guard, original, old_s, old__s = self._make_guard()
         buf = io.StringIO()
         guard._original = buf
         try:
             ret = guard.write("Error: LangSmithRateLimitError occurred\n")
             assert ret > 0
-            assert os.environ.get("LANGSMITH_TRACING") == "false"
+            assert buf.getvalue() == ""
+            assert "LANGSMITH_TRACING" not in os.environ
         finally:
             guard._original = original
             self._cleanup(old_s, old__s)
-            if old_env is not None:
-                os.environ["LANGSMITH_TRACING"] = old_env
-            else:
-                os.environ.pop("LANGSMITH_TRACING", None)
+            os.environ.pop("LANGSMITH_TRACING", None)
 
     def test_guard_detects_langsmith_429(self):
-        """Lines 28-33: langsmith + 429 triggers disable."""
-        old_env = os.environ.pop("LANGSMITH_TRACING", None)
+        """langsmith + 429 is suppressed (not written to stderr)."""
+        os.environ.pop("LANGSMITH_TRACING", None)
         guard, original, old_s, old__s = self._make_guard()
         buf = io.StringIO()
         guard._original = buf
         try:
             ret = guard.write("langsmith: 429 Too Many Requests\n")
             assert ret > 0
-            assert os.environ.get("LANGSMITH_TRACING") == "false"
+            assert buf.getvalue() == ""
+            assert "LANGSMITH_TRACING" not in os.environ
         finally:
             guard._original = original
             self._cleanup(old_s, old__s)
-            if old_env is not None:
-                os.environ["LANGSMITH_TRACING"] = old_env
-            else:
-                os.environ.pop("LANGSMITH_TRACING", None)
+            os.environ.pop("LANGSMITH_TRACING", None)
 
     def test_guard_disabled_filters_langsmith_429(self):
-        """Lines 24-27: after disable, langsmith+429 messages are suppressed and env set."""
-        old_env = os.environ.pop("LANGSMITH_TRACING", None)
+        """After suppression, subsequent langsmith+429 messages are also suppressed."""
+        os.environ.pop("LANGSMITH_TRACING", None)
         guard, original, old_s, old__s = self._make_guard()
         buf = io.StringIO()
         guard._original = buf
         try:
-            # First trigger disable (lines 28-33)
             guard.write("LangSmithRateLimitError\n")
-            # Now write langsmith message with 429 - should hit lines 24-27
             ret = guard.write("LangSmith: 429 error\n")
             assert ret > 0
-            # The 429 inside disabled block should set env (line 26)
-            assert os.environ.get("LANGSMITH_TRACING") == "false"
+            assert "LANGSMITH_TRACING" not in os.environ
         finally:
             guard._original = original
             self._cleanup(old_s, old__s)
-            if old_env is not None:
-                os.environ["LANGSMITH_TRACING"] = old_env
-            else:
-                os.environ.pop("LANGSMITH_TRACING", None)
+            os.environ.pop("LANGSMITH_TRACING", None)
 
     def test_guard_disabled_filters_langsmith_rate_limit(self):
-        """Lines 24-27: after disable, Rate limit messages are suppressed."""
-        old_env = os.environ.pop("LANGSMITH_TRACING", None)
+        """After suppression, rate limit messages are suppressed."""
+        os.environ.pop("LANGSMITH_TRACING", None)
         guard, original, old_s, old__s = self._make_guard()
         buf = io.StringIO()
         guard._original = buf
@@ -138,14 +127,11 @@ class TestLangSmithGuard:
         finally:
             guard._original = original
             self._cleanup(old_s, old__s)
-            if old_env is not None:
-                os.environ["LANGSMITH_TRACING"] = old_env
-            else:
-                os.environ.pop("LANGSMITH_TRACING", None)
+            os.environ.pop("LANGSMITH_TRACING", None)
 
     def test_guard_detects_connection_error(self):
-        """Lines 36-48: langsmith + ConnectionError triggers disable."""
-        old_env = os.environ.pop("LANGSMITH_TRACING", None)
+        """langsmith + ConnectionError is suppressed (not written to stderr)."""
+        os.environ.pop("LANGSMITH_TRACING", None)
         guard, original, old_s, old__s = self._make_guard()
         buf = io.StringIO()
         guard._original = buf
@@ -154,18 +140,16 @@ class TestLangSmithGuard:
                 "Failed to send compressed multipart ingest: langsmith ConnectionError\n"
             )
             assert ret > 0
-            assert os.environ.get("LANGSMITH_TRACING") == "false"
+            assert buf.getvalue() == ""
+            assert "LANGSMITH_TRACING" not in os.environ
         finally:
             guard._original = original
             self._cleanup(old_s, old__s)
-            if old_env is not None:
-                os.environ["LANGSMITH_TRACING"] = old_env
-            else:
-                os.environ.pop("LANGSMITH_TRACING", None)
+            os.environ.pop("LANGSMITH_TRACING", None)
 
     def test_guard_detects_max_retry_error(self):
-        """Lines 36-48: langsmith + MaxRetryError triggers disable."""
-        old_env = os.environ.pop("LANGSMITH_TRACING", None)
+        """langsmith + MaxRetryError is suppressed (not written to stderr)."""
+        os.environ.pop("LANGSMITH_TRACING", None)
         guard, original, old_s, old__s = self._make_guard()
         buf = io.StringIO()
         guard._original = buf
@@ -174,18 +158,16 @@ class TestLangSmithGuard:
                 "langsmith MaxRetryError: api.smith.langchain.com\n"
             )
             assert ret > 0
-            assert os.environ.get("LANGSMITH_TRACING") == "false"
+            assert buf.getvalue() == ""
+            assert "LANGSMITH_TRACING" not in os.environ
         finally:
             guard._original = original
             self._cleanup(old_s, old__s)
-            if old_env is not None:
-                os.environ["LANGSMITH_TRACING"] = old_env
-            else:
-                os.environ.pop("LANGSMITH_TRACING", None)
+            os.environ.pop("LANGSMITH_TRACING", None)
 
     def test_guard_detects_connection_aborted(self):
-        """Lines 36-48: ConnectionAbortedError triggers disable."""
-        old_env = os.environ.pop("LANGSMITH_TRACING", None)
+        """langsmith + ConnectionAbortedError is suppressed."""
+        os.environ.pop("LANGSMITH_TRACING", None)
         guard, original, old_s, old__s = self._make_guard()
         buf = io.StringIO()
         guard._original = buf
@@ -194,18 +176,16 @@ class TestLangSmithGuard:
                 "langsmith ConnectionAbortedError(10053)\n"
             )
             assert ret > 0
-            assert os.environ.get("LANGSMITH_TRACING") == "false"
+            assert buf.getvalue() == ""
+            assert "LANGSMITH_TRACING" not in os.environ
         finally:
             guard._original = original
             self._cleanup(old_s, old__s)
-            if old_env is not None:
-                os.environ["LANGSMITH_TRACING"] = old_env
-            else:
-                os.environ.pop("LANGSMITH_TRACING", None)
+            os.environ.pop("LANGSMITH_TRACING", None)
 
     def test_guard_detects_connection_reset(self):
-        """Lines 36-48: ConnectionResetError triggers disable."""
-        old_env = os.environ.pop("LANGSMITH_TRACING", None)
+        """langsmith + ConnectionResetError is suppressed."""
+        os.environ.pop("LANGSMITH_TRACING", None)
         guard, original, old_s, old__s = self._make_guard()
         buf = io.StringIO()
         guard._original = buf
@@ -214,18 +194,16 @@ class TestLangSmithGuard:
                 "langsmith ConnectionResetError(10054)\n"
             )
             assert ret > 0
-            assert os.environ.get("LANGSMITH_TRACING") == "false"
+            assert buf.getvalue() == ""
+            assert "LANGSMITH_TRACING" not in os.environ
         finally:
             guard._original = original
             self._cleanup(old_s, old__s)
-            if old_env is not None:
-                os.environ["LANGSMITH_TRACING"] = old_env
-            else:
-                os.environ.pop("LANGSMITH_TRACING", None)
+            os.environ.pop("LANGSMITH_TRACING", None)
 
     def test_guard_disabled_filters_connection_error(self):
-        """After disable, connection errors are suppressed."""
-        old_env = os.environ.pop("LANGSMITH_TRACING", None)
+        """After suppression, connection errors are also suppressed."""
+        os.environ.pop("LANGSMITH_TRACING", None)
         guard, original, old_s, old__s = self._make_guard()
         buf = io.StringIO()
         guard._original = buf
@@ -236,10 +214,7 @@ class TestLangSmithGuard:
         finally:
             guard._original = original
             self._cleanup(old_s, old__s)
-            if old_env is not None:
-                os.environ["LANGSMITH_TRACING"] = old_env
-            else:
-                os.environ.pop("LANGSMITH_TRACING", None)
+            os.environ.pop("LANGSMITH_TRACING", None)
 
     def test_guard_flush(self):
         """Line 37: flush delegates to original."""

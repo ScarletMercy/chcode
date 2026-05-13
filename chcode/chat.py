@@ -413,16 +413,7 @@ class ChatREPL:
                     continue
 
                 # 正常对话
-                prev_tracing = os.environ.get("LANGSMITH_TRACING", "false").lower()
                 await self._process_input(user_input)
-
-                # 检查 LangSmith 是否因 429 自动关闭
-                if prev_tracing == "true" and os.environ.get("LANGSMITH_TRACING", "false").lower() != prev_tracing:
-                    self.langsmith_tracing = False
-                    render_warning(
-                        "LangSmith 追踪已因配额耗尽自动关闭 "
-                        "(/langsmith 可手动管理)"
-                    )
 
             except KeyboardInterrupt:
                 if self._processing:

@@ -4,7 +4,6 @@ from io import StringIO
 import pytest
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="LangSmith guard requires Windows")
 class TestLangsmithGuard:
     def test_normal_write_passes_through(self):
         from chcode.cli import _setup_langsmith_guard

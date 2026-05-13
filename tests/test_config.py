@@ -126,14 +126,19 @@ class TestEnsureConfigDir:
 # ============================================================================
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
 class TestLoadLangsmithConfig:
     def test_from_env_vars(self, monkeypatch):
         monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_test_key")
         monkeypatch.setenv("LANGSMITH_PROJECT", "my-proj")
         monkeypatch.setenv("LANGSMITH_TRACING", "true")
 
-        cfg = load_langsmith_config()
+        with patch("chcode.config._sync_langsmith_config"), \
+             patch("chcode.config._load_setting", return_value={
+                 "langsmith_tracing": True,
+                 "langsmith_project": "my-proj",
+                 "langsmith_api_key": "lsv2_test_key",
+             }):
+            cfg = load_langsmith_config()
         assert cfg["api_key"] == "lsv2_test_key"
         assert cfg["project"] == "my-proj"
         assert cfg["tracing"] is True
@@ -143,7 +148,11 @@ class TestLoadLangsmithConfig:
         monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
-        cfg = load_langsmith_config()
+        with patch("chcode.config._sync_langsmith_config"), \
+             patch("chcode.config._load_setting", return_value={
+                 "langsmith_api_key": "lsv2_test_key",
+             }):
+            cfg = load_langsmith_config()
         assert cfg["api_key"] == "lsv2_test_key"
         assert cfg["project"] == "chcode"
         assert cfg["tracing"] is False
@@ -153,20 +162,22 @@ class TestLoadLangsmithConfig:
         monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
-        cfg = load_langsmith_config()
+        with patch("chcode.config._sync_langsmith_config"), \
+             patch("chcode.config._load_setting", return_value={}):
+            cfg = load_langsmith_config()
         assert cfg["api_key"] == ""
         assert cfg["project"] == ""
         assert cfg["tracing"] is False
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
 class TestApplyLangsmithEnv:
     def test_sets_all_env_vars(self, monkeypatch):
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
         monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
         monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
 
-        with patch("chcode.config._persist_env"):
+        with patch("chcode.config._persist_env"), \
+             patch("chcode.config._update_setting"):
             _apply_langsmith_env(True, "my-proj", "lsv2_key")
 
         assert os.environ["LANGSMITH_TRACING"] == "true"
@@ -176,7 +187,8 @@ class TestApplyLangsmithEnv:
     def test_disabled(self, monkeypatch):
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
-        with patch("chcode.config._persist_env"):
+        with patch("chcode.config._persist_env"), \
+             patch("chcode.config._update_setting"):
             _apply_langsmith_env(False, "", "")
 
         assert os.environ["LANGSMITH_TRACING"] == "false"
@@ -204,7 +216,6 @@ class TestTestConnectionNullValue:
             assert result is False
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="LangSmith env persistence requires Windows")
 class TestConfigureLangsmithBehavior:
     @pytest.mark.asyncio
     async def test_env_key_no_tracing_defaults_false(self, monkeypatch):
@@ -213,7 +224,8 @@ class TestConfigureLangsmithBehavior:
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
         from chcode.config import configure_langsmith
-        with patch("chcode.config._persist_env"):
+        with patch("chcode.config._persist_env"), \
+             patch("chcode.config._update_setting"):
             cfg = await configure_langsmith()
         assert cfg["tracing"] is False
 
@@ -224,7 +236,8 @@ class TestConfigureLangsmithBehavior:
         monkeypatch.setenv("LANGSMITH_TRACING", "true")
 
         from chcode.config import configure_langsmith
-        with patch("chcode.config._persist_env"):
+        with patch("chcode.config._persist_env"), \
+             patch("chcode.config._update_setting"):
             cfg = await configure_langsmith()
         assert cfg["tracing"] is True
 
@@ -237,7 +250,8 @@ class TestConfigureLangsmithBehavior:
         from chcode.config import configure_langsmith
         with patch("chcode.config.select", new_callable=AsyncMock, return_value="是"), \
              patch("chcode.config.text", new_callable=AsyncMock, side_effect=["my-proj", "lsv2_key"]), \
-             patch("chcode.config._persist_env"):
+             patch("chcode.config._persist_env"), \
+             patch("chcode.config._update_setting"):
             cfg = await configure_langsmith()
 
         assert cfg["tracing"] is True

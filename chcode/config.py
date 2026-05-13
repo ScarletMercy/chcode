@@ -520,38 +520,114 @@ async def configure_tavily() -> None:
 # ─── LangSmith 配置 ──────────────────────────────────────
 
 
+def _sync_langsmith_config() -> None:
+    """启动时同步 LangSmith 配置到 chagent.json（Windows 额外从注册表刷新 os.environ）"""
+    if sys.platform == "win32":
+        import winreg
+        for var_name in ("LANGSMITH_TRACING", "LANGSMITH_PROJECT", "LANGSMITH_API_KEY"):
+            value = None
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
+                    value, _ = winreg.QueryValueEx(key, var_name)
+            except (FileNotFoundError, OSError):
+                pass
+            try:
+                with winreg.OpenKey(
+                    winreg.HKEY_LOCAL_MACHINE,
+                    r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+                ) as key:
+                    value, _ = winreg.QueryValueEx(key, var_name)
+            except (FileNotFoundError, OSError):
+                pass
+            if value is not None:
+                os.environ[var_name] = str(value)
+
+    # 只同步非空值到 chagent.json，避免空值覆盖已有配置
+    settings = _load_setting()
+
+    tracing = os.environ.get("LANGSMITH_TRACING", "")
+    project = os.environ.get("LANGSMITH_PROJECT", "")
+    api_key = os.environ.get("LANGSMITH_API_KEY", "")
+
+    if tracing:
+        settings["langsmith_tracing"] = tracing.lower() == "true"
+    if project:
+        settings["langsmith_project"] = project
+    if api_key:
+        settings["langsmith_api_key"] = api_key
+
+    _update_setting(**settings)
+
+
 def load_langsmith_config() -> dict:
-    """加载 LangSmith 配置（仅从环境变量读取）"""
-    api_key = os.getenv("LANGSMITH_API_KEY", "")
+    """加载 LangSmith 配置（注册表 → chagent.json → 读取）"""
+    _sync_langsmith_config()
+    settings = _load_setting()
+
+    api_key = settings.get("langsmith_api_key", "")
+    project = settings.get("langsmith_project", "")
+
     return {
-        "tracing": os.getenv("LANGSMITH_TRACING", "").lower() == "true",
-        "project": os.getenv("LANGSMITH_PROJECT", "") or ("chcode" if api_key else ""),
+        "tracing": settings.get("langsmith_tracing", False),
+        "project": project or ("chcode" if api_key else ""),
         "api_key": api_key,
     }
 
 
+def _persist_env_linux(name: str, value: str) -> None:
+    """写入环境变量到 Linux shell 配置文件"""
+    home = Path.home()
+
+    # 按优先级查找配置文件
+    target_file = home / ".profile"
+    for pf in [home / ".bashrc", home / ".zshrc", home / ".profile"]:
+        if pf.exists():
+            target_file = pf
+            break
+
+    # 转义特殊字符
+    escaped_value = value.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+    export_line = f'export {name}="{escaped_value}"'
+
+    # 读取并更新内容
+    content = target_file.read_text(encoding="utf-8") if target_file.exists() else ""
+
+    import re
+    pattern = rf'^export\s+{re.escape(name)}=.*$'
+    if re.search(pattern, content, re.MULTILINE):
+        content = re.sub(pattern, export_line, content, flags=re.MULTILINE)
+    else:
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += export_line + "\n"
+
+    target_file.write_text(content, encoding="utf-8")
+
+
 def _persist_env(name: str, value: str) -> None:
-    """写入环境变量到 Windows 注册表（优先系统变量，无管理员权限时回退用户变量）"""
-    if sys.platform != "win32":
-        return
-    r = subprocess.run(["setx", "/M", name, value], capture_output=True)
-    if r.returncode != 0:
-        subprocess.run(["setx", name, value], capture_output=True)
+    """写入环境变量到系统（Windows 注册表 / Linux shell 配置文件）"""
+    if sys.platform == "win32":
+        r = subprocess.run(["setx", "/M", name, value], capture_output=True)
+        if r.returncode != 0:
+            subprocess.run(["setx", name, value], capture_output=True)
+    else:
+        _persist_env_linux(name, value)
 
 
 def _apply_langsmith_env(tracing: bool, project: str, api_key: str) -> None:
-    """将 LangSmith 配置写入环境变量（当前进程 + 注册表永久生效）"""
+    """将 LangSmith 配置写入环境变量（当前进程 + 注册表永久生效）+ chagent.json"""
     env_map = {
         "LANGSMITH_TRACING": "true" if tracing else "false",
         "LANGSMITH_PROJECT": project or "",
         "LANGSMITH_API_KEY": api_key or "",
     }
     os.environ.update(env_map)
+    _update_setting(langsmith_tracing=tracing, langsmith_project=project, langsmith_api_key=api_key)
     # LANGSMITH_ENDPOINT 固定值，缺失时自动补上
     if not os.getenv("LANGSMITH_ENDPOINT"):
         os.environ["LANGSMITH_ENDPOINT"] = "https://api.smith.langchain.com"
         _persist_env("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
-    # 写入 Windows 环境变量（永久生效）
+    # 写入环境变量到系统（Windows 注册表 / Linux shell 配置文件）
     for name, value in env_map.items():
         _persist_env(name, value)
 
