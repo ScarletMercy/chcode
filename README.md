@@ -218,20 +218,31 @@ chcode/
 ├── config.py               # 模型配置、Tavily、环境变量检测
 ├── display.py              # Rich 渲染、流式输出、状态栏
 ├── prompts.py              # 交互式提示（选择/确认/文本）
-├── session.py              # 会话管理器（SQLite）
-├── skill_manager.py        # 技能安装/删除 UI
+├── vision_config.py        # 视觉模型配置管理
 ├── agents/
 │   ├── definitions.py      # 代理类型（explore、plan、general）
 │   ├── loader.py           # 从 .chat/agents/ 加载自定义代理
 │   └── runner.py           # 子代理执行（含中间件）
 └── utils/
-    ├── tools.py            # 14 个内置工具
-    ├── shell/              # Shell 抽象层（Bash/PowerShell 提供者）
+    ├── tools.py            # 内置工具
     ├── enhanced_chat_openai.py  # 扩展 ChatOpenAI，支持 reasoning
+    ├── frontmatter.py      # YAML Frontmatter 解析
+    ├── git_checker.py      # Git 可用性检查
     ├── git_manager.py      # Git 检查点管理
-    ├── skill_loader.py     # 技能发现与加载
+    ├── json_utils.py       # JSON 原子读写 + mtime 缓存
     ├── modelscope_ratelimit.py  # ModelScope API 限额监控
-    └── tool_result_pipeline.py  # 输出截断与预算控制
+    ├── multimodal.py       # 多模态模型检测与媒体编码
+    ├── session.py          # 会话管理器（SQLite）
+    ├── skill_loader.py     # 技能发现与加载
+    ├── skill_manager.py    # 技能安装/删除 UI
+    ├── text_utils.py       # 消息内容文本提取
+    ├── tool_result_pipeline.py  # 输出截断与预算控制
+    └── shell/
+        ├── provider.py     # Shell 提供者抽象（Bash/PowerShell）
+        ├── session.py      # 交互式 Shell 会话
+        ├── output.py       # 输出捕获与临时文件
+        ├── result.py       # 执行结果数据类
+        └── semantics.py    # 输出语义分析（错误检测等）
 ```
 
 ## 许可证

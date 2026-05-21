@@ -218,20 +218,31 @@ chcode/
 ├── config.py               # Model config, Tavily, env detection
 ├── display.py              # Rich rendering, streaming, status bar
 ├── prompts.py              # Interactive prompts (select/confirm/text)
-├── session.py              # Session manager (SQLite)
-├── skill_manager.py        # Skill install/delete UI
+├── vision_config.py        # Vision model configuration
 ├── agents/
 │   ├── definitions.py      # Agent types (explore, plan, general)
 │   ├── loader.py           # Load custom agents from .chat/agents/
 │   └── runner.py           # Sub-agent execution with middleware
 └── utils/
-    ├── tools.py            # 14 built-in tools
-    ├── shell/              # Shell abstraction (Bash/PowerShell providers)
+    ├── tools.py            # Built-in tools
     ├── enhanced_chat_openai.py  # Extended ChatOpenAI with reasoning support
+    ├── frontmatter.py      # YAML Frontmatter parser
+    ├── git_checker.py      # Git availability check
     ├── git_manager.py      # Git checkpoint management
-    ├── skill_loader.py     # Skill discovery and loading
+    ├── json_utils.py       # JSON atomic read/write + mtime cache
     ├── modelscope_ratelimit.py  # ModelScope API rate limit monitor
-    └── tool_result_pipeline.py  # Output truncation and budget enforcement
+    ├── multimodal.py       # Multimodal model detection and media encoding
+    ├── session.py          # Session manager (SQLite)
+    ├── skill_loader.py     # Skill discovery and loading
+    ├── skill_manager.py    # Skill install/delete UI
+    ├── text_utils.py       # Message content text extraction
+    ├── tool_result_pipeline.py  # Output truncation and budget enforcement
+    └── shell/
+        ├── provider.py     # Shell provider abstraction (Bash/PowerShell)
+        ├── session.py      # Interactive shell session
+        ├── output.py       # Output capture and temp files
+        ├── result.py       # Execution result dataclass
+        └── semantics.py    # Output semantic analysis (error detection etc.)
 ```
 
 ## License

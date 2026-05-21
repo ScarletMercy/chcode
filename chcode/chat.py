@@ -429,9 +429,6 @@ class ChatREPL:
     async def _get_input(self) -> str | None:
         """获取用户输入（使用 prompt-toolkit 实现命令自动补全）"""
 
-        # 检查是否有中断恢复缓冲区
-        interrupt_mode = self._interrupt_buffer is not None
-
         # 初始化 prompt session（带命令自动补全 + 底部状态栏）
         if self._prompt_session is None:
             completer = SlashCommandCompleter()
@@ -441,11 +438,11 @@ class ChatREPL:
 
             @kb.add("enter")
             def _submit(event):
-                event.current_buffer.validate_and_handle()
+                event.current_buffer.validate_and_handle() # 验证并提交缓冲区内容
 
             @kb.add("c-j")  # Ctrl+Enter → 换行
             def _newline(event):
-                event.current_buffer.insert_text("\n")
+                event.current_buffer.insert_text("\n") # 向缓冲区插入换行
 
             @kb.add("tab")
             def _tab_toggle_mode(event):
@@ -454,7 +451,7 @@ class ChatREPL:
                 self.yolo = not self.yolo
                 from chcode.agent_setup import update_hitl_config
 
-                update_hitl_config(self.yolo)
+                update_hitl_config(self.yolo) # 构造agent前
                 event.app.renderer._last_rendered_width = 0  # 强制刷新 toolbar
 
             _last_width = 0
@@ -513,15 +510,17 @@ class ChatREPL:
                 ),
             )
 
+            # 动态缓存区高度
             def _dynamic_buffer_height():
                 buff = self._prompt_session.default_buffer
                 if buff.complete_state is not None:
                     n = len(buff.complete_state.completions)
-                    needed = min(n + 2, 7)
+                    needed = min(n + 2, 10)
                     return Dimension(min=needed, max=needed)
                 line_count = buff.text.count("\n") + 1
                 return Dimension(min=line_count, max=line_count)
 
+            # 寻找缓存区窗口
             def _find_buffer_window(container):
                 from prompt_toolkit.layout.containers import Window
                 from prompt_toolkit.layout.controls import BufferControl
@@ -547,25 +546,27 @@ class ChatREPL:
                 buffer_window.height = _dynamic_buffer_height
 
         try:
-            # 如果有编辑缓冲区或中断恢复缓冲区，预填充到输入框
+            # 如果有编辑缓冲区，预填充到输入框
             if self._edit_buffer is not None:
                 default_text = self._edit_buffer
                 self._edit_buffer = None  # 清除缓冲区
-            elif interrupt_mode:
+            # 如果有中断恢复缓冲区，也预填充到输入框
+            elif self._interrupt_buffer is not None:
                 default_text = self._interrupt_buffer
                 self._interrupt_buffer = None  # 清除缓冲区
+            # 如果都没有，则不填充
             else:
                 default_text = ""
 
-            width = shutil.get_terminal_size().columns
-            sep = "\u2500" * width
-            prompt_text = f"{sep}\n > "
+            width = shutil.get_terminal_size().columns # 获取终端大小的列数，确保分隔线始终覆盖整个宽度
+            sep = "\u2500" * width # 即为 width个 ─ , 效果：───────────────（这个是输入框的顶栏，由于prompt_toolkit不支持顶栏，所以需要自己构造）
+            prompt_text = f"{sep}\n > " # 构造顶栏和 > 提示符
 
             # 使用 prompt-toolkit 获取输入（支持命令自动补全）
             result = await asyncio.to_thread(
-                self._prompt_session.prompt,
+                self._prompt_session.prompt, # 显示顶栏和 > 提示符，并等待用户输入，返回值也是用户的输入
                 HTML(f"<ansiblue>{prompt_text}</ansiblue>"),
-                default=default_text,
+                default=default_text, # 返回的默认值，代替用户输入或可能为空
             )
             if result is not None:
                 self._save_readline_history()
