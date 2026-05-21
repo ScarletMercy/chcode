@@ -15,7 +15,7 @@ import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage, RemoveMessage, BaseMessage
 from langgraph.types import Command
 
-from chcode.chat import ChatREPL, _collect_ids_from_group
+from chcode.chat import ChatREPL, _LimitedFileHistory, _collect_ids_from_group
 
 
 # ============================================================================
@@ -922,77 +922,59 @@ class TestRenderDiffFindOldStr:
 
 
 # ============================================================================
-# Test _init_readline_history and _save_readline_history
-# Covers lines 329-333, 342-344
+# Test _LimitedFileHistory (replaces old readline-based history)
 # ============================================================================
 
 
-class TestReadlineHistory:
-    def test_init_readline_history_import_error(self):
-        """On ImportError (no readline), _init_readline_history should pass silently."""
-        repl = ChatREPL()
+class TestLimitedFileHistory:
+    def test_store_string_creates_file(self, tmp_path):
+        history_path = tmp_path / "history"
+        fh = _LimitedFileHistory(str(history_path))
+        fh.store_string("hello")
+        assert history_path.exists()
+        content = history_path.read_text()
+        assert "+hello" in content
 
-        with patch.dict("sys.modules", {"readline": None}):
-            # Should not raise ImportError
-            repl._init_readline_history()
-            # Verify readline module was not loaded (would raise if access attempted)
-            assert "readline" not in sys.modules or sys.modules.get("readline") is None
+    def test_load_history_strings(self, tmp_path):
+        history_path = tmp_path / "history"
+        fh = _LimitedFileHistory(str(history_path))
+        fh.store_string("first")
+        fh.store_string("second")
+        strings = list(fh.load_history_strings())
+        assert "second" in strings
+        assert "first" in strings
 
-    def test_save_readline_history_import_error(self):
-        """On ImportError, _save_readline_history should pass silently."""
-        repl = ChatREPL()
+    def test_load_empty_file(self, tmp_path):
+        history_path = tmp_path / "history"
+        history_path.touch()
+        fh = _LimitedFileHistory(str(history_path))
+        strings = list(fh.load_history_strings())
+        assert strings == []
 
-        with patch.dict("sys.modules", {"readline": None}):
-            result = repl._save_readline_history()
-            assert result is True
+    def test_truncation_at_max_entries(self, tmp_path):
+        history_path = tmp_path / "history"
+        fh = _LimitedFileHistory(str(history_path))
+        for i in range(60):
+            fh.store_string(f"cmd_{i}")
+        strings = list(fh.load_history_strings())
+        assert len(strings) == 50
 
-    def test_save_readline_history_success(self):
-        """When readline is available, _save_readline_history should write history."""
-        repl = ChatREPL()
+    def test_keeps_most_recent(self, tmp_path):
+        history_path = tmp_path / "history"
+        fh = _LimitedFileHistory(str(history_path))
+        for i in range(60):
+            fh.store_string(f"cmd_{i}")
+        strings = list(fh.load_history_strings())
+        assert "cmd_59" in strings
+        assert "cmd_10" in strings
+        assert "cmd_9" not in strings
 
-        mock_readline = MagicMock()
-        with patch.dict("sys.modules", {"readline": mock_readline}):
-            home_dir = Path.home()
-            with patch.object(Path, "home", return_value=home_dir):
-                result = repl._save_readline_history()
-                assert result is True
-                mock_readline.write_history_file.assert_called_once()
-
-    def test_init_readline_history_with_existing_file(self):
-        """When history file exists, readline should read it."""
-        repl = ChatREPL()
-
-        mock_readline = MagicMock()
-        with patch.dict("sys.modules", {"readline": mock_readline}):
-            # Ensure the history file exists
-            home_dir = Path.home()
-            chat_dir = home_dir / ".chat"
-            chat_dir.mkdir(exist_ok=True)
-            history_path = chat_dir / "history"
-            history_path.touch(exist_ok=True)
-
-            try:
-                with patch.object(Path, "home", return_value=home_dir):
-                    repl._init_readline_history()
-                    mock_readline.read_history_file.assert_called_once()
-                    mock_readline.set_history_length.assert_called_once_with(1000)
-            finally:
-                # Clean up
-                if history_path.exists():
-                    history_path.unlink()
-
-    def test_init_readline_history_no_existing_file(self):
-        """When history file doesn't exist, readline should not try to read it."""
-        repl = ChatREPL()
-
-        mock_readline = MagicMock()
-        with patch.dict("sys.modules", {"readline": mock_readline}):
-            # Use a real temp path so Path.__truediv__ works correctly
-            home_dir = Path.home()
-            with patch.object(Path, "home", return_value=home_dir):
-                repl._init_readline_history()
-                # history file may or may not exist, but we can verify set_history_length was called
-                mock_readline.set_history_length.assert_called_once_with(1000)
+    def test_multiline_entry(self, tmp_path):
+        history_path = tmp_path / "history"
+        fh = _LimitedFileHistory(str(history_path))
+        fh.store_string("line1\nline2\nline3")
+        strings = list(fh.load_history_strings())
+        assert "line1\nline2\nline3" in strings
 
 
 # ============================================================================
@@ -1826,7 +1808,7 @@ def _make_mock_session():
     """Create a mock PromptSession that is safe for _find_buffer_window traversal.
     The container tree terminates (content=None, children=None, alternative_content=None)."""
     m = MagicMock()
-    m.prompt = MagicMock(return_value="x")
+    m.prompt_async = AsyncMock(return_value="x")
     m.app = MagicMock()
     m.app.layout = MagicMock()
     m.app.layout.container = _make_safe_container()
@@ -1846,10 +1828,9 @@ class TestPromptSessionSetup:
 
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="hello"):
-                    result = await repl._get_input()
+                result = await repl._get_input()
 
-        assert result == "hello"
+        assert result == "x"
         mock_session_cls.assert_called_once()
         call_kwargs = mock_session_cls.call_args[1]
         assert "key_bindings" in call_kwargs
@@ -1867,8 +1848,7 @@ class TestPromptSessionSetup:
 
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="/model"):
-                    result = await repl._get_input()
+                result = await repl._get_input()
 
         call_kwargs = mock_session_cls.call_args[1]
         assert isinstance(call_kwargs["completer"], SlashCommandCompleter)
@@ -1882,8 +1862,7 @@ class TestPromptSessionSetup:
 
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="input"):
-                    await repl._get_input()
+                await repl._get_input()
 
         call_kwargs = mock_session_cls.call_args[1]
         assert call_kwargs["multiline"] is True
@@ -1902,8 +1881,7 @@ class TestPromptSessionSetup:
 
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         call_kwargs = mock_session_cls.call_args[1]
         assert callable(call_kwargs["bottom_toolbar"])
@@ -1925,8 +1903,7 @@ class TestBottomToolbar:
 
         with patch("chcode.chat.PromptSession", side_effect=capture_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         assert captured_toolbar_fn is not None
         toolbar_output = captured_toolbar_fn()
@@ -1948,8 +1925,7 @@ class TestBottomToolbar:
 
         with patch("chcode.chat.PromptSession", side_effect=capture_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         toolbar_output = str(captured_toolbar_fn())
         assert "普通模式" in toolbar_output
@@ -1970,8 +1946,7 @@ class TestBottomToolbar:
 
         with patch("chcode.chat.PromptSession", side_effect=capture_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         toolbar_output = str(captured_toolbar_fn())
         assert "YOLO" in toolbar_output
@@ -1992,8 +1967,7 @@ class TestBottomToolbar:
 
         with patch("chcode.chat.PromptSession", side_effect=capture_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         toolbar_output = str(captured_toolbar_fn())
         # On Windows, Path("/my/project") uses backslashes
@@ -2021,8 +1995,7 @@ class TestBottomToolbar:
 
         with patch("chcode.chat.PromptSession", side_effect=capture_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         toolbar_output = str(captured_toolbar_fn())
         assert "Git" in toolbar_output
@@ -2044,8 +2017,7 @@ class TestBottomToolbar:
 
         with patch("chcode.chat.PromptSession", side_effect=capture_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         toolbar_output = str(captured_toolbar_fn())
         # _rich_to_html converts [bold]...[/bold] -> <b>...</b>
@@ -2066,18 +2038,17 @@ class TestBottomToolbar:
 
         with patch("chcode.chat.PromptSession", side_effect=capture_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=100)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
-                    # First call - uses get_terminal_size (columns=100)
-                    output1 = str(captured_toolbar_fn())
-                    assert "\u2500" * 100 in output1
+                await repl._get_input()
+                # First call - uses get_terminal_size (columns=100)
+                output1 = str(captured_toolbar_fn())
+                assert "\u2500" * 100 in output1
 
-                    # Second call within 1 second - should use cached width (still 100)
-                    # Even though get_terminal_size now returns 200, the cache is valid
-                    with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=200)):
-                        output2 = str(captured_toolbar_fn())
-                        assert "\u2500" * 100 in output2
-                        assert "\u2500" * 200 not in output2
+                # Second call within 1 second - should use cached width (still 100)
+                # Even though get_terminal_size now returns 200, the cache is valid
+                with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=200)):
+                    output2 = str(captured_toolbar_fn())
+                    assert "\u2500" * 100 in output2
+                    assert "\u2500" * 200 not in output2
 
 
 class TestKeyBindings:
@@ -2093,8 +2064,7 @@ class TestKeyBindings:
 
         with patch("chcode.chat.PromptSession", side_effect=capture_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
         return captured_kb
 
     def _find_handler(self, kb, key_name):
@@ -2190,6 +2160,7 @@ class TestDynamicBufferHeight:
                     except (AttributeError, TypeError):
                         pass
             wrapper.app = m.app
+            wrapper.prompt_async = AsyncMock(return_value="x")
 
             def _set_height(val):
                 captured_height_fn_holder[0] = val
@@ -2200,11 +2171,10 @@ class TestDynamicBufferHeight:
 
         with patch("chcode.chat.PromptSession", side_effect=capture_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    # Should complete without error when completions are active
-                    await repl._get_input()
-                    # Verify _prompt_session was set, proving _get_input completed with completions active
-                    assert repl._prompt_session is not None
+                # Should complete without error when completions are active
+                await repl._get_input()
+                # Verify _prompt_session was set, proving _get_input completed with completions active
+                assert repl._prompt_session is not None
 
     async def test_dynamic_height_multiline_text(self):
         """_dynamic_buffer_height returns line count as Dimension when no completions."""
@@ -2219,11 +2189,10 @@ class TestDynamicBufferHeight:
 
         with patch("chcode.chat.PromptSession", side_effect=make_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    # Should complete without error with multiline text (no completions)
-                    await repl._get_input()
-                    # Verify _prompt_session was set during _get_input
-                    assert repl._prompt_session is not None
+                # Should complete without error with multiline text (no completions)
+                await repl._get_input()
+                # Verify _prompt_session was set during _get_input
+                assert repl._prompt_session is not None
 
 
 class TestFindBufferWindow:
@@ -2258,8 +2227,7 @@ class TestFindBufferWindow:
 
         with patch("chcode.chat.PromptSession", side_effect=make_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         assert mock_window.height is not None, "_dynamic_buffer_height should have been assigned"
         # Call the function to cover lines 485-491 (multiline text, no completions)
@@ -2292,8 +2260,7 @@ class TestFindBufferWindow:
 
         with patch("chcode.chat.PromptSession", side_effect=make_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         assert mock_window.height is not None
         result = mock_window.height()
@@ -2324,8 +2291,7 @@ class TestFindBufferWindow:
 
         with patch("chcode.chat.PromptSession", side_effect=make_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         assert mock_window.height is not None, "_dynamic_buffer_height should have been assigned via children traversal"
 
@@ -2345,11 +2311,10 @@ class TestFindBufferWindow:
 
         with patch("chcode.chat.PromptSession", side_effect=make_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    # Should complete traversal without infinite recursion when BufferControl not found
-                    await repl._get_input()
-                    # Verify the test completed without infinite recursion
-                    assert repl._prompt_session is not None
+                # Should complete traversal without infinite recursion when BufferControl not found
+                await repl._get_input()
+                # Verify the test completed without infinite recursion
+                assert repl._prompt_session is not None
 
     async def test_find_buffer_window_checks_alternative_content(self):
         """_find_buffer_window should check alternative_content attribute."""
@@ -2373,8 +2338,7 @@ class TestFindBufferWindow:
 
         with patch("chcode.chat.PromptSession", side_effect=make_session):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="x"):
-                    await repl._get_input()
+                await repl._get_input()
 
         assert mock_window.height is not None, "_dynamic_buffer_height should have been assigned via alternative_content"
 
@@ -2390,10 +2354,9 @@ class TestGetInputPreFillBuffers:
 
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="submitted"):
-                    result = await repl._get_input()
+                result = await repl._get_input()
 
-        assert result == "submitted"
+        assert result == "x"
         assert repl._edit_buffer is None
 
     async def test_interrupt_buffer_prefilled(self):
@@ -2407,10 +2370,9 @@ class TestGetInputPreFillBuffers:
 
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="submitted"):
-                    result = await repl._get_input()
+                result = await repl._get_input()
 
-        assert result == "submitted"
+        assert result == "x"
         assert repl._interrupt_buffer is None
 
     async def test_no_buffer_uses_empty_default(self):
@@ -2424,22 +2386,22 @@ class TestGetInputPreFillBuffers:
 
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="user input"):
-                    result = await repl._get_input()
+                result = await repl._get_input()
 
-        assert result == "user input"
+        assert result == "x"
 
     async def test_keyboard_interrupt_returns_none(self):
         """KeyboardInterrupt during prompt should return None."""
         repl = ChatREPL()
         repl._prompt_session = None
 
-        mock_session_cls = MagicMock(return_value=_make_mock_session())
+        mock_session = _make_mock_session()
+        mock_session.prompt_async = AsyncMock(side_effect=KeyboardInterrupt())
+        mock_session_cls = MagicMock(return_value=mock_session)
 
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=KeyboardInterrupt()):
-                    result = await repl._get_input()
+                result = await repl._get_input()
 
         assert result is None
 
@@ -2448,12 +2410,13 @@ class TestGetInputPreFillBuffers:
         repl = ChatREPL()
         repl._prompt_session = None
 
-        mock_session_cls = MagicMock(return_value=_make_mock_session())
+        mock_session = _make_mock_session()
+        mock_session.prompt_async = AsyncMock(side_effect=EOFError())
+        mock_session_cls = MagicMock(return_value=mock_session)
 
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=EOFError()):
-                    result = await repl._get_input()
+                result = await repl._get_input()
 
         assert result is None
 
@@ -2463,23 +2426,21 @@ class TestGetInputPreFillBuffers:
         repl._prompt_session = None
 
         mock_session = _make_mock_session()
-        mock_session.prompt = MagicMock(return_value="first")
+        mock_session.prompt_async = AsyncMock(return_value="first")
         mock_session_cls = MagicMock(return_value=mock_session)
 
         # First call - creates session
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="first"):
-                    await repl._get_input()
+                await repl._get_input()
 
         mock_session_cls.assert_called_once()
 
         # Second call - reuses existing session
-        mock_session.prompt = MagicMock(return_value="second")
+        mock_session.prompt_async = AsyncMock(return_value="second")
         with patch("chcode.chat.PromptSession", mock_session_cls):
             with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value="second"):
-                    await repl._get_input()
+                await repl._get_input()
 
         # Should still be only 1 call (from first invocation)
         mock_session_cls.assert_called_once()

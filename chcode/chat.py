@@ -18,6 +18,7 @@ from rich.text import Text
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.styles import Style
@@ -221,6 +222,28 @@ def _collect_ids_from_group(group_index: int, groups: list) -> tuple[list[str], 
     return no_need_ids, all_ids
 
 
+class _LimitedFileHistory(FileHistory):
+    MAX_ENTRIES = 50
+
+    def store_string(self, string):
+        Path(self.filename).parent.mkdir(exist_ok=True)
+        super().store_string(string)
+        strings = list(self.load_history_strings())
+        if len(strings) > self.MAX_ENTRIES:
+            keep = strings[:self.MAX_ENTRIES]
+            self._loaded_strings = keep
+            self._rewrite(keep)
+
+    def _rewrite(self, keep):
+        import datetime as _dt
+        Path(self.filename).parent.mkdir(exist_ok=True)
+        with open(self.filename, "wb") as f:
+            for s in reversed(keep):
+                f.write(f"\n# {_dt.datetime.now()}\n".encode())
+                for line in s.split("\n"):
+                    f.write(f"+{line}\n".encode())
+
+
 # ─── 主聊天类 ──────────────────────────────────────────
 
 
@@ -347,36 +370,6 @@ class ChatREPL:
         # 初始化 Git（subprocess.run 会阻塞事件循环）
         await self._init_git()
 
-        # 初始化命令历史
-        self._init_readline_history()
-
-        return True
-
-    # 初始化命令历史
-    def _init_readline_history(self):
-        """初始化 readline 历史（跨会话保存）"""
-        try:
-            import readline
-
-            history_path = Path.home() / ".chat" / "history"
-            history_path.parent.mkdir(exist_ok=True)
-            if history_path.exists():
-                readline.read_history_file(str(history_path))
-            readline.set_history_length(1000)
-        except ImportError:
-            pass
-
-    # 保存命令历史
-    def _save_readline_history(self):
-        """保存 readline 历史"""
-        try:
-            import readline
-
-            history_path = Path.home() / ".chat" / "history"
-            history_path.parent.mkdir(exist_ok=True)
-            readline.write_history_file(str(history_path))
-        except ImportError:
-            pass
         return True
 
     async def _init_git(self) -> None:
@@ -491,7 +484,8 @@ class ChatREPL:
                         ratelimit_line = f"\n<ansicyan>魔搭今日免费额度剩余: 全局 {total} │ 模型({model_name}) {model_rl}</ansicyan>"
                 return HTML(f"<ansiblue>{sep}</ansiblue>\n{status}{ratelimit_line}")
 
-            self._prompt_session = PromptSession(
+            self._prompt_session:PromptSession = PromptSession(
+                history=_LimitedFileHistory(str(Path.home() / ".chat" / "history")),
                 multiline=True,
                 key_bindings=kb,
                 completer=completer,
@@ -563,13 +557,10 @@ class ChatREPL:
             prompt_text = f"{sep}\n > " # 构造顶栏和 > 提示符
 
             # 使用 prompt-toolkit 获取输入（支持命令自动补全）
-            result = await asyncio.to_thread(
-                self._prompt_session.prompt, # 显示顶栏和 > 提示符，并等待用户输入，返回值也是用户的输入
+            result = await self._prompt_session.prompt_async( # 显示顶栏和 > 提示符，并等待用户输入，返回值也是用户的输入
                 HTML(f"<ansiblue>{prompt_text}</ansiblue>"),
                 default=default_text, # 返回的默认值，代替用户输入或可能为空
             )
-            if result is not None:
-                self._save_readline_history()
             return result
         except (EOFError, KeyboardInterrupt):
             return None

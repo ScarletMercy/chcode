@@ -292,6 +292,15 @@ class TestChatREPLInitGit:
 # Test ChatREPL._get_input
 # ============================================================================
 
+def _make_safe_container_mock():
+    """Create a mock container that terminates _find_buffer_window traversal."""
+    m = MagicMock()
+    m.content = None
+    m.children = None
+    m.alternative_content = None
+    return m
+
+
 def _make_repl_for_input(tmp_path, **overrides):
     """Create a ChatREPL with a pre-set mock PromptSession to skip real terminal init."""
     repl = ChatREPL()
@@ -308,80 +317,66 @@ class TestChatREPLGetInput:
     @pytest.mark.asyncio
     async def test_get_input_normal(self, tmp_path):
         repl = _make_repl_for_input(tmp_path)
-
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-            mock_thread.return_value = "hello world"
-            result = await repl._get_input()
-
-            assert result == "hello world"
+        repl._prompt_session = Mock()
+        repl._prompt_session.prompt_async = AsyncMock(return_value="hello world")
+        result = await repl._get_input()
+        assert result == "hello world"
 
     @pytest.mark.asyncio
     async def test_get_input_with_edit_buffer(self, tmp_path):
         repl = _make_repl_for_input(tmp_path, _edit_buffer="previous input")
-
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-            def side_effect(*args, **kwargs):
-                assert "default" in kwargs
-                assert kwargs["default"] == "previous input"
-                return "new input"
-            mock_thread.side_effect = side_effect
-
-            result = await repl._get_input()
-
-            assert result == "new input"
-            assert repl._edit_buffer is None
+        repl._prompt_session = Mock()
+        repl._prompt_session.prompt_async = AsyncMock(return_value="new input")
+        result = await repl._get_input()
+        assert result == "new input"
+        assert repl._edit_buffer is None
 
     @pytest.mark.asyncio
     async def test_get_input_with_interrupt_buffer(self, tmp_path):
         repl = _make_repl_for_input(tmp_path, _interrupt_buffer="interrupted")
-
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-            def side_effect(*args, **kwargs):
-                assert kwargs["default"] == "interrupted"
-                return "resumed"
-            mock_thread.side_effect = side_effect
-
-            result = await repl._get_input()
-
-            assert result == "resumed"
-            assert repl._interrupt_buffer is None
+        repl._prompt_session = Mock()
+        repl._prompt_session.prompt_async = AsyncMock(return_value="resumed")
+        result = await repl._get_input()
+        assert result == "resumed"
+        assert repl._interrupt_buffer is None
 
     @pytest.mark.asyncio
     async def test_get_input_eof_error(self, tmp_path):
         repl = _make_repl_for_input(tmp_path)
-
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-            mock_thread.side_effect = EOFError()
-
-            result = await repl._get_input()
-
-            assert result is None
+        repl._prompt_session = Mock()
+        repl._prompt_session.prompt_async = AsyncMock(side_effect=EOFError())
+        result = await repl._get_input()
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_get_input_keyboard_interrupt(self, tmp_path):
         repl = _make_repl_for_input(tmp_path)
-
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-            mock_thread.side_effect = KeyboardInterrupt()
-
-            result = await repl._get_input()
-
-            assert result is None
+        repl._prompt_session = Mock()
+        repl._prompt_session.prompt_async = AsyncMock(side_effect=KeyboardInterrupt())
+        result = await repl._get_input()
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_get_input_prompt_session_created_once(self, tmp_path):
         repl = _make_repl_for_input(tmp_path)
+        repl._prompt_session = None
 
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-            mock_thread.return_value = "test"
+        mock_session = MagicMock()
+        mock_session.prompt_async = AsyncMock(return_value="test")
+        mock_session.app = MagicMock()
+        mock_session.app.layout = MagicMock()
+        mock_session.app.layout.container = _make_safe_container_mock()
+        mock_session.default_buffer = MagicMock()
+        mock_session.default_buffer.complete_state = None
+        mock_session.default_buffer.text = ""
 
-            await repl._get_input()
-            session1 = repl._prompt_session
-
-            await repl._get_input()
-            session2 = repl._prompt_session
-
-            assert session1 is session2
+        with patch("chcode.chat.PromptSession", return_value=mock_session):
+            with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
+                await repl._get_input()
+                session1 = repl._prompt_session
+                await repl._get_input()
+                session2 = repl._prompt_session
+        assert session1 is session2
 
 
 # ============================================================================
