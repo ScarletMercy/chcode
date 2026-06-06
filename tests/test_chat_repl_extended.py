@@ -1076,11 +1076,10 @@ class TestCmdModelSelectEditAction:
             with patch("chcode.chat.edit_current_model", new_callable=AsyncMock) as mock_edit:
                 mock_edit.return_value = {"model": "gpt-4-edited"}
                 with patch("chcode.agent_setup.update_summarization_model"):
-                    with patch.object(repl, "_render_status_bar"):
-                        await repl._cmd_model("")
+                    await repl._cmd_model("")
 
-                        mock_edit.assert_called_once()
-                        assert repl.model_config == {"model": "gpt-4-edited"}
+                    mock_edit.assert_called_once()
+                    assert repl.model_config == {"model": "gpt-4-edited"}
 
 
 # ============================================================================
@@ -1098,11 +1097,10 @@ class TestCmdModelSelectSwitchAction:
             with patch("chcode.chat.switch_model", new_callable=AsyncMock) as mock_sw:
                 mock_sw.return_value = {"model": "claude-3"}
                 with patch("chcode.agent_setup.update_summarization_model"):
-                    with patch.object(repl, "_render_status_bar"):
-                        await repl._cmd_model("")
+                    await repl._cmd_model("")
 
-                        mock_sw.assert_called_once()
-                        assert repl.model_config == {"model": "claude-3"}
+                    mock_sw.assert_called_once()
+                    assert repl.model_config == {"model": "claude-3"}
 
 
 # ============================================================================
@@ -1202,16 +1200,15 @@ class TestCmdMessagesForkPathChoices:
                                             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=new_agent):
                                                 with patch.object(repl, "_init_git", new_callable=AsyncMock):
                                                     with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
-                                                        with patch.object(repl, "_render_status_bar"):
-                                                            with patch("chcode.chat.render_success"):
-                                                                await repl._cmd_messages("")
+                                                        with patch("chcode.chat.render_success"):
+                                                            await repl._cmd_messages("")
 
-                                                                # select_or_custom should receive the saved path in choices
-                                                                mock_soc.assert_called_once()
-                                                                call_kwargs = mock_soc.call_args
-                                                                choices = call_kwargs[0][1]
-                                                                assert str(saved) in choices
-                                                                assert "自定义路径..." in choices
+                                                            # select_or_custom should receive the saved path in choices
+                                                            mock_soc.assert_called_once()
+                                                            call_kwargs = mock_soc.call_args
+                                                            choices = call_kwargs[0][1]
+                                                            assert str(saved) in choices
+                                                            assert "自定义路径..." in choices
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1330,11 +1327,10 @@ class TestCmdMessagesForkFullFlow:
                                             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                 with patch.object(repl, "_init_git", new_callable=AsyncMock):
                                                     with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
-                                                        with patch.object(repl, "_render_status_bar"):
-                                                            with patch("chcode.chat.render_success"):
-                                                                await repl._cmd_messages("")
+                                                        with patch("chcode.chat.render_success"):
+                                                            await repl._cmd_messages("")
 
-                                                                assert not copy_dir_called[0], "_copy_dir should not be called when paths are same"
+                                                            assert not copy_dir_called[0], "_copy_dir should not be called when paths are same"
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1368,11 +1364,10 @@ class TestCmdMessagesForkFullFlow:
                                                 with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                     with patch.object(repl, "_init_git", new_callable=AsyncMock):
                                                         with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
-                                                            with patch.object(repl, "_render_status_bar"):
-                                                                with patch("chcode.chat.render_success"):
-                                                                    await repl._cmd_messages("")
+                                                            with patch("chcode.chat.render_success"):
+                                                                await repl._cmd_messages("")
 
-                                                                    assert copy_dir_called[0], "_copy_dir should have been called for different paths"
+                                                                assert copy_dir_called[0], "_copy_dir should have been called for different paths"
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1415,12 +1410,11 @@ class TestCmdMessagesForkFullFlow:
                                                 with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                     with patch.object(repl, "_init_git", new_callable=AsyncMock):
                                                         with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
-                                                            with patch.object(repl, "_render_status_bar"):
-                                                                with patch("chcode.chat.render_success"):
-                                                                    await repl._cmd_messages("")
+                                                            with patch("chcode.chat.render_success"):
+                                                                await repl._cmd_messages("")
 
-                                                                    # .git should have been copied to new_path
-                                                                    assert (new_path / ".git" / "config").exists()
+                                                                # .git should have been copied to new_path
+                                                                assert (new_path / ".git" / "config").exists()
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1464,14 +1458,13 @@ class TestCmdMessagesForkFullFlow:
                                                 with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                     with patch.object(repl, "_init_git", new_callable=AsyncMock):
                                                         with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
-                                                            with patch.object(repl, "_render_status_bar"):
-                                                                with patch("chcode.chat.render_success"):
-                                                                    await repl._cmd_messages("")
+                                                            with patch("chcode.chat.render_success"):
+                                                                await repl._cmd_messages("")
 
-                                                                    # Old sessions file should have been removed
-                                                                    assert not (sessions / "old_data.txt").exists()
-                                                                    # Sessions dir should still exist (recreated after rmtree)
-                                                                    assert sessions.exists()
+                                                                # Old sessions file should have been removed
+                                                                assert not (sessions / "old_data.txt").exists()
+                                                                # Sessions dir should still exist (recreated after rmtree)
+                                                                assert sessions.exists()
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1531,18 +1524,17 @@ class TestCmdMessagesForkFullFlow:
                                                 with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=new_agent):
                                                     with patch.object(repl, "_init_git", new_callable=AsyncMock):
                                                         with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
-                                                            with patch.object(repl, "_render_status_bar"):
-                                                                with patch("chcode.chat.render_success"):
-                                                                    await repl._cmd_messages("")
+                                                            with patch("chcode.chat.render_success"):
+                                                                await repl._cmd_messages("")
 
-                                                                    assert repl.agent == new_agent
-                                                                    new_agent.aupdate_state.assert_called_once()
-                                                                    call_args = new_agent.aupdate_state.call_args
-                                                                    messages = call_args[0][1]["messages"]
-                                                                    # Should only have group 0 messages (msg1, msg2)
-                                                                    assert len(messages) == 2
-                                                                    assert messages[0].id == "m1"
-                                                                    assert messages[1].id == "m2"
+                                                                assert repl.agent == new_agent
+                                                                new_agent.aupdate_state.assert_called_once()
+                                                                call_args = new_agent.aupdate_state.call_args
+                                                                messages = call_args[0][1]["messages"]
+                                                                # Should only have group 0 messages (msg1, msg2)
+                                                                assert len(messages) == 2
+                                                                assert messages[0].id == "m1"
+                                                                assert messages[1].id == "m2"
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1569,11 +1561,10 @@ class TestCmdMessagesForkFullFlow:
                                             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=new_agent):
                                                 with patch.object(repl, "_init_git", new_callable=AsyncMock) as mock_init_git:
                                                     with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
-                                                        with patch.object(repl, "_render_status_bar"):
-                                                            with patch("chcode.chat.render_success"):
-                                                                await repl._cmd_messages("")
+                                                        with patch("chcode.chat.render_success"):
+                                                            await repl._cmd_messages("")
 
-                                                                mock_init_git.assert_called_once()
+                                                            mock_init_git.assert_called_once()
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1607,11 +1598,10 @@ class TestCmdMessagesForkFullFlow:
                                             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                 with patch.object(repl, "_init_git", new_callable=AsyncMock):
                                                     with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
-                                                        with patch.object(repl, "_render_status_bar"):
-                                                            with patch("chcode.chat.render_success"):
-                                                                await repl._cmd_messages("")
+                                                        with patch("chcode.chat.render_success"):
+                                                            await repl._cmd_messages("")
 
-                                                                assert rollback_called[0], "git rollback should have been called during fork"
+                                                            assert rollback_called[0], "git rollback should have been called during fork"
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1644,13 +1634,12 @@ class TestCmdMessagesForkFullFlow:
                                             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_to_thread):
                                                 with patch.object(repl, "_init_git", new_callable=AsyncMock):
                                                     with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
-                                                        with patch.object(repl, "_render_status_bar"):
-                                                            with patch("chcode.chat.render_success"):
-                                                                with patch("chcode.chat.render_warning") as mock_warn:
-                                                                    await repl._cmd_messages("")
+                                                        with patch("chcode.chat.render_success"):
+                                                            with patch("chcode.chat.render_warning") as mock_warn:
+                                                                await repl._cmd_messages("")
 
-                                                                    mock_warn.assert_called_once()
-                                                                    assert "Git 回滚失败" in mock_warn.call_args[0][0]
+                                                                mock_warn.assert_called_once()
+                                                                assert "Git 回滚失败" in mock_warn.call_args[0][0]
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

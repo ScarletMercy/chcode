@@ -392,10 +392,9 @@ class TestChatREPLHandleCommand:
 
         with patch("chcode.chat.reset_budget_state"):
             with patch("chcode.chat.render_success"):
-                with patch.object(repl, "_render_status_bar"):
-                    await repl._handle_command("/new")
+                await repl._handle_command("/new")
 
-                    repl.session_mgr.new_session.assert_called_once()
+                repl.session_mgr.new_session.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_handle_command_help(self):
@@ -454,11 +453,10 @@ class TestChatREPLSlashCommands:
 
         with patch("chcode.chat.reset_budget_state"):
             with patch("chcode.chat.render_success") as mock_success:
-                with patch.object(repl, "_render_status_bar"):
-                    await repl._cmd_new("")
+                await repl._cmd_new("")
 
-                    mock_success.assert_called_once()
-                    assert "新会话" in mock_success.call_args[0][0]
+                mock_success.assert_called_once()
+                assert "新会话" in mock_success.call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_cmd_model_with_arg_new(self):
@@ -468,10 +466,9 @@ class TestChatREPLSlashCommands:
         with patch("chcode.chat.configure_new_model", new_callable=AsyncMock) as mock_cfg:
             mock_cfg.return_value = {"model": "gpt-4"}
             with patch("chcode.agent_setup.update_summarization_model"):
-                with patch.object(repl, "_render_status_bar"):
-                    await repl._cmd_model("new")
+                await repl._cmd_model("new")
 
-                    assert repl.model_config == {"model": "gpt-4"}
+                assert repl.model_config == {"model": "gpt-4"}
 
     @pytest.mark.asyncio
     async def test_cmd_model_with_arg_edit(self):
@@ -481,10 +478,9 @@ class TestChatREPLSlashCommands:
         with patch("chcode.chat.edit_current_model", new_callable=AsyncMock) as mock_edit:
             mock_edit.return_value = {"model": "gpt-3.5"}
             with patch("chcode.agent_setup.update_summarization_model"):
-                with patch.object(repl, "_render_status_bar"):
-                    await repl._cmd_model("edit")
+                await repl._cmd_model("edit")
 
-                    assert repl.model_config == {"model": "gpt-3.5"}
+                assert repl.model_config == {"model": "gpt-3.5"}
 
     @pytest.mark.asyncio
     async def test_cmd_model_with_arg_switch(self):
@@ -494,10 +490,9 @@ class TestChatREPLSlashCommands:
         with patch("chcode.chat.switch_model", new_callable=AsyncMock) as mock_sw:
             mock_sw.return_value = {"model": "claude"}
             with patch("chcode.agent_setup.update_summarization_model"):
-                with patch.object(repl, "_render_status_bar"):
-                    await repl._cmd_model("switch")
+                await repl._cmd_model("switch")
 
-                    assert repl.model_config == {"model": "claude"}
+                assert repl.model_config == {"model": "claude"}
 
     @pytest.mark.asyncio
     async def test_cmd_model_no_arg_select_new(self):
@@ -509,10 +504,9 @@ class TestChatREPLSlashCommands:
             with patch("chcode.chat.configure_new_model", new_callable=AsyncMock) as mock_cfg:
                 mock_cfg.return_value = {"model": "new"}
                 with patch("chcode.agent_setup.update_summarization_model"):
-                    with patch.object(repl, "_render_status_bar"):
-                        await repl._cmd_model("")
+                    await repl._cmd_model("")
 
-                        assert repl.model_config == {"model": "new"}
+                    assert repl.model_config == {"model": "new"}
 
     @pytest.mark.asyncio
     async def test_cmd_model_no_arg_cancel(self):
@@ -533,10 +527,9 @@ class TestChatREPLSlashCommands:
         with patch("chcode.chat.configure_new_model", new_callable=AsyncMock) as mock_cfg:
             mock_cfg.return_value = None
             with patch("chcode.agent_setup.update_summarization_model"):
-                with patch.object(repl, "_render_status_bar"):
-                    await repl._cmd_model("new")
+                await repl._cmd_model("new")
 
-                    assert repl.model_config == {}
+                assert repl.model_config == {}
 
     @pytest.mark.asyncio
     async def test_cmd_langsmith_enable_no_key(self):
@@ -970,11 +963,10 @@ class TestChatREPLCmdWorkdir:
                                     mock_thread.return_value = Mock()
                                     with patch.object(repl, "_init_git", new_callable=AsyncMock):
                                         with patch("chcode.chat.render_success"):
-                                            with patch.object(repl, "_render_status_bar"):
-                                                await repl._cmd_workdir("")
+                                            await repl._cmd_workdir("")
 
-                                                assert repl.workplace_path == tmp_path
-                                                assert repl._skill_loader is None
+                                            assert repl.workplace_path == tmp_path
+                                            assert repl._skill_loader is None
 
     @pytest.mark.asyncio
     async def test_cmd_workdir_saved_workplace(self, tmp_path):
@@ -995,9 +987,8 @@ class TestChatREPLCmdWorkdir:
                                 with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock):
                                     with patch.object(repl, "_init_git", new_callable=AsyncMock):
                                         with patch("chcode.chat.render_success") as mock_ok:
-                                            with patch.object(repl, "_render_status_bar"):
-                                                await repl._cmd_workdir("")
-                                                mock_ok.assert_called_once()
+                                            await repl._cmd_workdir("")
+                                            mock_ok.assert_called_once()
 
 
 # ============================================================================
@@ -1305,8 +1296,7 @@ class TestChatREPLCmdHistory:
              patch.object(repl.session_mgr, "get_display_names", new_callable=AsyncMock, return_value={"thread1": "Session 1"}), \
              patch("chcode.chat.select", new_callable=AsyncMock, side_effect=["Session 1  (thread1)", "加载此会话"]), \
              patch.object(repl.session_mgr, "set_thread"), \
-             patch.object(repl, "_load_conversation", new_callable=AsyncMock), \
-             patch.object(repl, "_render_status_bar"):
+             patch.object(repl, "_load_conversation", new_callable=AsyncMock):
             await repl._cmd_history("")
             repl.session_mgr.set_thread.assert_called_once_with("thread1")
 
