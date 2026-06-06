@@ -569,9 +569,9 @@ class ChatREPL:
 
     async def _handle_command(self, cmd: str) -> None:
         """处理斜杠命令"""
-        parts = cmd.strip().split(maxsplit=1)
-        command = parts[0].lower()
-        arg = parts[1] if len(parts) > 1 else ""
+        parts = cmd.strip().split(maxsplit=1) # 通过空格将命令分割放入列表，最大分割一次
+        command = parts[0].lower()  # 第一个是命令
+        arg = parts[1] if len(parts) > 1 else "" # 如果有第二个则为参数
 
         handlers = {
             "/new": self._cmd_new,
@@ -598,12 +598,13 @@ class ChatREPL:
         else:
             render_warning(f"未知命令: {command}，输入 /help 查看帮助")
 
+    # 创建新会话（使用新的thread_id,传入agent时，langchain会自动创建新会话）
     async def _cmd_new(self, _arg: str) -> None:
         reset_budget_state()
         self.session_mgr.new_session()
         render_success("新会话已开始")
-        self._render_status_bar()
 
+    # 模型配置
     async def _cmd_model(self, arg: str) -> None:
         if arg == "new":
             config = await configure_new_model()
@@ -634,9 +635,8 @@ class ChatREPL:
         if config:
             self.model_config = config
             from chcode.agent_setup import update_summarization_model
-
+            # 同步更新摘要模型
             update_summarization_model(config)
-            self._render_status_bar()
 
     def _sync_langsmith_env(self) -> None:
         from chcode.config import _apply_langsmith_env
@@ -645,55 +645,53 @@ class ChatREPL:
     async def _cmd_langsmith(self, _arg: str) -> None:
         # 显示当前状态
         state = "开启" if self.langsmith_tracing else "关闭"
-        masked = ""
-        if self.langsmith_api_key:
-            masked = mask_api_key(self.langsmith_api_key)
         console.print(f"[bold]LangSmith 追踪: {state}[/bold]")
         if self.langsmith_project:
             console.print(f"  项目: {self.langsmith_project}")
         if self.langsmith_api_key:
+            masked = mask_api_key(self.langsmith_api_key)
             console.print(f"  Key:  {masked}")
 
-        action = await select(
+        match await select( # match action
             "操作:",
             ["打开面板", "开启追踪", "关闭追踪", "修改项目名称", "修改 API Key"],
-        )
-        if action is None:
-            return
+        ):
+            case None:
+                return  # 如果什么都不选，直接退出
+            case "打开面板":
+                import webbrowser
 
-        if "面板" in action:
-            import webbrowser
-
-            webbrowser.open("https://smith.langchain.com")
-            return
-        elif "开启" in action:
-            if not self.langsmith_api_key:
-                console.print("[yellow]请先设置 LangSmith API Key[/yellow]")
+                webbrowser.open("https://smith.langchain.com") # 如果是windows系统且有浏览器，会直接打开项目主页。如果不是则无效
                 return
-            self.langsmith_tracing = True
-        elif "关闭" in action:
-            self.langsmith_tracing = False
-        elif "项目" in action:
-            new_name = await text("请输入项目名称:", default=self.langsmith_project or "chcode")
-            if new_name is None:
-                return
-            self.langsmith_project = new_name.strip() or "chcode"
-        elif "Key" in action:
-            new_key = await text("请输入 LangSmith API Key:")
-            if new_key:
-                self.langsmith_api_key = new_key
-            else:
-                return
+            case "开启追踪":
+                if not self.langsmith_api_key:
+                    console.print("[yellow]请先设置 LangSmith API Key[/yellow]")
+                    return # 没有设置LangSmith API Key会提醒配置，然后直接退出
+                self.langsmith_tracing = True
+            case "关闭追踪":
+                self.langsmith_tracing = False
+            case "修改项目名称":
+                new_name = await text("请输入项目名称:", default=self.langsmith_project or "chcode")
+                if new_name is None:
+                    return
+                self.langsmith_project = new_name.strip() or "chcode"
+            case "修改 API Key":
+                new_key = await text("请输入 LangSmith API Key:")
+                if new_key:
+                    self.langsmith_api_key = new_key
+                else:
+                    return
 
         self._sync_langsmith_env()
         render_success("LangSmith 配置已更新，重启后生效")
 
+    # 列出所有可用工具及其描述
     async def _cmd_tools(self, _arg: str) -> None:
-        from chcode.utils.tools import ALL_TOOLS
+        from chcode.utils.tools import ALL_TOOLS # 导入包含所有工具的列表
         from chcode.utils.multimodal import is_multimodal_model
 
-        current_model = (self.model_config or {}).get("model", "")
-        native_vision = is_multimodal_model(current_model)
+        current_model = (self.model_config or {}).get("model", "") # 安全获取模型配置
+        native_vision = is_multimodal_model(current_model) # 判断当前模型是否是视觉模型，如果是视觉模型会禁用视觉工具
 
         console.print("[bold]内置工具[/bold]")
         console.print()
@@ -701,12 +699,11 @@ class ChatREPL:
             console.print("[dim]当前模型支持原生视觉，图片/视频将直接嵌入消息[/dim]")
             console.print()
         for t in ALL_TOOLS:
-            name = t.name
-            desc = t.description.split("\n")[0] if t.description else ""
-            if name == "vision" and native_vision:
-                console.print(f"  [dim]{name:<16}[/dim] {desc} (已禁用)")
-            else:
-                console.print(f"  [cyan]{name:<16}[/cyan] {desc}")
+            desc = (t.description or "").split("\n")[0] # 如果有工具描述，则只取第一行的
+            is_disabled= t.name == "vision" and native_vision
+            style="dim" if is_disabled else "cyan"  # 样式；dim：灰色（禁用时），cyan：青色（未禁用时）
+            suffix=" (已禁用)" if is_disabled else "" # 后缀
+            console.print(f"  [{style}]{t.name:<16}[/{style}] {desc}{suffix}") # <：左对齐，16：补足空格至16个单位长度
         console.print()
 
     async def _cmd_skill(self, _arg: str) -> None:
@@ -716,60 +713,63 @@ class ChatREPL:
         await manage_skills(self.session_mgr)
 
     async def _cmd_history(self, _arg: str) -> None:
+
+        # ------------------- 1.选择会话--------------------------------------
         if not self.session_mgr or not self.checkpointer or not self.agent:
             return
-        sessions = await self.session_mgr.list_sessions(self.checkpointer)
+        sessions = await self.session_mgr.list_sessions(self.checkpointer) # 通过检查点从数据库（sqlite）中获取所有会话（实际为会话线程id）
         if not sessions:
             render_warning("没有历史会话")
             return
 
-        sessions = sessions[-50:]
+        sessions = sessions[-50:] # 取倒数50个会话并倒序排序（从新到旧）
 
-        display_names = await self.session_mgr.get_display_names(sessions, self.agent)
-        tid_to_label: dict[str, str] = {}
-        labels: list[str] = []
-        for tid in sessions:
-            name = display_names.get(tid, tid)
-            label = name if name == tid else f"{name}  ({tid})"
-            tid_to_label[label] = tid
-            labels.append(label)
-        labels.append("返回")
+        display_names = await self.session_mgr.get_display_names(sessions, self.agent) # 渲染所有会话的名称，返回一个 {tid: display_name} 的字典
+        label_to_tid: dict[str, str] = {} # 初始化 <标签：会话线程id> 键值字典
+        labels: list[str] = [] # 初始化标签列表（展示给用户的会话名）
+        for tid in sessions:  # 遍历会话线程id
+            name = display_names.get(tid, tid) # 通过 会话线程id 获取渲染的 会话名 ，如果没有则直接用 线程id 代替 空的 会话名
+            label = name if name == tid else f"{name}  ({tid})" # 拼接 会话名 和 线程id 成 新的会话名，确保会话名 绝对的 唯一性
+            label_to_tid[label] = tid # 构建 <新的会话名：会话线程id>字典
+            labels.append(label) # 构建 会话名 列表（展示给用户）
+        labels.append("返回") # 在 会话名 列表最后 加上 返回 选项
 
-        action = await select("选择历史会话:", labels)
-        if action is None or action == "返回":
+        action = await select("选择历史会话:", labels) # 获取用户 选择的 会话名
+        if action is None or action == "返回": # 如果是返回直接退出
             return
 
-        selected_tid = tid_to_label[action]
+        selected_tid = label_to_tid[action] # 根据 用户选择 的会话名 在 之前构建好的<会话名：会话线程id>字典中 获取 会话名 对应的 会话线程id
 
-        op = await select("操作:", ["加载此会话", "重命名此会话", "删除此会话", "返回"])
-        if op == "加载此会话":
-            self.session_mgr.set_thread(selected_tid)
-            await self._load_conversation()
-            self._render_status_bar()
-        elif op == "重命名此会话":
-            try:
-                cur = self.session_mgr._load_names().get(selected_tid, "")
-            except Exception:
-                cur = ""
-            new_name = await text("输入新名称（留空恢复默认）:", default=cur)
-            if new_name is not None:
-                self.session_mgr.rename_session(selected_tid, new_name)
-                render_success("会话已重命名")
-        elif op == "删除此会话":
-            ok = await confirm(f"确定删除会话 {selected_tid}？", default=False)
-            if ok:
-                await self.session_mgr.delete_session(selected_tid, self.checkpointer)
-                render_success("会话已删除")
-                if selected_tid == self.session_mgr.thread_id:
-                    await self._cmd_new("")
+        # ------------------- 2.操作选择的会话--------------------------------------
+        match await select("操作:", ["加载此会话", "重命名此会话", "删除此会话", "返回"]): # 可以对会话进行 这4个操作
+            case "加载此会话":
+                self.session_mgr.set_thread(selected_tid) # 设置会话管理器 的 线程id 属性为 选中的 会话 对应的 线程id
+                await self._load_conversation() # 加载会话历史消息 （通过 线程id 从 agent 的 state 中取）
+            case "重命名此会话":
+                try:
+                    cur = self.session_mgr._load_names().get(selected_tid, "") # 尝试获取 已经可能被 更改过的 会话名  | names.json 通过 _save_names 保存。其在两个地方被调用：1. rename_session— 用户重命名会话时写入。  2. delete_session— 删除会话时从 names 里移除对应条目再写回
+                except Exception: # 获取失败（说明当前会话尚未被改过名）
+                    cur = ""
+                new_name = await text("输入新名称（留空恢复默认）:", default=cur)
+                if new_name is not None:
+                    self.session_mgr.rename_session(selected_tid, new_name) # 将 新会话名 和 对应的 线程id 持久化到 name.json中
+                    render_success("会话已重命名")
+            case "删除此会话":
+                ok = await confirm(f"确定删除会话 {selected_tid}？", default=False)
+                if ok:
+                    await self.session_mgr.delete_session(selected_tid, self.checkpointer)
+                    render_success("会话已删除")
+                    if selected_tid == self.session_mgr.thread_id:
+                        await self._cmd_new("")
+            case _: # 返回 或 Ctrl C 都回到上一步（重新加载历史会话）
+                await self._cmd_history(_arg)
 
     async def _cmd_compress(self, _arg: str) -> None:
         if not self.model_config:
             render_warning("请先配置模型")
             return
 
-        ok = await confirm("确定压缩当前会话？", default=True)
-        if not ok:
+        if not await confirm("确定压缩当前会话？", default=True):
             return
 
         render_info("压缩中...")
@@ -979,7 +979,6 @@ class ChatREPL:
 
         await self._init_git()
         render_success(f"工作目录: {self.workplace_path}")
-        self._render_status_bar()
 
     async def _cmd_homepage(self, _arg: str) -> None:
         import webbrowser
@@ -1206,7 +1205,6 @@ class ChatREPL:
 
                 render_success(f"分支已创建！工作目录: {self.workplace_path}")
                 await self._load_conversation()
-                self._render_status_bar()
                 return
 
     async def _cleanup_last_turn(self, append_msg: str | None = None) -> list[BaseMessage] | None:
@@ -1289,10 +1287,6 @@ class ChatREPL:
                     shutil.copy2(item, dest_item)
                 except Exception as e:
                     print(f"复制文件失败: {item.name}, {e}")
-
-    def _render_status_bar(self) -> None:
-        """状态栏由 bottom_toolbar 自动渲染，此方法仅用于触发刷新"""
-        pass
 
     # ─── 对话处理 ──────────────────────────────────────
 
