@@ -723,7 +723,6 @@ class ChatREPL:
             return
 
         sessions = sessions[-50:] # 取倒数50个会话并倒序排序（从新到旧）
-
         display_names = await self.session_mgr.get_display_names(sessions, self.agent) # 渲染所有会话的名称，返回一个 {tid: display_name} 的字典
         label_to_tid: dict[str, str] = {} # 初始化 <标签：会话线程id> 键值字典
         labels: list[str] = [] # 初始化标签列表（展示给用户的会话名）
@@ -757,51 +756,51 @@ class ChatREPL:
             case "删除此会话":
                 ok = await confirm(f"确定删除会话 {selected_tid}？", default=False)
                 if ok:
-                    await self.session_mgr.delete_session(selected_tid, self.checkpointer)
+                    await self.session_mgr.delete_session(selected_tid, self.checkpointer) # 从数据库中删除 会话id 对应的 会话
                     render_success("会话已删除")
                     if selected_tid == self.session_mgr.thread_id:
-                        await self._cmd_new("")
+                        await self._cmd_new("") # 如删除的是 当前会话 就 原地开启 新会话
             case _: # 返回 或 Ctrl C 都回到上一步（重新加载历史会话）
                 await self._cmd_history(_arg)
 
     async def _cmd_compress(self, _arg: str) -> None:
-        if not self.model_config:
+        if not self.model_config:  # 压缩会话 的 模型 复用 主模型
             render_warning("请先配置模型")
             return
 
         if not await confirm("确定压缩当前会话？", default=True):
-            return
+            return # 如果拒绝直接退出
 
         render_info("压缩中...")
         try:
-            state = await self.agent.aget_state(self.session_mgr.config)
-            messages: list[BaseMessage] = state.values["messages"]
+            state = await self.agent.aget_state(self.session_mgr.config) # 通过 config（会话线程id）取出 state （其中的 messages）
+            messages: list[BaseMessage] = state.values["messages"] # 从state取出 消息列表
 
             # 分离历史消息和最近消息
-            recent_messages = []
+            recent_messages = [] # 最近2组消息 （保留的消息）
             recent_message_ids = []
             recent_count = 0
-            for msg in reversed(messages):
+            for msg in reversed(messages): # 倒着遍历 消息列表
                 recent_messages.append(msg)
                 recent_message_ids.append(msg.id)
                 if isinstance(msg, HumanMessage):
                     recent_count += 1
-                    if recent_count == 2:
+                    if recent_count == 2: # 只取最后两组消息
                         break
 
-            pre_messages = []
+            pre_messages = [] # 最后2组消息之前的消息（要被压缩的消息）
             for msg in messages:
-                if msg.id not in recent_message_ids:
-                    msg.additional_kwargs["composed"] = True
+                if msg.id not in recent_message_ids: # 只要除 最近消息（最后两组消息） 之外的消息
+                    msg.additional_kwargs["composed"] = True # 给需要被压缩的消息加上 压缩标记，由langchain中间件 识别 为已压缩过的消息，显示给用户，但不传给模型
                     # 压缩时去掉 base64 图片/视频，避免 payload 过大导致 API 返回空 choices
-                    if isinstance(msg.content, list):
+                    if isinstance(msg.content, list): # 只有列表形式才可能包含图片/视频块
                         clean_blocks = [
                             b for b in msg.content
                             if not isinstance(b, dict)
                             or b.get("type") not in ("image_url", "video_url")
-                        ]
+                        ] # 提取 非字典 或 是字典 但类型不是 image-url和video-url 的内容
                         if clean_blocks != msg.content:
-                            msg = msg.model_copy(update={"content": clean_blocks})
+                            msg = msg.model_copy(update={"content": clean_blocks}) # 重新构造消息对象，已剔除 图片和视频 2进制数据
                     pre_messages.append(msg)
 
             from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
@@ -810,54 +809,67 @@ class ChatREPL:
 
             human_msg = HumanMessage(
                 content='以你的角度用第二人称压缩会话，严格按以下JSON格式输出，不要使用markdown代码块：\n{{"summary": "压缩内容"}}',
-                additional_kwargs={"hide": True, "composed": True},
+                additional_kwargs={"hide": True, "composed": True}, # 隐藏显示，并且不传给agent
             )
 
             try:
                 raw_resp = await asyncio.to_thread(
                     model.invoke, pre_messages + [human_msg]
-                )
+                ) # 独立模型调用 压缩消息
 
-                content = raw_resp.content.strip()
-                # 去除 markdown 代码块包裹
-                if content.startswith("```"):
-                    content = re.sub(r"^```(?:json)?\s*\n?", "", content)
-                    content = re.sub(r"\n?```\s*$", "", content)
-                # 提取包含 "summary" 的 JSON 对象（模型可能在 JSON 前输出思考内容）
-                json_match = re.search(r'\{[^{}]*"summary"[^{}]*\}', content)
-                if json_match:
+                # -----------------------保证结构化输出--------------------------------------------------
+                content = raw_resp.content.strip() # 去除 压缩后的内容 （模型回复），并用 strip 清理空格
+                ##-----------------------第一层处理（去除 markdown 代码块包裹）--------------------------------
+                if content.startswith("```"): # 模型可能以markdown的格式输出结构化json输出,所以需要清理 （```{}```）
+                    content = re.sub(r"^```(?:json)?\s*\n?", "", content) # 去掉开头的“```”或“```json”
+                    content = re.sub(r"\n?```\s*$", "", content) # 去掉末尾的“```”
+                ##-----------------------第二层处理 （提取包含 "summary" 的 JSON 对象（模型可能在 JSON 前输出思考内容））-------------------------------
+                # 针对"简单情况"——LLM 在 JSON 前说了一堆废话（如"好的，压缩后的内容如下："）——用非贪婪匹配从文本中抠出第一个包含 "summary" 键的 扁平 JSON 对象。
+                json_match = re.search(r'\{[^{}]*"summary"[^{}]*\}', content) #
+                """ 
+                正则表达式分解:
+                \{：匹配左花括号 {（转义字符，因为 { 在正则中有特殊含义）。
+                [^{}]*：匹配任意数量（包括零个）非花括号的字符（即 { 和 } 以外的字符）。
+                "summary"：匹配字面字符串 "summary"。
+                [^{}]*：继续匹配任意数量的非花括号字符。
+                \}：匹配右花括号 }（转义字符）。
+                """
+                if json_match: # 如果匹配到了直接取出来
                     content = json_match.group()
-                else:
-                    # 可能 summary 值中包含嵌套对象，用逐字符括号匹配兜底
-                    # NOTE: 不处理字符串内的 `}`，但模型 summary 含 `}` 的概率极低，暂不改
+                ##-----------------------第三层处理（兜底）---------------------------------------------------
+                else: # 如果没有就 用 第3层 的 兜底操作
+                    # 可能 summary 值中包含嵌套对象（例如{"summary": {"text": "..."}}），用逐字符括号匹配兜底
+                    # NOTE: 不处理字符串内的 `}`，但模型 summary 含 `}` 的概率极低（例如 {"summary": "a}b"} ），暂不改
                     depth = 0
                     start = -1
                     for i, ch in enumerate(content):
                         if ch == '{':
                             if depth == 0:
-                                start = i
+                                start = i # 如果不是嵌套 记录 “{” 位置
                             depth += 1
                         elif ch == '}':
-                            depth -= 1
-                            if depth == 0 and start >= 0:
-                                candidate = content[start:i+1]
+                            depth -= 1 # 闭合一个“{}”，闭合标志：depth==0
+                            if depth == 0 and start >= 0: # 如果闭合至少一个非嵌套{}，
+                                candidate = content[start:i+1] # 取出 {"xxx":"xxx"}
                                 if '"summary"' in candidate:
-                                    content = candidate
+                                    content = candidate # 如果 summary 在 {"xxx":"xxx"} ，则代表匹配成功，直接取用
                                     break
-                data = json.loads(content)
+
+                data = json.loads(content) # 将json格式字符串 转成 json格式
+                # -----------------------结构化输出保证工作自此 结束-------------------------------------
+
                 ai_content = data.get("summary", "")
-                if isinstance(ai_content, dict):
+                if isinstance(ai_content, dict): # summary 的值是 字典 也接受，把它转成json字符串
                     ai_content = json.dumps(ai_content, ensure_ascii=False)
-                if not ai_content:
+                if not ai_content: # summary值 为空 说明 模型输出错误，压缩失败
                     ai_content = "会话压缩失败: LLM 返回结果缺少 summary 字段"
             except Exception as e:
                 ai_content = f"会话压缩失败: {e}"
-                human_msg.additional_kwargs["composed"] = True
 
             if ai_content.startswith("会话压缩失败"):
                 ai_message = AIMessage(
                     ai_content,
-                    additional_kwargs={"error": True, "composed": True},
+                    additional_kwargs={"composed": True},
                     usage_metadata={
                         "input_tokens": 0,
                         "output_tokens": 0,
@@ -1234,7 +1246,7 @@ class ChatREPL:
             if append_msg:
                 error_msg = AIMessage(
                     append_msg,
-                    additional_kwargs={"error": True, "composed": True},
+                    additional_kwargs={"composed": True},
                 )
                 await self.agent.aupdate_state(
                     self.session_mgr.config,

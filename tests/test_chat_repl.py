@@ -938,9 +938,13 @@ class TestChatREPLCmdWorkdir:
         with patch("chcode.chat.load_workplace", return_value=None):
             with patch("chcode.chat.select_or_custom", new_callable=AsyncMock) as mock_sel:
                 mock_sel.return_value = "/nonexistent/path"
-                with patch("chcode.chat.render_error") as mock_err:
-                    await repl._cmd_workdir("")
-                    mock_err.assert_called_once()
+                with patch("chcode.chat.Path") as mock_path_cls:
+                    mock_new_path = MagicMock()
+                    mock_new_path.exists.return_value = False
+                    mock_path_cls.return_value = mock_new_path
+                    with patch("chcode.chat.render_error") as mock_err:
+                        await repl._cmd_workdir("")
+                        mock_err.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_cmd_workdir_success(self, tmp_path):

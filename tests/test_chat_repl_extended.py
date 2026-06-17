@@ -205,7 +205,7 @@ class TestCmdCompressErrorBranches:
                                 ai_msg = [m for m in messages if isinstance(m, AIMessage)]
                                 assert len(ai_msg) == 1
                                 assert "会话压缩失败" in ai_msg[0].content
-                                assert ai_msg[0].additional_kwargs.get("error") is True
+                                assert "composed" in ai_msg[0].additional_kwargs
 
     async def test_compress_missing_summary_field(self):
         """When summary field is empty, failure AIMessage should be stored."""
@@ -594,7 +594,6 @@ class TestProcessInputOpenAIError:
                 messages = call_args[0][1]["messages"]
                 assert len(messages) == 1
                 assert isinstance(messages[0], AIMessage)
-                assert messages[0].additional_kwargs.get("error") is True
                 assert "composed" in messages[0].additional_kwargs
 
     async def test_process_input_openai_api_error_state_update_fails(self):
@@ -706,7 +705,7 @@ class TestProcessInputGeneralException:
                 messages = call_args[0][1]["messages"]
                 assert len(messages) == 1
                 assert isinstance(messages[0], AIMessage)
-                assert messages[0].additional_kwargs.get("error") is True
+                assert "composed" in messages[0].additional_kwargs
 
     async def test_process_input_general_error_state_update_fails(self):
         """When the error state update itself fails, the exception is swallowed."""
