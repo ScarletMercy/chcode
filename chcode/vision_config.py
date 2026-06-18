@@ -162,6 +162,73 @@ def auto_configure_vision() -> dict | None:
     return data["default"]
 
 
+# 视觉相关字段白名单（与消费侧 tools.py 视觉请求所读字段对齐）
+_VISION_FIELDS = ("model", "base_url", "api_key", "temperature", "top_p", "stream_usage")
+
+
+def _vision_equal(existing: dict, vision_cfg: dict) -> bool:
+    """现有视觉条目与新配置在白名单字段上是否一致（用于幂等判断）。"""
+    if not isinstance(existing, dict):
+        return False
+    return all(existing.get(k) == vision_cfg.get(k) for k in _VISION_FIELDS)
+
+
+def add_vision_model(config: dict) -> str | None:
+    """把一个模型配置加入视觉模型列表；同名模型就地更新。
+
+    - 同名已在 default → 更新 default
+    - 同名已在 fallback → 更新该 fallback 条目
+    - 新模型：有有效 default（api_key 非空）→ 加入 fallback；否则设为 default
+    - 内容完全一致时跳过写入（幂等）；缺 model/api_key 返回 None。
+
+    Returns: "default" | "fallback" 表示实际落入/更新的角色；None 表示未写入。
+    """
+    model = (config or {}).get("model", "")
+    api_key = (config or {}).get("api_key", "")
+    if not model or not api_key:
+        return None
+
+    # 只保留视觉相关字段，丢弃 extra_body/stop_sequences 等文本侧字段
+    vision_cfg = {k: config[k] for k in _VISION_FIELDS if k in config}
+
+    data = copy.deepcopy(load_vision_json())
+    existing_default = data.get("default", {})
+    existing_fallback: dict = dict(data.get("fallback", {}))
+
+    # 同名已在 default → 就地更新
+    if existing_default.get("model") == model:
+        if _vision_equal(existing_default, vision_cfg):
+            return None
+        data["default"] = vision_cfg
+        data["fallback"] = existing_fallback
+        save_vision_json(data)
+        return "default"
+
+    # 同名已在 fallback → 就地更新
+    if model in existing_fallback:
+        if _vision_equal(existing_fallback[model], vision_cfg):
+            return None
+        existing_fallback[model] = vision_cfg
+        data["default"] = existing_default
+        data["fallback"] = existing_fallback
+        save_vision_json(data)
+        return "fallback"
+
+    # 新模型：有有效 default → 加入 fallback
+    if existing_default and existing_default.get("api_key"):
+        existing_fallback[model] = vision_cfg
+        data["default"] = existing_default
+        data["fallback"] = existing_fallback
+        save_vision_json(data)
+        return "fallback"
+
+    # 无有效 default → 设为 default（保留已存在的 fallback）
+    data["default"] = vision_cfg
+    data["fallback"] = existing_fallback
+    save_vision_json(data)
+    return "default"
+
+
 async def configure_vision_interactive() -> dict | None:
     """交互式配置视觉模型（/vision 命令调用）"""
     ensure_config_dir()

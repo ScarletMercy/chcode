@@ -267,12 +267,29 @@ async def configure_new_model() -> dict | None:
     _merge_and_save_config(config)
     console.print(f"[green]模型配置已保存: {config['model']}[/green]")
 
+    # 多模态询问（仅手动配置入口触发；魔搭/LongCat 快捷配置各自已处理视觉）
+    if await confirm("该模型是否为多模态（视觉）模型？", default=False):
+        from chcode.vision_config import add_vision_model
+
+        try:
+            role = add_vision_model(config)
+            if role == "default":
+                console.print(f"[green]已加入视觉模型清单(默认): {config['model']}（图片将直接处理、vision 工具将停用）[/green]")
+            elif role == "fallback":
+                console.print(f"[green]已加入视觉模型清单(备用): {config['model']}（图片将直接处理、vision 工具将停用）[/green]")
+            else:
+                console.print("[yellow]未写入视觉配置（已存在相同配置）[/yellow]")
+        except Exception as e:
+            # 视觉配置失败不阻断主流程（模型本身已保存）
+            console.print(f"[yellow]视觉模型配置失败（不影响主配置）: {e}[/yellow]")
+
     await configure_tavily()
+    await configure_langsmith()
     return config
 
 
 async def _configure_modelscope_with_test() -> dict | None:
-    """魔搭快捷配置：收集 API Key → 测试连接 → 保存 12 个预定义模型。"""
+    """魔搭快捷配置：收集 API Key → 测试连接 → 保存预定义模型。"""
     from chcode.prompts import configure_modelscope
 
     ms_config = await configure_modelscope()
@@ -322,7 +339,7 @@ async def _configure_modelscope_with_test() -> dict | None:
 
 
 async def _configure_longcat_with_test() -> dict | None:
-    """LongCat 快捷配置：收集 API Key → 测试连接 → 保存 4 个预定义模型。"""
+    """LongCat 快捷配置：收集 API Key → 测试连接 → 保存预定义模型。"""
     lc_config = await configure_longcat()
     if lc_config is None:
         return None
@@ -442,19 +459,16 @@ CONTEXT_WINDOW_SIZES: dict[str, int] = {
     "deepseek-v4-pro": 1048576,
     "deepseek-v4-flash": 1048576,
     "glm-5.1": 200000,
+    "glm-5.2": 1048576,
     "glm-5": 200000,
     "glm-4.7": 200000,
     "minimax-m2": 204800,
     "minimax-m2.5": 200000,
     "kimi-k2": 262144,
-    "mimo-v2-flash": 262144,
     "qwen3.5-plus": 1048576,
     "qwen3.6-plus": 1048576,
     "qwen": 256000,
     "longcat-2.0-preview": 1048576,
-    "longcat-flash-chat": 262144,
-    "longcat-flash-thinking": 262144,
-    "longcat-flash-lite": 262144,
 }
 
 _DEFAULT_CONTEXT_WINDOW = 204800

@@ -174,7 +174,9 @@ class TestConfigureNewModel:
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
             "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
         ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."):
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
+            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -212,7 +214,9 @@ class TestConfigureNewModel:
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
             "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
         ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."):
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
+            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
             mock_form.return_value = new_config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -265,6 +269,105 @@ class TestConfigureNewModel:
             result = await mod.configure_new_model()
 
             assert result is None
+
+
+class TestConfigureNewModelMultimodal:
+    """Tests for the multimodal (vision) prompt in configure_new_model()."""
+
+    @pytest.mark.asyncio
+    async def test_user_confirms_multimodal_adds_to_vision(self, mock_config_dir):
+        """confirm=True → add_vision_model 被调用，参数含 model/api_key。"""
+        import chcode.config as mod
+
+        config = {
+            "model": "mm-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-test",
+            "stream_usage": True,
+        }
+
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
+             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.vision_config.add_vision_model") as mock_add:
+            mock_form.return_value = config
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.return_value = MagicMock()
+
+            result = await mod.configure_new_model()
+
+            assert result is not None
+            assert result["model"] == "mm-model"
+            mock_add.assert_called_once()
+            assert mock_add.call_args.args[0]["model"] == "mm-model"
+            assert mock_add.call_args.args[0]["api_key"] == "sk-test"
+
+    @pytest.mark.asyncio
+    async def test_user_declines_multimodal_skips_vision(self, mock_config_dir):
+        """confirm=False → 不调用 add_vision_model，model.json 正常写入。"""
+        import chcode.config as mod
+
+        config = {
+            "model": "text-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-test",
+            "stream_usage": True,
+        }
+
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
+             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False), \
+             patch("chcode.vision_config.add_vision_model") as mock_add:
+            mock_form.return_value = config
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.return_value = MagicMock()
+
+            result = await mod.configure_new_model()
+
+            assert result is not None
+            mock_add.assert_not_called()
+            data = mod.load_model_json()
+            assert data["default"]["model"] == "text-model"
+
+    @pytest.mark.asyncio
+    async def test_vision_write_failure_does_not_break_flow(self, mock_config_dir):
+        """add_vision_model 抛异常时不阻断主流程，tavily/langsmith 仍执行、model.json 已存。"""
+        import chcode.config as mod
+
+        config = {
+            "model": "mm-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-test",
+            "stream_usage": True,
+        }
+
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock) as mock_tavily, \
+             patch("chcode.config.configure_langsmith", new_callable=AsyncMock) as mock_langsmith, \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
+             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.vision_config.add_vision_model", side_effect=Exception("vision IO fail")):
+            mock_form.return_value = config
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.return_value = MagicMock()
+
+            result = await mod.configure_new_model()
+
+            assert result is not None
+            assert result["model"] == "mm-model"
+            mock_tavily.assert_called_once()
+            mock_langsmith.assert_called_once()
+            assert mod.load_model_json()["default"]["model"] == "mm-model"
 
 
 class TestEditCurrentModel:
@@ -686,7 +789,9 @@ class TestConfigureNewModelNullChoices:
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
              patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
              patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."):
+             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
+             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -906,12 +1011,12 @@ class TestConfigureModelscope:
             result = await mod._configure_modelscope_with_test()
 
             assert result is not None
-            assert result["model"] == "ZhipuAI/GLM-5"
+            assert result["model"] == "ZhipuAI/GLM-5.2"
             assert result["api_key"] == "ms-key"
 
             data = mod.load_model_json()
-            assert data["default"]["model"] == "ZhipuAI/GLM-5"
-            assert len(data["fallback"]) == 13
+            assert data["default"]["model"] == "ZhipuAI/GLM-5.2"
+            assert len(data["fallback"]) == 10
 
     @pytest.mark.asyncio
     async def test_modelscope_merge_existing(self, mock_config_dir):
@@ -943,7 +1048,7 @@ class TestConfigureModelscope:
             result = await mod._configure_modelscope_with_test()
 
             data = mod.load_model_json()
-            assert data["default"]["model"] == "ZhipuAI/GLM-5"
+            assert data["default"]["model"] == "ZhipuAI/GLM-5.2"
             assert "old-model" in data["fallback"]
             assert "existing-fb" in data["fallback"]
 
@@ -980,7 +1085,7 @@ class TestConfigureModelscope:
 
         assert result is not None
         assert result["default"]["api_key"] == "ms-test-key"
-        assert len(result["fallback"]) == 13
+        assert len(result["fallback"]) == 10
 
     @pytest.mark.asyncio
     async def test_configure_modelscope_cancel(self):

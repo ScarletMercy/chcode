@@ -16,6 +16,24 @@ def _make_tool_request(tool_name="vision", tool_id="tc-123"):
     return request
 
 
+@pytest.fixture(autouse=True)
+def _preset_vision_models(tmp_path, monkeypatch):
+    """隔离并预置 vision_model.json,让 is_multimodal_model 识别测试用的多模态模型。
+
+    is_multimodal_model 现从 vision_model.json 读取模型清单,需预置测试模型
+    (Kimi-K2.5/Qwen3.5-397B)并隔离,避免读写真实 home(CI 干净环境会 otherwise 失败)。
+    """
+    import chcode.vision_config as vc
+    monkeypatch.setattr(vc, "VISION_JSON", tmp_path / "vision_model.json")
+    vc._vision_json.invalidate()
+    vc.save_vision_json({
+        "default": {"model": "moonshotai/Kimi-K2.5", "api_key": "k"},
+        "fallback": {
+            "Qwen/Qwen3.5-397B-A17B": {"model": "Qwen/Qwen3.5-397B-A17B", "api_key": "k"},
+        },
+    })
+
+
 class TestFilterVisionTool:
 
     async def test_blocks_vision_for_multimodal_model(self):

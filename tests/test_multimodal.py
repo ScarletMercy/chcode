@@ -53,64 +53,62 @@ def temp_video(tmp_path):
     return path
 
 
+@pytest.fixture(autouse=True)
+def _isolate_vision_json(tmp_path, monkeypatch):
+    """隔离 vision_model.json,避免 is_multimodal_model 读写真实 home 配置。"""
+    import chcode.vision_config as vc
+    monkeypatch.setattr(vc, "VISION_JSON", tmp_path / "vision_model.json")
+    vc._vision_json.invalidate()
+
+
 # ─── is_multimodal_model ──────────────────────────────────────
 
 
 class TestIsMultimodalModel:
-    def test_kimi_k25_full_name(self):
+    @pytest.fixture
+    def _preset_vision_models(self):
+        """预置视觉模型到 vision_model.json(default + 2 个 fallback)。"""
+        import chcode.vision_config as vc
+        vc.save_vision_json({
+            "default": {"model": "moonshotai/Kimi-K2.5", "api_key": "k"},
+            "fallback": {
+                "Qwen/Qwen3-VL-30B-A3B-Instruct": {"model": "Qwen/Qwen3-VL-30B-A3B-Instruct", "api_key": "k"},
+                "stepfun-ai/Step-3.7-Flash": {"model": "stepfun-ai/Step-3.7-Flash", "api_key": "k"},
+            },
+        })
+
+    def test_default_model_full_name(self, _preset_vision_models):
         from chcode.utils.multimodal import is_multimodal_model
 
         assert is_multimodal_model("moonshotai/Kimi-K2.5") is True
 
-    def test_kimi_k25_short_name(self):
+    def test_short_name_matches(self, _preset_vision_models):
         from chcode.utils.multimodal import is_multimodal_model
 
         assert is_multimodal_model("Kimi-K2.5") is True
 
-    def test_qwen3_vl(self):
-        from chcode.utils.multimodal import is_multimodal_model
-
-        assert is_multimodal_model("Qwen/Qwen3-VL-235B-A22B-Instruct") is True
-
-    def test_qwen3_vl_short(self):
-        from chcode.utils.multimodal import is_multimodal_model
-
-        assert is_multimodal_model("Qwen3-VL-30B-A3B-Instruct") is True
-
-    def test_qwen3_5_397b(self):
-        from chcode.utils.multimodal import is_multimodal_model
-
-        assert is_multimodal_model("Qwen/Qwen3.5-397B-A17B") is True
-
-    def test_qwen3_5_122b(self):
-        from chcode.utils.multimodal import is_multimodal_model
-
-        assert is_multimodal_model("Qwen/Qwen3.5-122B-A10B") is True
-
-    def test_qwen3_5_35b(self):
-        from chcode.utils.multimodal import is_multimodal_model
-
-        assert is_multimodal_model("Qwen/Qwen3.5-35B-A3B") is True
-
-    def test_qwen3_5_27b(self):
-        from chcode.utils.multimodal import is_multimodal_model
-
-        assert is_multimodal_model("Qwen/Qwen3.5-27B") is True
-
-    def test_case_insensitive(self):
+    def test_case_insensitive(self, _preset_vision_models):
         from chcode.utils.multimodal import is_multimodal_model
 
         assert is_multimodal_model("MOONSHOTAI/KIMI-K2.5") is True
 
-    def test_non_multimodal_model(self):
+    def test_fallback_models(self, _preset_vision_models):
+        from chcode.utils.multimodal import is_multimodal_model
+
+        assert is_multimodal_model("Qwen3-VL-30B-A3B-Instruct") is True
+        assert is_multimodal_model("stepfun-ai/Step-3.7-Flash") is True
+
+    def test_model_not_in_vision_json(self, _preset_vision_models):
         from chcode.utils.multimodal import is_multimodal_model
 
         assert is_multimodal_model("glm-5") is False
+        assert is_multimodal_model("deepseek-chat") is False
 
-    def test_deepseek_not_multimodal(self):
+    def test_empty_vision_json_returns_false(self):
+        """清单为空(无视觉模型配置)时不识别任何模型。"""
         from chcode.utils.multimodal import is_multimodal_model
 
-        assert is_multimodal_model("deepseek-chat") is False
+        assert is_multimodal_model("moonshotai/Kimi-K2.5") is False
 
     def test_empty_string(self):
         from chcode.utils.multimodal import is_multimodal_model

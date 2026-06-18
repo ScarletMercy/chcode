@@ -547,3 +547,144 @@ class TestDisplayVisionConfig:
             mock_table = mock_console.print.call_args_list[-1].args[0]
             assert hasattr(mock_table, "title")
             assert "备用视觉模型" in str(mock_table.title)
+
+
+class TestAddVisionModel:
+    """Tests for add_vision_model()."""
+
+    def test_no_default_becomes_default(self, mock_config_dir):
+        """无 default 时新模型设为 default。"""
+        import chcode.vision_config as mod
+
+        config = {"model": "mm-1", "base_url": "https://x/v1", "api_key": "k1", "stream_usage": True}
+        role = mod.add_vision_model(config)
+
+        assert role == "default"
+        data = mod.load_vision_json()
+        assert data["default"]["model"] == "mm-1"
+        assert data["default"]["api_key"] == "k1"
+
+    def test_existing_default_goes_fallback(self, mock_config_dir):
+        """已有有效 default（api_key 非空）时加入 fallback，default 不变。"""
+        import chcode.vision_config as mod
+
+        mod.save_vision_json({"default": {"model": "old", "api_key": "ko"}, "fallback": {}})
+        role = mod.add_vision_model({"model": "new", "api_key": "kn"})
+
+        assert role == "fallback"
+        data = mod.load_vision_json()
+        assert data["default"]["model"] == "old"
+        assert "new" in data["fallback"]
+
+    def test_empty_api_key_default_treated_as_no_default(self, mock_config_dir):
+        """default 的 api_key 为空时视同无 default，新模型设为 default。"""
+        import chcode.vision_config as mod
+
+        mod.save_vision_json({"default": {"model": "old", "api_key": ""}, "fallback": {}})
+        role = mod.add_vision_model({"model": "new", "api_key": "kn"})
+
+        assert role == "default"
+        assert mod.load_vision_json()["default"]["model"] == "new"
+
+    def test_same_name_same_key_idempotent(self, mock_config_dir):
+        """同名同 key 已是 default 时幂等返回 None。"""
+        import chcode.vision_config as mod
+
+        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        assert mod.add_vision_model({"model": "m", "api_key": "k"}) is None
+
+    def test_same_name_in_fallback_overwrites(self, mock_config_dir):
+        """同名模型已在 fallback 时覆盖更新该条目。"""
+        import chcode.vision_config as mod
+
+        mod.save_vision_json({
+            "default": {"model": "other", "api_key": "ko"},
+            "fallback": {"m": {"model": "m", "api_key": "old-key"}},
+        })
+        role = mod.add_vision_model({"model": "m", "api_key": "new-key"})
+
+        assert role == "fallback"
+        assert mod.load_vision_json()["fallback"]["m"]["api_key"] == "new-key"
+
+    def test_same_name_in_default_updates_key(self, mock_config_dir):
+        """同名模型已是 default 且改了 api_key → 就地更新 default，不新增 fallback。"""
+        import chcode.vision_config as mod
+
+        mod.save_vision_json({"default": {"model": "m", "api_key": "old"}, "fallback": {}})
+        role = mod.add_vision_model({"model": "m", "api_key": "new", "base_url": "x"})
+
+        assert role == "default"
+        data = mod.load_vision_json()
+        assert data["default"]["api_key"] == "new"
+        assert "m" not in data["fallback"]
+
+    def test_same_name_in_default_updates_params(self, mock_config_dir):
+        """同名模型已是 default 且改了超参（key 不变）→ 更新 default 超参。"""
+        import chcode.vision_config as mod
+
+        mod.save_vision_json({"default": {"model": "m", "api_key": "k", "temperature": 0.5}, "fallback": {}})
+        role = mod.add_vision_model({"model": "m", "api_key": "k", "temperature": 0.9})
+
+        assert role == "default"
+        assert mod.load_vision_json()["default"]["temperature"] == 0.9
+
+    def test_same_name_in_fallback_idempotent(self, mock_config_dir):
+        """同名模型在 fallback 且内容完全一致 → 幂等返回 None。"""
+        import chcode.vision_config as mod
+
+        mod.save_vision_json({
+            "default": {"model": "other", "api_key": "ko"},
+            "fallback": {"m": {"model": "m", "api_key": "k"}},
+        })
+        assert mod.add_vision_model({"model": "m", "api_key": "k"}) is None
+
+    def test_missing_model_returns_none(self, mock_config_dir):
+        """缺 model 返回 None 且不写入。"""
+        import chcode.vision_config as mod
+
+        assert mod.add_vision_model({"api_key": "k"}) is None
+        assert mod.load_vision_json() == {}
+
+    def test_missing_api_key_returns_none(self, mock_config_dir):
+        """缺 api_key 返回 None。"""
+        import chcode.vision_config as mod
+
+        assert mod.add_vision_model({"model": "m"}) is None
+
+    def test_filters_non_vision_fields(self, mock_config_dir):
+        """只保留视觉白名单字段，丢弃 extra_body/stop_sequences/max_retries。"""
+        import chcode.vision_config as mod
+
+        config = {
+            "model": "m", "base_url": "https://x/v1", "api_key": "k",
+            "temperature": 0.7, "top_p": 0.9, "stream_usage": True,
+            "extra_body": {"top_k": 20}, "stop_sequences": ["x"], "max_retries": 4,
+        }
+        mod.add_vision_model(config)
+        entry = mod.load_vision_json()["default"]
+
+        assert set(entry.keys()) == {"model", "base_url", "api_key", "temperature", "top_p", "stream_usage"}
+
+    def test_preserves_existing_fallback_when_setting_default(self, mock_config_dir):
+        """设为 default 时保留已存在的 fallback。"""
+        import chcode.vision_config as mod
+
+        mod.save_vision_json({
+            "default": {},
+            "fallback": {"fb": {"model": "fb", "api_key": "kf"}},
+        })
+        mod.add_vision_model({"model": "new", "api_key": "kn"})
+        data = mod.load_vision_json()
+
+        assert data["default"]["model"] == "new"
+        assert "fb" in data["fallback"]
+
+    def test_does_not_mutate_input(self, mock_config_dir):
+        """不修改入参 dict。"""
+        import chcode.vision_config as mod
+
+        config = {"model": "m", "api_key": "k", "extra_body": {"top_k": 20}}
+        snapshot = {"model": "m", "api_key": "k", "extra_body": {"top_k": 20}}
+        mod.add_vision_model(config)
+
+        assert config == snapshot

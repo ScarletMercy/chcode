@@ -17,39 +17,34 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage
 
-# ─── Multimodal model patterns ──────────────────────────────────
-
-# Models whose short name (after /) or full name matches these patterns
-# are considered multimodal (native vision capability).
-MULTIMODAL_MODEL_PATTERNS: list[str] = [
-    # Kimi K2.5 series
-    "Kimi-K2",
-    # Qwen3 VL (dedicated vision-language)
-    "Qwen3-VL",
-    # Qwen3.5 MoE models with vision
-    "Qwen3.5-397B",
-    "Qwen3.5-122B",
-    "Qwen3.5-35B",
-    "Qwen3.5-27B",
-    # Intern-S1 series
-    "Intern-S1",
-]
+# ─── Multimodal model detection ────────────────────────────────
 
 
 def is_multimodal_model(model_name: str) -> bool:
     """Check if a model name indicates native multimodal (vision) capability.
 
-    Handles both short names (e.g., "Kimi-K2.5") and full names
-    (e.g., "moonshotai/Kimi-K2.5"). Case-insensitive.
+    判断依据:该模型是否在视觉模型清单(vision_model.json)中。取清单里每个模型的
+    短名(斜杠后部分),用短名子串匹配 model_name 的短名或全名,大小写不敏感。
+    清单为空时返回 False(没有视觉模型配置)。
     """
     if not model_name:
         return False
+    from chcode.vision_config import get_vision_default_model, get_vision_fallback_models
+
+    names: list[str] = []
+    default = get_vision_default_model()
+    if default and default.get("model"):
+        names.append(default["model"])
+    names.extend(m.get("model", "") for m in get_vision_fallback_models())
+    if not names:
+        return False
+
     short_name = model_name.split("/")[-1]
     lower_name = model_name.lower()
     lower_short = short_name.lower()
-    for pattern in MULTIMODAL_MODEL_PATTERNS:
-        lower_pattern = pattern.lower()
-        if lower_pattern in lower_short or lower_pattern in lower_name:
+    for vm in names:
+        vshort = vm.split("/")[-1].lower()
+        if vshort and (vshort in lower_short or vshort in lower_name):
             return True
     return False
 

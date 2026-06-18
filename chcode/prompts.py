@@ -109,7 +109,7 @@ MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1"
 
 # 每个模型只需声明差异字段，base_url / stream_usage 由生成器统一填充
 _MODELSCOPE_MODELS: list[dict] = [
-    {"model": "ZhipuAI/GLM-5", "temperature": 1.0, "top_p": 0.95},
+    {"model": "ZhipuAI/GLM-5.2", "temperature": 1.0, "top_p": 0.95},
     {"model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20}},
     {"model": "Qwen/Qwen3-235B-A22B-Instruct-2507", "temperature": 0.7, "top_p": 0.8, "extra_body": {"top_k": 20}},
     {"model": "Qwen/Qwen3.5-397B-A17B", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20, "repetition_penalty": 1.0}},
@@ -117,9 +117,6 @@ _MODELSCOPE_MODELS: list[dict] = [
     {"model": "MiniMax/MiniMax-M2.5", "temperature": 1.0, "top_p": 0.95, "extra_body": {"top_k": 40}},
     {"model": "moonshotai/Kimi-K2.5", "temperature": 1.0, "top_p": 0.95},
     {"model": "ZhipuAI/GLM-5.1", "temperature": 1.0, "top_p": 0.95},
-    {"model": "Qwen/Qwen3-Coder-480B-A35B-Instruct", "temperature": 0.7, "top_p": 0.8, "extra_body": {"top_k": 20, "repetition_penalty": 1.05}},
-    {"model": "XiaomiMiMo/MiMo-V2-Flash", "temperature": 0.3, "top_p": 0.95},
-    {"model": "deepseek-ai/DeepSeek-R1-0528", "temperature": 0.6, "top_p": 0.95},
     {"model": "Qwen/Qwen3-Next-80B-A3B-Thinking", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20}},
     {"model": "deepseek-ai/DeepSeek-V4-Pro", "temperature": 1.0, "top_p": 1.0},
     {"model": "deepseek-ai/DeepSeek-V4-Flash", "temperature": 1.0, "top_p": 1.0},
@@ -435,7 +432,7 @@ async def model_config_form(
 
 
 async def configure_modelscope() -> dict | None:
-    """魔搭快捷配置 — 只需 API Key，自动生成 12 个预定义模型。"""
+    """魔搭快捷配置 — 只需 API Key，自动生成预定义模型配置。"""
     # 收集 API Key
     env_choices = [
         f"{var} ({desc})"
@@ -474,32 +471,11 @@ LONGCAT_PRESETS = [
         "top_p": 0.95,
         "stream_usage": True,
     },
-    {
-        "model": "LongCat-Flash-Chat",
-        "base_url": LONGCAT_BASE_URL,
-        "temperature": 1.0,
-        "top_p": 0.95,
-        "stream_usage": True,
-    },
-    {
-        "model": "LongCat-Flash-Thinking",
-        "base_url": LONGCAT_BASE_URL,
-        "temperature": 0.6,
-        "top_p": 0.95,
-        "stream_usage": True,
-    },
-    {
-        "model": "LongCat-Flash-Lite",
-        "base_url": LONGCAT_BASE_URL,
-        "temperature": 1.0,
-        "top_p": 0.95,
-        "stream_usage": True,
-    },
 ]
 
 
 async def configure_longcat() -> dict | None:
-    """LongCat 快捷配置 — 只需 API Key，自动生成 4 个预定义模型。"""
+    """LongCat 快捷配置 — 只需 API Key，自动生成预定义模型配置。"""
     env_choices = [
         f"{var} ({desc})"
         for var, desc in API_KEY_ENV_VARS
