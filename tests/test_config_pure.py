@@ -1,27 +1,4 @@
-from chcode.config import (
-    CONTEXT_WINDOW_SIZES,
-    ENV_TO_CONFIG,
-    get_context_window_size,
-    detect_env_api_keys,
-    _DEFAULT_CONTEXT_WINDOW,
-)
-
-
-class TestGetContextWindowSize:
-    def test_exact_match(self):
-        assert get_context_window_size("gpt-4o") == 128000
-
-    def test_prefix_match(self):
-        assert get_context_window_size("org/gpt-4o") == 128000
-
-    def test_substring_match(self):
-        assert get_context_window_size("my-deepseek-chat-v2") == 65536
-
-    def test_no_match(self):
-        assert get_context_window_size("unknown-model") == _DEFAULT_CONTEXT_WINDOW
-
-    def test_empty_config_pure(self):
-        assert get_context_window_size("") == _DEFAULT_CONTEXT_WINDOW
+from chcode.config import ENV_TO_CONFIG, detect_env_api_keys
 
 
 class TestDetectEnvApiKeys:
@@ -59,4 +36,27 @@ class TestEnvToConfig:
             assert "name" in cfg
             assert "base_url" in cfg
             assert "models" in cfg
+
+
+class TestPredefinedContextLength:
+    """删表后,预定义模型预设必须各自携带 metadata.context_length。"""
+
+    def test_modelscope_presets_carry_context_length(self):
+        from chcode.prompts import MODELSCOPE_PRESETS
+
+        assert MODELSCOPE_PRESETS
+        for p in MODELSCOPE_PRESETS:
+            assert p["metadata"]["context_length"] > 0, p["model"]
+
+    def test_longcat_presets_carry_context_length(self):
+        from chcode.prompts import LONGCAT_PRESETS
+
+        assert LONGCAT_PRESETS
+        for p in LONGCAT_PRESETS:
+            assert p["metadata"]["context_length"] > 0, p["model"]
+
+    def test_inner_model_config_carries_context_length(self):
+        from chcode.agent_setup import INNER_MODEL_CONFIG
+
+        assert INNER_MODEL_CONFIG["metadata"]["context_length"] > 0
 

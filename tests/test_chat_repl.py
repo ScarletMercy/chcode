@@ -1556,14 +1556,13 @@ class TestChatREPLPostProcess:
         repl.git_manager = Mock()
         repl.git_manager.add_commit = Mock(return_value=5)
 
-        with patch("chcode.chat.get_context_window_size", return_value=128000):
-            with patch("chcode.chat.get_context_usage_text", return_value="1000/128000"):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-                    mock_thread.return_value = 5
-                    await repl._post_process()
+        with patch("chcode.chat.get_context_usage_text", return_value="1000/128000"):
+            with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+                mock_thread.return_value = 5
+                await repl._post_process()
 
-                    assert repl._context_text == "1000/128000"
-                    assert repl._git_cp_count == 5
+                assert repl._context_text == "1000/128000"
+                assert repl._git_cp_count == 5
 
     @pytest.mark.asyncio
     async def test_post_process_no_git(self):
@@ -1578,11 +1577,51 @@ class TestChatREPLPostProcess:
         repl.model_config = {"model": "gpt-4"}
         repl.git = False
 
-        with patch("chcode.chat.get_context_window_size", return_value=128000):
-            with patch("chcode.chat.get_context_usage_text", return_value="0/128000"):
-                await repl._post_process()
+        with patch("chcode.chat.get_context_usage_text", return_value="0/128000"):
+            await repl._post_process()
 
-                assert repl._context_text == "0/128000"
+            assert repl._context_text == "0/128000"
+
+    @pytest.mark.asyncio
+    async def test_post_process_uses_configured_context_length(self):
+        """model_config.metadata.context_length 决定状态栏的 max_ctx。"""
+        repl = ChatREPL()
+        repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock()
+        state = Mock()
+        state.values = {"messages": []}
+        repl.agent.aget_state.return_value = state
+        repl.session_mgr = Mock()
+        repl.session_mgr.config = {}
+        repl.model_config = {"model": "gpt-4", "metadata": {"context_length": 50000}}
+        repl.git = False
+
+        with patch("chcode.chat.get_context_usage_text", return_value="ok") as mock_usage:
+            await repl._post_process()
+
+            # max_ctx 取自 metadata.context_length
+            mock_usage.assert_called_once()
+            assert mock_usage.call_args.args[-1] == 50000
+
+    @pytest.mark.asyncio
+    async def test_post_process_falls_back_to_default_without_metadata(self):
+        """model_config 无 metadata.context_length → 回退 _DEFAULT_CONTEXT_WINDOW。"""
+        from chcode.config import _DEFAULT_CONTEXT_WINDOW
+
+        repl = ChatREPL()
+        repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock()
+        state = Mock()
+        state.values = {"messages": []}
+        repl.agent.aget_state.return_value = state
+        repl.session_mgr = Mock()
+        repl.session_mgr.config = {}
+        repl.model_config = {"model": "gpt-4"}
+        repl.git = False
+
+        with patch("chcode.chat.get_context_usage_text", return_value="ok") as mock_usage:
+            await repl._post_process()
+            assert mock_usage.call_args.args[-1] == _DEFAULT_CONTEXT_WINDOW
 
     @pytest.mark.asyncio
     async def test_post_process_exception(self):

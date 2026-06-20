@@ -58,6 +58,7 @@ INNER_MODEL_CONFIG = {
     "top_p": 1,
     "stream_usage": True,
     "extra_body": {"stream": True},
+    "metadata": {"context_length": 256000},
 }
 
 
@@ -439,7 +440,7 @@ def build_agent(
     _summarization_model = EnhancedChatOpenAI(**cfg)
 
     # 加载 fallback 模型配置
-    from chcode.config import load_model_json, get_context_window_size
+    from chcode.config import load_model_json, _DEFAULT_CONTEXT_WINDOW
 
     data = load_model_json()
     fallback = data.get("fallback", {})
@@ -448,9 +449,10 @@ def build_agent(
         filtered = [v for k, v in fallback.items() if v.get("model") != current_model]
         set_fallback_models(filtered)
 
-    # 摘要触发阈值 = 上下文窗口的 90%
-    model_name = cfg.get("model", "")
-    ctx_window = get_context_window_size(model_name)
+    # 摘要触发阈值 = 上下文窗口的 90%（自定义 context_length 优先，缺失回退默认）
+    ctx_window = (cfg.get("metadata") or {}).get(
+        "context_length"
+    ) or _DEFAULT_CONTEXT_WINDOW
     summary_trigger = int(ctx_window * 0.9)
 
     agent = create_agent(

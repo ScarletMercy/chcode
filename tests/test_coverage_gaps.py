@@ -132,57 +132,6 @@ class TestAskHyperparamCustomInput:
         assert result is _SKIP
 
 
-class TestModelConfigFormEditBaseURLCancelled:
-    """Cover line 203: edit mode, select returns None for base URL."""
-
-    async def test_edit_base_url_cancel(self):
-        async def _select(msg, choices, default=None, **kw):
-            if "Base URL" in msg:
-                return None
-            if "API Key" in msg:
-                return "手动输入 API Key..."
-            return "0.7"
-
-        with patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")):
-            result = await model_config_form({
-                "model": "gpt-4",
-                "base_url": "https://old.com",
-                "api_key": "sk-old",
-            })
-        assert result is None
-
-
-class TestModelConfigFormNewBaseURLCancelled:
-    """Cover line 218: new mode, select_or_custom returns None for base URL."""
-
-    async def test_new_base_url_cancel(self):
-        async def _select(msg, choices, default=None, **kw):
-            return None
-
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value=None)), \
-             patch("chcode.prompts.select", _select):
-            result = await model_config_form(None)
-        assert result is None
-
-
-class TestModelConfigFormAPIKeyCancelled:
-    """Cover line 240: select for API key source returns None."""
-
-    async def test_api_key_select_cancel(self):
-        async def _select(msg, choices, default=None, **kw):
-            if "API Key" in msg:
-                return None
-            return "0.7"
-
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value="https://api.openai.com/v1")), \
-             patch("chcode.prompts.select", _select):
-            result = await model_config_form(None)
-        assert result is None
-
-
 class TestModelConfigFormHyperparamCancels:
     """Cover lines 274, 289, 309, 331, 351, 376, 393, 408: each hyperparam cancel returns None."""
 
@@ -196,7 +145,6 @@ class TestModelConfigFormHyperparamCancels:
             return "0.7"
 
         with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value="https://api.openai.com/v1")), \
              patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
              patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
              patch("chcode.prompts.select", _select):
@@ -218,7 +166,6 @@ class TestModelConfigFormHyperparamCancels:
                 return None
             return "0.5"
         with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value="https://api.openai.com/v1")), \
              patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
              patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
              patch("chcode.prompts.select", _select):
@@ -238,7 +185,6 @@ class TestModelConfigFormHyperparamCancels:
                 return None
             return "10"
         with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value="https://api.openai.com/v1")), \
              patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
              patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
              patch("chcode.prompts.select", _select):
@@ -259,7 +205,6 @@ class TestModelConfigFormHyperparamCancels:
                 return None
             return "10"
         with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value="https://api.openai.com/v1")), \
              patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
              patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
              patch("chcode.prompts.select", _select):
@@ -274,7 +219,6 @@ class TestModelConfigFormHyperparamCancels:
                 return None
             return "10"
         with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value="https://api.openai.com/v1")), \
              patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
              patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
              patch("chcode.prompts.select", _select):
@@ -289,7 +233,6 @@ class TestModelConfigFormHyperparamCancels:
                 return None
             return "10"
         with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value="https://api.openai.com/v1")), \
              patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
              patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
              patch("chcode.prompts.select", _select):
@@ -304,7 +247,6 @@ class TestModelConfigFormHyperparamCancels:
                 return None
             return "10"
         with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value="https://api.openai.com/v1")), \
              patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
              patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
              patch("chcode.prompts.select", _select):
@@ -489,7 +431,6 @@ class TestModelConfigFormAllHyperparamsFilled:
             return "value"
 
         with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select_or_custom", AsyncMock(return_value="https://api.openai.com/v1")), \
              patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
              patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
              patch("chcode.prompts.select", _select), \
@@ -801,6 +742,29 @@ class TestBuildAgentWithFallback:
         from chcode.agent_setup import get_fallback_model
         assert get_fallback_model() is not None
         mock_create.assert_called_once()
+
+
+class TestBuildAgentContextLength:
+    """自定义 context_length(metadata)应用于摘要触发阈值。"""
+
+    def test_summary_trigger_uses_configured_context_length(self):
+        from chcode.agent_setup import build_agent
+
+        cfg = {"model": "ctx-model", "api_key": "k", "metadata": {"context_length": 50000}}
+        with patch("chcode.agent_setup._dummy_model"), \
+             patch("chcode.agent_setup.create_agent") as mock_create, \
+             patch("chcode.agent_setup._get_all_tools", return_value=[]), \
+             patch("chcode.config.load_model_json", return_value={}), \
+             patch("chcode.agent_setup._hitl_middleware", None), \
+             patch("chcode.agent_setup.EnhancedChatOpenAI"), \
+             patch("chcode.agent_setup._summarization_model", None):
+            build_agent(model_config=cfg, checkpointer=None, yolo=False)
+
+        middleware = mock_create.call_args.kwargs["middleware"]
+        summ = [m for m in middleware if type(m).__name__ == "SummarizationMiddleware"]
+        assert summ, "SummarizationMiddleware 不在 middleware 列表中"
+        # int(50000 * 0.9) = 45000;无 metadata 时 "ctx-model" 会落到默认 204800*0.9=184320
+        assert summ[0].trigger == ("tokens", 45000)
 
 
 class TestUpdateSummarizationModel:

@@ -6,11 +6,11 @@ Tests for:
 - configure_new_model()
 - edit_current_model()
 - switch_model()
-- get_context_window_size(model)
 - configure_tavily()
 - get_default_model_config()
 """
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -159,6 +159,12 @@ class TestFirstRunConfigure:
 class TestConfigureNewModel:
     """Tests for configure_new_model()"""
 
+    @pytest.fixture(autouse=True)
+    def _mock_context_length_prompt(self):
+        # configure_new_model 现在会询问上下文长度(text),统一 mock 掉避免触发真实终端输入
+        with patch("chcode.config.text", new_callable=AsyncMock, return_value=""):
+            yield
+
     @pytest.mark.asyncio
     async def test_first_config_becomes_default(self, mock_config_dir):
         """Test first configuration becomes default"""
@@ -274,6 +280,11 @@ class TestConfigureNewModel:
 class TestConfigureNewModelMultimodal:
     """Tests for the multimodal (vision) prompt in configure_new_model()."""
 
+    @pytest.fixture(autouse=True)
+    def _mock_context_length_prompt(self):
+        with patch("chcode.config.text", new_callable=AsyncMock, return_value=""):
+            yield
+
     @pytest.mark.asyncio
     async def test_user_confirms_multimodal_adds_to_vision(self, mock_config_dir):
         """confirm=True → add_vision_model 被调用，参数含 model/api_key。"""
@@ -370,6 +381,173 @@ class TestConfigureNewModelMultimodal:
             assert mod.load_model_json()["default"]["model"] == "mm-model"
 
 
+@contextlib.contextmanager
+def _patched_configure_new_model(config, *, text_return="1048576", confirm_return=False):
+    """configure_new_model 的标准 mock 套件(连接成功 + 跳过 tavily/langsmith)。"""
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(
+            patch("chcode.config.model_config_form", new_callable=AsyncMock)
+        ).return_value = config
+        mock_model = stack.enter_context(
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI")
+        )
+        mock_model.return_value.invoke.return_value = MagicMock()
+        stack.enter_context(patch("chcode.config.configure_tavily", new_callable=AsyncMock))
+        stack.enter_context(patch("chcode.config.configure_langsmith", new_callable=AsyncMock))
+        stack.enter_context(
+            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置...")
+        )
+        stack.enter_context(
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=text_return)
+        )
+        stack.enter_context(
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=confirm_return)
+        )
+        yield
+
+
+class TestConfigureNewModelContextLength:
+    """上下文长度(默认 1M=1048576):多模态询问之前提示,持久化到 default.metadata。"""
+
+    @pytest.mark.asyncio
+    async def test_empty_input_uses_default_1m(self, mock_config_dir):
+        """用户直接回车 → context_length 取默认 1M=1048576。"""
+        import chcode.config as mod
+
+        config = {
+            "model": "ctx-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-test",
+            "stream_usage": True,
+        }
+        with _patched_configure_new_model(config, text_return=""):
+            result = await mod.configure_new_model()
+
+        assert result is not None
+        data = mod.load_model_json()
+        assert data["default"]["metadata"]["context_length"] == 1048576
+        # 顶层不应出现 context_length(否则会被透传到 API)
+        assert "context_length" not in data["default"]
+
+    @pytest.mark.asyncio
+    async def test_custom_value_is_persisted(self, mock_config_dir):
+        """用户输入 200000 → context_length=200000。"""
+        import chcode.config as mod
+
+        config = {
+            "model": "ctx-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-test",
+            "stream_usage": True,
+        }
+        with _patched_configure_new_model(config, text_return="200000"):
+            await mod.configure_new_model()
+
+        assert mod.load_model_json()["default"]["metadata"]["context_length"] == 200000
+
+    @pytest.mark.asyncio
+    async def test_invalid_input_falls_back_to_default(self, mock_config_dir):
+        """非数字输入 → 回退默认 1M。"""
+        import chcode.config as mod
+
+        config = {
+            "model": "ctx-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-test",
+            "stream_usage": True,
+        }
+        with _patched_configure_new_model(config, text_return="not-a-number"):
+            await mod.configure_new_model()
+
+        assert mod.load_model_json()["default"]["metadata"]["context_length"] == 1048576
+
+    @pytest.mark.asyncio
+    async def test_prompted_before_multimodal_question(self, mock_config_dir):
+        """上下文长度提示必须出现在多模态询问之前。"""
+        import chcode.config as mod
+
+        config = {
+            "model": "ctx-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-test",
+            "stream_usage": True,
+        }
+        order: list[str] = []
+
+        async def _text(msg, default="", **kw):
+            if "上下文" in msg:
+                order.append("ctx")
+            return "1048576"
+
+        async def _confirm(msg, default=True):
+            if "多模态" in msg:
+                order.append("multimodal")
+            return False
+
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                patch("chcode.config.model_config_form", new_callable=AsyncMock)
+            ).return_value = config
+            mock_model = stack.enter_context(
+                patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI")
+            )
+            mock_model.return_value.invoke.return_value = MagicMock()
+            stack.enter_context(patch("chcode.config.configure_tavily", new_callable=AsyncMock))
+            stack.enter_context(patch("chcode.config.configure_langsmith", new_callable=AsyncMock))
+            stack.enter_context(
+                patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置...")
+            )
+            stack.enter_context(patch("chcode.config.text", side_effect=_text))
+            stack.enter_context(patch("chcode.config.confirm", side_effect=_confirm))
+            await mod.configure_new_model()
+
+        assert order.index("ctx") < order.index("multimodal")
+
+    @pytest.mark.asyncio
+    async def test_skip_method_select_bypasses_config_method_prompt(self, mock_config_dir):
+        """skip_method_select=True:不弹"配置方式"select,直接进表单(避免重复询问)。"""
+        import chcode.config as mod
+
+        config = {
+            "model": "skip-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-test",
+            "stream_usage": True,
+        }
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
+             patch("chcode.config._test_connection", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
+             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False), \
+             patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+            mock_form.return_value = config
+            await mod.configure_new_model(skip_method_select=True)
+
+        # 方法选择 select 不应被调用
+        mock_select.assert_not_called()
+        # 直接进了表单并落盘
+        mock_form.assert_called_once()
+        assert mod.load_model_json()["default"]["model"] == "skip-model"
+
+    @pytest.mark.asyncio
+    async def test_cancel_at_context_length_uses_default(self, mock_config_dir):
+        """Ctrl-C 在上下文长度提示(text→None)→不崩溃,回落默认 1M。"""
+        import chcode.config as mod
+
+        config = {
+            "model": "ctx-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-test",
+            "stream_usage": True,
+        }
+        with _patched_configure_new_model(config, text_return=None):
+            result = await mod.configure_new_model()
+
+        assert result is not None
+        assert mod.load_model_json()["default"]["metadata"]["context_length"] == 1048576
+
+
 class TestEditCurrentModel:
     """Tests for edit_current_model()"""
 
@@ -405,6 +583,42 @@ class TestEditCurrentModel:
 
             assert result is not None
             assert result["model"] == "new-model"
+
+    @pytest.mark.asyncio
+    async def test_edit_preserves_context_length_metadata(self, mock_config_dir):
+        """编辑模型时保留 metadata.context_length(删表后避免回退默认值 204800)。"""
+        import chcode.config as mod
+
+        existing = {
+            "model": "old-model",
+            "base_url": "https://api.old.com/v1",
+            "api_key": "sk-old",
+            "stream_usage": True,
+            "metadata": {"context_length": 1048576},
+        }
+        mod.save_model_json({"default": existing, "fallback": {}})
+
+        # 表单返回的 config 不带 metadata(模拟 model_config_form 重建丢字段)
+        updated = {
+            "model": "new-model",
+            "base_url": "https://api.new.com/v1",
+            "api_key": "sk-new",
+            "stream_usage": True,
+        }
+
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_model:
+            mock_form.return_value = updated
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.return_value = MagicMock()
+
+            await mod.edit_current_model()
+
+        saved = mod.load_model_json()["default"]
+        assert saved["model"] == "new-model"
+        assert saved["metadata"]["context_length"] == 1048576
 
     @pytest.mark.asyncio
     async def test_no_current_model_creates_new(self, mock_config_dir):
@@ -596,48 +810,6 @@ class TestGetDefaultModelConfig:
         assert result is None
 
 
-class TestGetContextWindowSize:
-    """Tests for get_context_window_size() - additional coverage"""
-
-    def test_case_insensitive_match(self):
-        """Test case-insensitive model name matching"""
-        import chcode.config as mod
-
-        assert mod.get_context_window_size("GPT-4O") == 128000
-
-    def test_slash_prefix_handling(self):
-        """Test handling of org/ prefixed models"""
-        import chcode.config as mod
-
-        assert mod.get_context_window_size("org/gpt-4o-mini") == 128000
-
-    def test_substring_in_long_name(self):
-        """Test substring matching in longer model names"""
-        import chcode.config as mod
-
-        assert mod.get_context_window_size("my-custom-deepseek-chat-v2") == 65536
-
-    def test_unknown_model_returns_default(self):
-        """Test unknown model returns default context window"""
-        import chcode.config as mod
-
-        assert mod.get_context_window_size("totally-unknown-model-x") == mod._DEFAULT_CONTEXT_WINDOW
-
-    def test_glm_models(self):
-        """Test GLM model context windows"""
-        import chcode.config as mod
-
-        assert mod.get_context_window_size("glm-5.1") == 200000
-        assert mod.get_context_window_size("glm-4.7") == 200000
-
-    def test_qwen_models(self):
-        """Test Qwen model context windows"""
-        import chcode.config as mod
-
-        assert mod.get_context_window_size("qwen3.5-plus") == 1048576
-        assert mod.get_context_window_size("qwen") == 256000
-
-
 class TestConfigureTavily:
     """Tests for configure_tavily()"""
 
@@ -773,6 +945,12 @@ class TestFirstRunConfigureExit:
 
 class TestConfigureNewModelNullChoices:
     """Cover lines 244-251: configure_new_model connection test with 'null value for choices'."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_context_length_prompt(self):
+        # configure_new_model 现在会询问上下文长度(text),统一 mock 掉
+        with patch("chcode.config.text", new_callable=AsyncMock, return_value=""):
+            yield
 
     @pytest.mark.asyncio
     async def test_null_choices_error_continues(self, mock_config_dir):

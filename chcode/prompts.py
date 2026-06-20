@@ -96,30 +96,22 @@ async def select_or_custom(
 
 # ─── 模型配置表单专用 ──────────────────────────────────────────
 
-BASE_URL_PRESETS = [
-    "https://api.openai.com/v1",
-    "https://api-inference.modelscope.cn/v1",
-    "https://open.bigmodel.cn/api/paas/v4",
-    "https://api.deepseek.com/v1",
-    "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "https://api.longcat.chat/openai/v1",
-]
-
 MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1"
 
-# 每个模型只需声明差异字段，base_url / stream_usage 由生成器统一填充
+# 每个模型只需声明差异字段，base_url / stream_usage 由生成器统一填充。
+# context_length 写进 metadata（ChatOpenAI 合法字段、不透传到 API），读取时与自定义模型对齐。
 _MODELSCOPE_MODELS: list[dict] = [
-    {"model": "ZhipuAI/GLM-5.2", "temperature": 1.0, "top_p": 0.95},
-    {"model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20}},
-    {"model": "Qwen/Qwen3-235B-A22B-Instruct-2507", "temperature": 0.7, "top_p": 0.8, "extra_body": {"top_k": 20}},
-    {"model": "Qwen/Qwen3.5-397B-A17B", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20, "repetition_penalty": 1.0}},
-    {"model": "deepseek-ai/DeepSeek-V3.2", "temperature": 1.0, "top_p": 0.95},
-    {"model": "MiniMax/MiniMax-M2.5", "temperature": 1.0, "top_p": 0.95, "extra_body": {"top_k": 40}},
-    {"model": "moonshotai/Kimi-K2.5", "temperature": 1.0, "top_p": 0.95},
-    {"model": "ZhipuAI/GLM-5.1", "temperature": 1.0, "top_p": 0.95},
-    {"model": "Qwen/Qwen3-Next-80B-A3B-Thinking", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20}},
-    {"model": "deepseek-ai/DeepSeek-V4-Pro", "temperature": 1.0, "top_p": 1.0},
-    {"model": "deepseek-ai/DeepSeek-V4-Flash", "temperature": 1.0, "top_p": 1.0},
+    {"model": "ZhipuAI/GLM-5.2", "temperature": 1.0, "top_p": 0.95, "metadata": {"context_length": 1048576}},
+    {"model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20}, "metadata": {"context_length": 256000}},
+    {"model": "Qwen/Qwen3-235B-A22B-Instruct-2507", "temperature": 0.7, "top_p": 0.8, "extra_body": {"top_k": 20}, "metadata": {"context_length": 256000}},
+    {"model": "Qwen/Qwen3.5-397B-A17B", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20, "repetition_penalty": 1.0}, "metadata": {"context_length": 256000}},
+    {"model": "deepseek-ai/DeepSeek-V3.2", "temperature": 1.0, "top_p": 0.95, "metadata": {"context_length": 128000}},
+    {"model": "MiniMax/MiniMax-M2.5", "temperature": 1.0, "top_p": 0.95, "extra_body": {"top_k": 40}, "metadata": {"context_length": 200000}},
+    {"model": "moonshotai/Kimi-K2.5", "temperature": 1.0, "top_p": 0.95, "metadata": {"context_length": 262144}},
+    {"model": "ZhipuAI/GLM-5.1", "temperature": 1.0, "top_p": 0.95, "metadata": {"context_length": 200000}},
+    {"model": "Qwen/Qwen3-Next-80B-A3B-Thinking", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20}, "metadata": {"context_length": 256000}},
+    {"model": "deepseek-ai/DeepSeek-V4-Pro", "temperature": 1.0, "top_p": 1.0, "metadata": {"context_length": 1048576}},
+    {"model": "deepseek-ai/DeepSeek-V4-Flash", "temperature": 1.0, "top_p": 1.0, "metadata": {"context_length": 1048576}},
 ]
 
 MODELSCOPE_PRESETS = [
@@ -202,13 +194,10 @@ async def model_config_form(
     Returns:
         配置字典，用户取消返回 None
     """
-    import os
-
     cfg = dict(existing_config) if existing_config else {}
 
     # ─── 必填字段 ───
     is_editing = bool(cfg)
-    KEEP_LABEL = "保持当前值"
 
     # ── 模型名称 ──
     model_name = cfg.get("model", "")
@@ -218,59 +207,27 @@ async def model_config_form(
             return None
         model_name = model_name.strip()
 
-    # ── Base URL ──
+    # ── Base URL ──  (直接输入，编辑模式预填当前值)
     base_url = cfg.get("base_url", "")
-    if is_editing and base_url:
-        _keep_url = f"{KEEP_LABEL} ({base_url})"
-        _url_choices = [_keep_url] + list(BASE_URL_PRESETS) + ["自定义输入..."]
-        result = await select("选择 API Base URL:", _url_choices, default=_keep_url)
-        if result is None:
-            return None
-        if result == _keep_url:
-            pass  # base_url unchanged
-        elif result == "自定义输入...":
-            base_url = await text("输入 Base URL: ")
-            if not base_url or not base_url.strip():
-                return None
-        else:
-            base_url = result
-    else:
-        _url_choices = ["魔搭 (ModelScope)"] + list(BASE_URL_PRESETS) + ["自定义输入..."]
-        result = await select("选择 API Base URL:", _url_choices)
-        if result is None:
-            return None
-        if result == "魔搭 (ModelScope)":
-            base_url = MODELSCOPE_BASE_URL
-        elif result == "自定义输入...":
-            base_url = await text("输入 Base URL: ")
-            if not base_url or not base_url.strip():
-                return None
-        else:
-            base_url = result
+    default_url = base_url if (is_editing and base_url) else ""
+    base_url = await text("输入 API Base URL:", default=default_url)
+    if not base_url or not base_url.strip():
+        return None
+    base_url = base_url.strip()
 
-    # API Key — 先展示环境变量快捷选择
+    # API Key — 非编辑直接输入；编辑模式可选保持当前或重新输入
     existing_api_key = cfg.get("api_key", "")
-
-    env_choices = [
-        f"{var} ({desc})" for var, desc in API_KEY_ENV_VARS if os.getenv(var)
-    ]
-
-    if is_editing:
-        _masked = mask_api_key(existing_api_key, mask="****", short_mask="****") if existing_api_key else "****"
-        env_choices.insert(0, f"保持当前 Key ({_masked})")
-
-    env_choices.append("手动输入 API Key...")
-    if env_choices:
-        result = await select("选择 API Key 来源:", env_choices)
+    if is_editing and existing_api_key:
+        _masked = mask_api_key(existing_api_key, mask="****", short_mask="****")
+        _keep_label = f"保持当前 Key ({_masked})"
+        result = await select(
+            "选择 API Key 来源:",
+            [_keep_label, "重新输入 API Key..."],
+            default=_keep_label,
+        )
         if result is None:
             return None
-        if result.startswith("保持当前 Key"):
-            api_key = existing_api_key
-        elif result == "手动输入 API Key...":
-            api_key = await password("输入 API Key: ")
-        else:
-            var_name = result.split(" (")[0]
-            api_key = os.getenv(var_name, "")
+        api_key = existing_api_key if result == _keep_label else await password("输入 API Key: ")
     else:
         api_key = await password("输入 API Key: ")
 
@@ -470,6 +427,7 @@ LONGCAT_PRESETS = [
         "temperature": 1.0,
         "top_p": 0.95,
         "stream_usage": True,
+        "metadata": {"context_length": 1048576},
     },
 ]
 

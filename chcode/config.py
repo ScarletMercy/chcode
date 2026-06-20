@@ -199,7 +199,7 @@ async def first_run_configure() -> dict | None:
             return None
 
         if "手动" in result:
-            return await configure_new_model()
+            return await configure_new_model(skip_method_select=True)
 
         if "魔搭" in result:
             return await _configure_modelscope_with_test()
@@ -244,25 +244,41 @@ async def first_run_configure() -> dict | None:
             return await _configure_modelscope_with_test()
         if "LongCat" in result:
             return await _configure_longcat_with_test()
-        return await configure_new_model()
+        return await configure_new_model(skip_method_select=True)
 
 
-async def configure_new_model() -> dict | None:
-    """新建模型配置（交互式表单）"""
+async def configure_new_model(*, skip_method_select: bool = False) -> dict | None:
+    """新建模型配置（交互式表单）
+
+    skip_method_select=True 时跳过"配置方式"选择、直接进手动表单
+    （供 first_run_configure 等已选过方式的入口调用，避免重复询问）。
+    """
     ensure_config_dir()
-    result = await select("配置方式:", ["魔搭快捷配置...", "LongCat 快捷配置...", "手动配置..."])
-    if result is None:
-        return None
-    if "魔搭" in result:
-        return await _configure_modelscope_with_test()
-    if "LongCat" in result:
-        return await _configure_longcat_with_test()
+    if not skip_method_select:
+        result = await select("配置方式:", ["魔搭快捷配置...", "LongCat 快捷配置...", "手动配置..."])
+        if result is None:
+            return None
+        if "魔搭" in result:
+            return await _configure_modelscope_with_test()
+        if "LongCat" in result:
+            return await _configure_longcat_with_test()
     config = await model_config_form()
     if config is None:
         return None
 
     if not await _test_connection(config):
         return None
+
+    # 上下文长度（默认 1M）—— 多模态询问之前；存入 metadata（ChatOpenAI 合法字段，
+    # 不会透传到 API 请求），随 config 一起落盘到 model.json。
+    raw_ctx = await text("上下文长度（token 数，默认 1M）:", default="1048576") or "1048576"
+    try:
+        ctx_len = int(raw_ctx.strip().replace(",", ""))
+    except ValueError:
+        ctx_len = 1048576
+    if ctx_len <= 0:
+        ctx_len = 1048576
+    config["metadata"] = {**(config.get("metadata") or {}), "context_length": ctx_len}
 
     _merge_and_save_config(config)
     console.print(f"[green]模型配置已保存: {config['model']}[/green]")
@@ -371,6 +387,10 @@ async def edit_current_model() -> dict | None:
     if config is None:
         return None
 
+    # 保留非表单字段(如自定义 context_length),避免编辑后回退默认值
+    if isinstance(current.get("metadata"), dict):
+        config["metadata"] = {**current["metadata"], **(config.get("metadata") or {})}
+
     if not await _test_connection(config):
         return None
 
@@ -449,46 +469,9 @@ def save_tavily_api_key(api_key: str) -> None:
 
 # ─── 上下文窗口大小 ──────────────────────────────────────────
 
-CONTEXT_WINDOW_SIZES: dict[str, int] = {
-    "gpt-4o": 128000,
-    "gpt-4o-mini": 128000,
-    "claude-sonnet-4-20250514": 200000,
-    "deepseek-chat": 65536,
-    "deepseek-v3.2": 128000,
-    "deepseek-r1-0528": 65536,
-    "deepseek-v4-pro": 1048576,
-    "deepseek-v4-flash": 1048576,
-    "glm-5.1": 200000,
-    "glm-5.2": 1048576,
-    "glm-5": 200000,
-    "glm-4.7": 200000,
-    "minimax-m2": 204800,
-    "minimax-m2.5": 200000,
-    "kimi-k2": 262144,
-    "qwen3.5-plus": 1048576,
-    "qwen3.6-plus": 1048576,
-    "qwen": 256000,
-    "longcat-2.0-preview": 1048576,
-}
-
+# 上下文长度写在每个模型配置的 metadata.context_length 里(预定义预设已内置、
+# 手动配置时会提示);此常量仅作缺失该字段时的兜底(环境变量检测路径 / 旧配置)。
 _DEFAULT_CONTEXT_WINDOW = 204800
-
-
-def get_context_window_size(model_name: str) -> int:
-    """根据模型名获取上下文窗口大小，无匹配时返回默认值"""
-    if not model_name:
-        return _DEFAULT_CONTEXT_WINDOW
-    # 精确匹配
-    if model_name in CONTEXT_WINDOW_SIZES:
-        return CONTEXT_WINDOW_SIZES[model_name]
-    # 前缀匹配（去掉 org/ 前缀后匹配）
-    short = model_name.split("/")[-1].lower()
-    if short in CONTEXT_WINDOW_SIZES:
-        return CONTEXT_WINDOW_SIZES[short]
-    for key, size in CONTEXT_WINDOW_SIZES.items():
-        if key in model_name.lower():
-            return size
-    return _DEFAULT_CONTEXT_WINDOW
 
 
 async def configure_tavily() -> None:
@@ -674,7 +657,7 @@ async def configure_langsmith() -> dict:
         console.print("[dim]已跳过，后续可通过 /langsmith 命令配置[/dim]")
         return {"tracing": False, "project": "", "api_key": ""}
 
-    project_name = await text("请输入 LangSmith 项目名称:", default="chcode")
+    project_name = await text("请输入 LangSmith 项目名称:", default="chcode") or "chcode"
     api_key = await text("请输入 LangSmith API Key:")
 
     if not api_key:

@@ -58,7 +58,7 @@ from chcode.config import (
     edit_current_model,
     switch_model,
     ensure_config_dir,
-    get_context_window_size,
+    _DEFAULT_CONTEXT_WINDOW,
 )
 from chcode.utils.session import SessionManager
 from chcode.utils.skill_loader import SkillAgentContext, SkillLoader
@@ -1470,8 +1470,9 @@ class ChatREPL:
         try:
             state = await self.agent.aget_state(self.session_mgr.config)
             messages = state.values.get("messages", [])
-            model_name = self.model_config.get("model", "")
-            max_ctx = get_context_window_size(model_name)
+            max_ctx = (self.model_config.get("metadata") or {}).get(
+                "context_length"
+            ) or _DEFAULT_CONTEXT_WINDOW
             self._context_text = get_context_usage_text(messages, max_ctx)
 
             if self.git and self.git_manager:

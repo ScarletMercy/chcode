@@ -286,3 +286,21 @@ class TestConfigureLangsmithBehavior:
 
         assert cfg["tracing"] is False
         assert cfg["api_key"] == ""
+
+    @pytest.mark.asyncio
+    async def test_interactive_project_name_cancelled_uses_default(self, monkeypatch):
+        """Ctrl-C 在项目名称提示(text→None)+ 填了真实 key → 不崩溃, project 回落 chcode。"""
+        monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
+        monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
+        monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
+
+        from chcode.config import configure_langsmith
+        with patch("chcode.config.select", new_callable=AsyncMock, return_value="是"), \
+             patch("chcode.config.text", new_callable=AsyncMock, side_effect=[None, "lsv2_key"]), \
+             patch("chcode.config._persist_env"), \
+             patch("chcode.config._update_setting"):
+            cfg = await configure_langsmith()
+
+        assert cfg["tracing"] is True
+        assert cfg["project"] == "chcode"
+        assert cfg["api_key"] == "lsv2_key"
