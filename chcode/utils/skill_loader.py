@@ -30,7 +30,6 @@ import re
 import zipfile
 import tarfile
 from pathlib import Path
-from typing import Optional
 from dataclasses import dataclass, field
 import yaml
 
@@ -198,7 +197,7 @@ class SkillLoader:
         return skills
 
     # 解析skill元数据
-    def _parse_skill_metadata(self, skill_md_path: Path) -> Optional[SkillMetadata]:
+    def _parse_skill_metadata(self, skill_md_path: Path) -> SkillMetadata|None:
         try:
             content = skill_md_path.read_text(encoding="utf-8")
         except Exception:
@@ -224,7 +223,7 @@ class SkillLoader:
             return None
 
     # 从skill字典读取skill完整数据
-    def load_skill(self, skill_name: str) -> Optional[SkillContent]:
+    def load_skill(self, skill_name: str) -> SkillContent|None:
         """
         Level 2: 加载 Skill 完整内容
 

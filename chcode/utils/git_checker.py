@@ -5,15 +5,14 @@ Git可用性检查工具
 用于判断系统中Git是否可用
 """
 import subprocess
-from typing import Tuple, Optional
 
 
-def check_git_availability() -> Tuple[bool, str, Optional[str]]:
+def check_git_availability() -> tuple[bool, str, str|None]:
     """
     检查Git是否可用
 
     Returns:
-        Tuple[bool, str, Optional[str]]: (是否可用, 状态描述, Git版本信息)
+        tuple[bool, str, str|None]: (是否可用, 状态描述, Git版本信息)
     """
     try:
         result = subprocess.run(
@@ -23,10 +22,10 @@ def check_git_availability() -> Tuple[bool, str, Optional[str]]:
             timeout=10,
         )
 
-        if result.returncode == 0:
+        if result.returncode == 0: #  0 表示命令执行成功
             version_info = result.stdout.strip()
             return True, "Git可用", version_info
-        else:
+        else: # 非0值表示执行失败
             error_msg = result.stderr.strip() if result.stderr else "未知错误"
             return False, f"Git命令执行失败: {error_msg}", None
 

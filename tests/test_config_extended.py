@@ -1189,12 +1189,12 @@ class TestConfigureModelscope:
             result = await mod._configure_modelscope_with_test()
 
             assert result is not None
-            assert result["model"] == "ZhipuAI/GLM-5.2"
+            assert result["model"] == "Qwen/Qwen3.5-397B-A17B"
             assert result["api_key"] == "ms-key"
 
             data = mod.load_model_json()
-            assert data["default"]["model"] == "ZhipuAI/GLM-5.2"
-            assert len(data["fallback"]) == 10
+            assert data["default"]["model"] == "Qwen/Qwen3.5-397B-A17B"
+            assert len(data["fallback"]) == 8
 
     @pytest.mark.asyncio
     async def test_modelscope_merge_existing(self, mock_config_dir):
@@ -1226,7 +1226,7 @@ class TestConfigureModelscope:
             result = await mod._configure_modelscope_with_test()
 
             data = mod.load_model_json()
-            assert data["default"]["model"] == "ZhipuAI/GLM-5.2"
+            assert data["default"]["model"] == "Qwen/Qwen3.5-397B-A17B"
             assert "old-model" in data["fallback"]
             assert "existing-fb" in data["fallback"]
 
@@ -1263,7 +1263,8 @@ class TestConfigureModelscope:
 
         assert result is not None
         assert result["default"]["api_key"] == "ms-test-key"
-        assert len(result["fallback"]) == 10
+        assert result["default"]["model"] == "Qwen/Qwen3.5-397B-A17B"
+        assert len(result["fallback"]) == 8
 
     @pytest.mark.asyncio
     async def test_configure_modelscope_cancel(self):

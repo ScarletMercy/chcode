@@ -101,16 +101,14 @@ MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1"
 # 每个模型只需声明差异字段，base_url / stream_usage 由生成器统一填充。
 # context_length 写进 metadata（ChatOpenAI 合法字段、不透传到 API），读取时与自定义模型对齐。
 _MODELSCOPE_MODELS: list[dict] = [
-    {"model": "ZhipuAI/GLM-5.2", "temperature": 1.0, "top_p": 0.95, "metadata": {"context_length": 1048576}},
+    {"model": "Qwen/Qwen3.5-397B-A17B", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20, "repetition_penalty": 1.0}, "metadata": {"context_length": 256000}},
     {"model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20}, "metadata": {"context_length": 256000}},
     {"model": "Qwen/Qwen3-235B-A22B-Instruct-2507", "temperature": 0.7, "top_p": 0.8, "extra_body": {"top_k": 20}, "metadata": {"context_length": 256000}},
-    {"model": "Qwen/Qwen3.5-397B-A17B", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20, "repetition_penalty": 1.0}, "metadata": {"context_length": 256000}},
     {"model": "deepseek-ai/DeepSeek-V3.2", "temperature": 1.0, "top_p": 0.95, "metadata": {"context_length": 128000}},
     {"model": "MiniMax/MiniMax-M2.5", "temperature": 1.0, "top_p": 0.95, "extra_body": {"top_k": 40}, "metadata": {"context_length": 200000}},
     {"model": "moonshotai/Kimi-K2.5", "temperature": 1.0, "top_p": 0.95, "metadata": {"context_length": 262144}},
     {"model": "ZhipuAI/GLM-5.1", "temperature": 1.0, "top_p": 0.95, "metadata": {"context_length": 200000}},
     {"model": "Qwen/Qwen3-Next-80B-A3B-Thinking", "temperature": 0.6, "top_p": 0.95, "extra_body": {"top_k": 20}, "metadata": {"context_length": 256000}},
-    {"model": "deepseek-ai/DeepSeek-V4-Pro", "temperature": 1.0, "top_p": 1.0, "metadata": {"context_length": 1048576}},
     {"model": "deepseek-ai/DeepSeek-V4-Flash", "temperature": 1.0, "top_p": 1.0, "metadata": {"context_length": 1048576}},
 ]
 

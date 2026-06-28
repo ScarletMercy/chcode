@@ -5,7 +5,6 @@ CLI 入口 — Typer 应用
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import warnings
 from importlib.metadata import version as _pkg_version

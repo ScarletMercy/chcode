@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 import subprocess
 from pathlib import Path
-from typing import Optional
 import json
 
 
@@ -247,7 +246,7 @@ class GitManager:
         else:
             return count
 
-    def create_gitignore(self, content: Optional[str] = None) -> bool:
+    def create_gitignore(self, content: str|None = None) -> bool:
         """创建.gitignore文件，屏蔽.git和.venv等"""
         try:
             if content is None:
