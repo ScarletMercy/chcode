@@ -48,13 +48,6 @@ class TestPredefinedContextLength:
         for p in MODELSCOPE_PRESETS:
             assert p["metadata"]["context_length"] > 0, p["model"]
 
-    def test_longcat_presets_carry_context_length(self):
-        from chcode.prompts import LONGCAT_PRESETS
-
-        assert LONGCAT_PRESETS
-        for p in LONGCAT_PRESETS:
-            assert p["metadata"]["context_length"] > 0, p["model"]
-
     def test_inner_model_config_carries_context_length(self):
         from chcode.agent_setup import INNER_MODEL_CONFIG
 

@@ -124,7 +124,6 @@ API_KEY_ENV_VARS = [
     ("DEEPSEEK_API_KEY", "DeepSeek"),
     ("DASHSCOPE_API_KEY", "通义千问"),
     ("ANTHROPIC_API_KEY", "Anthropic Claude"),
-    ("LONGCAT_API_KEY", "LongCat"),
 ]
 
 TEMPERATURE_PRESETS = ["0", "0.3", "0.5", "0.6", "0.7", "1.0", "1.5", "2.0"]
@@ -414,45 +413,3 @@ async def configure_modelscope() -> dict | None:
     api_key = api_key.strip()
 
     return build_default_fallback_config(MODELSCOPE_PRESETS, api_key)
-
-
-LONGCAT_BASE_URL = "https://api.longcat.chat/openai/v1"
-
-LONGCAT_PRESETS = [
-    {
-        "model": "LongCat-2.0-Preview",
-        "base_url": LONGCAT_BASE_URL,
-        "temperature": 1.0,
-        "top_p": 0.95,
-        "stream_usage": True,
-        "metadata": {"context_length": 1048576},
-    },
-]
-
-
-async def configure_longcat() -> dict | None:
-    """LongCat 快捷配置 — 只需 API Key，自动生成预定义模型配置。"""
-    env_choices = [
-        f"{var} ({desc})"
-        for var, desc in API_KEY_ENV_VARS
-        if var == "LONGCAT_API_KEY" and os.getenv(var)
-    ]
-    if env_choices:
-        result = await select(
-            "检测到 LongCat API Key，是否使用？", env_choices + ["手动输入..."]
-        )
-        if result is None:
-            return None
-        if result == "手动输入...":
-            api_key = await password("输入 LongCat API Key: ")
-        else:
-            var_name = result.split(" (")[0]
-            api_key = os.getenv(var_name, "")
-    else:
-        api_key = await password("输入 LongCat API Key: ")
-
-    if not api_key or not api_key.strip():
-        return None
-    api_key = api_key.strip()
-
-    return build_default_fallback_config(LONGCAT_PRESETS, api_key)

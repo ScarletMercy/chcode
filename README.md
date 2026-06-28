@@ -32,9 +32,8 @@
 ### 模型管理
 
 - 兼容**所有 OpenAI 兼容 API**（OpenAI、DeepSeek、Qwen、GLM、Claude 代理等）
-- 内置 **ModelScope**、**LongCat** 等主流平台快捷配置
+- 内置 **ModelScope** 等主流平台快捷配置
 - **ModelScope**：每天 2000 次免费模型调用
-- **LongCat**：每天最低 5000 万+ 免费 token
 - 首次运行向导，**自动检测环境变量**（扫描 `OPENAI_API_KEY`、`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`、`ModelScopeToken` 等）
 - 原生支持 **reasoning/thinking 模型** — 实时显示思考过程
 - 运行时创建 / 编辑 / 切换模型

@@ -16,7 +16,7 @@ from typing import Any
 from rich.panel import Panel
 
 from chcode.display import console
-from chcode.prompts import select, confirm, model_config_form, text, configure_longcat
+from chcode.prompts import select, confirm, model_config_form, text
 from chcode.utils.json_utils import CachedJsonFile
 from chcode.utils.text_utils import mask_api_key
 
@@ -187,7 +187,6 @@ async def first_run_configure() -> dict | None:
     if detected:
         choices = [f"{d['name']} (检测到 {d['env_var']})" for d in detected]
         choices.append("魔搭快捷配置...")
-        choices.append("LongCat 快捷配置...")
         choices.append("手动配置...")
         choices.append("退出")
 
@@ -203,9 +202,6 @@ async def first_run_configure() -> dict | None:
 
         if "魔搭" in result:
             return await _configure_modelscope_with_test()
-
-        if "LongCat" in result:
-            return await _configure_longcat_with_test()
 
         idx = choices.index(result)
         chosen = detected[idx]
@@ -233,7 +229,7 @@ async def first_run_configure() -> dict | None:
         return config
     else:
         console.print("[yellow]未检测到环境变量中的 API Key[/yellow]")
-        choices = ["魔搭快捷配置...", "LongCat 快捷配置...", "手动配置...", "退出"]
+        choices = ["魔搭快捷配置...", "手动配置...", "退出"]
         result = await select("选择:", choices)
         if result is None or "退出" in result:
             console.print("[dim]提示: 在环境变量中设置 API Key 后重新运行，例如:[/dim]")
@@ -242,8 +238,6 @@ async def first_run_configure() -> dict | None:
             return None
         if "魔搭" in result:
             return await _configure_modelscope_with_test()
-        if "LongCat" in result:
-            return await _configure_longcat_with_test()
         return await configure_new_model(skip_method_select=True)
 
 
@@ -255,13 +249,11 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
     """
     ensure_config_dir()
     if not skip_method_select:
-        result = await select("配置方式:", ["魔搭快捷配置...", "LongCat 快捷配置...", "手动配置..."])
+        result = await select("配置方式:", ["魔搭快捷配置...", "手动配置..."])
         if result is None:
             return None
         if "魔搭" in result:
             return await _configure_modelscope_with_test()
-        if "LongCat" in result:
-            return await _configure_longcat_with_test()
     config = await model_config_form()
     if config is None:
         return None
@@ -283,7 +275,7 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
     _merge_and_save_config(config)
     console.print(f"[green]模型配置已保存: {config['model']}[/green]")
 
-    # 多模态询问（仅手动配置入口触发；魔搭/LongCat 快捷配置各自已处理视觉）
+    # 多模态询问（仅手动配置入口触发；魔搭快捷配置已处理视觉）
     if await confirm("该模型是否为多模态（视觉）模型？", default=False):
         from chcode.vision_config import add_vision_model
 
@@ -348,27 +340,6 @@ async def _configure_modelscope_with_test() -> dict | None:
     vision_default = auto_configure_vision()
     if vision_default:
         console.print(f"[dim]视觉模型已自动配置: {vision_default.get('model', '未知')}[/dim]")
-
-    await configure_tavily()
-    await configure_langsmith()
-    return default
-
-
-async def _configure_longcat_with_test() -> dict | None:
-    """LongCat 快捷配置：收集 API Key → 测试连接 → 保存预定义模型。"""
-    lc_config = await configure_longcat()
-    if lc_config is None:
-        return None
-
-    default = lc_config["default"]
-
-    if not await _test_connection(default):
-        return None
-
-    _merge_and_save_config(default, fallback_updates=lc_config["fallback"])
-    fallback_names = ", ".join(lc_config["fallback"].keys())
-    console.print(f"[green]配置完成: {default['model']} (默认)[/green]")
-    console.print(f"[dim]备用模型 ({len(lc_config['fallback'])} 个): {fallback_names}[/dim]")
 
     await configure_tavily()
     await configure_langsmith()

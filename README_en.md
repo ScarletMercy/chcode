@@ -32,9 +32,8 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 ### Model Management
 
 - Compatible with **all OpenAI-compatible APIs** (OpenAI, DeepSeek, Qwen, GLM, Claude via proxy, etc.)
-- Built-in quick setup for **ModelScope**, **LongCat**, and major providers
+- Built-in quick setup for **ModelScope** and major providers
 - **ModelScope**: 2000 free model calls/day
-- **LongCat**: 50M+ free tokens/day minimum
 - First-run wizard with **env auto-detection** (scans `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `ModelScopeToken`, etc.)
 - Native **reasoning/thinking model** support — thinking tokens displayed in real time
 - Create / edit / switch models at runtime
