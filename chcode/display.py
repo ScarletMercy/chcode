@@ -14,6 +14,8 @@ from rich.rule import Rule
 from rich.live import Live
 from rich._spinners import SPINNERS
 
+from chcode.i18n import t
+
 import asyncio
 import contextvars
 import threading
@@ -155,7 +157,7 @@ async def _result_spinner_updater():
             if _progress_live is None:
                 break
             frame = _DOTS[int(time.time() * 1000 / _DOTS_MS) % len(_DOTS)]
-            _progress_live.update(f"  [cyan]{frame}[/cyan] 正在整理结果...")
+            _progress_live.update(f"  [cyan]{frame}[/cyan] {t('display.organizing')}")
     except asyncio.CancelledError:
         pass
 
@@ -267,8 +269,7 @@ def render_welcome() -> None:
     console.print(
         Panel(
             "[bold]ChCode[/bold] — Terminal-based AI Coding Agent\n"
-            "Enter 发送 | Ctrl+Enter 换行 | /help 查看命令\n"
-            "Ctrl+C 中断生成 | Tab 切换模式 | /quit 退出",
+            + t("display.welcome_hint"),
             border_style="cyan",
             padding=(1, 2),
         )

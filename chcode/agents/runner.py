@@ -26,6 +26,7 @@ from chcode.utils.tool_result_pipeline import (
     truncate_large_result,
     enforce_per_turn_budget,
 )
+from chcode.i18n import t
 
 
 @wrap_tool_call
@@ -128,15 +129,15 @@ def _resolve_tools(
     all_tools: list,
 ) -> list:
     result = []
-    for t in all_tools:
-        name = getattr(t, "name", None) or getattr(getattr(t, "func", None), "__name__", "")
+    for tool in all_tools:
+        name = getattr(tool, "name", None) or getattr(getattr(tool, "func", None), "__name__", "")
         if name == "agent":
             continue
         if name in agent_def.disallowed_tools:
             continue
         if agent_def.tools is not None and name not in agent_def.tools:
             continue
-        result.append(t)
+        result.append(tool)
     return result
 
 
@@ -205,7 +206,7 @@ async def run_subagent(
     except asyncio.TimeoutError:
         return f"Agent {agent_def.agent_type} timed out after {timeout_seconds}s.", True
     except ModelSwitchError:
-        return f"Agent {agent_def.agent_type} 主模型失败，已切换备用模型，请重试", True
+        return t("runner.fallback_switched", type=agent_def.agent_type), True
     except Exception as e:
         return f"Agent {agent_def.agent_type} error: {e}", True
 

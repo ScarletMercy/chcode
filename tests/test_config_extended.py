@@ -35,6 +35,12 @@ def mock_config_dir(tmp_path: Path, monkeypatch):
 class TestFirstRunConfigure:
     """Tests for first_run_configure()"""
 
+    @pytest.fixture(autouse=True)
+    def _skip_lang_prompt(self):
+        # first_run 现在首项询问 UI 语言，统一 mock 掉避免触发真实终端输入
+        with patch("chcode.config._ask_language_first_run", new_callable=AsyncMock):
+            yield
+
     @pytest.mark.asyncio
     async def test_with_detected_env_key_and_success(self, mock_config_dir, monkeypatch):
         """Test first run with detected env key and successful connection"""
@@ -918,6 +924,11 @@ class TestConfigureTavily:
 class TestFirstRunConfigureExit:
     """Cover lines 130-133: user selects exit from first_run_configure."""
 
+    @pytest.fixture(autouse=True)
+    def _skip_lang_prompt(self):
+        with patch("chcode.config._ask_language_first_run", new_callable=AsyncMock):
+            yield
+
     @pytest.mark.asyncio
     async def test_detected_keys_select_none_exits(self, mock_config_dir, monkeypatch):
         """Lines 130-133: detected keys present, user cancels first select (returns None)."""
@@ -1163,6 +1174,12 @@ class TestConfigureTavilySavedKeyException:
 
 class TestConfigureModelscope:
     """Tests for _configure_modelscope_with_test() and configure_modelscope()."""
+
+    @pytest.fixture(autouse=True)
+    def _skip_lang_prompt(self):
+        # 类内含 first_run 用例：统一 mock 掉首项语言询问
+        with patch("chcode.config._ask_language_first_run", new_callable=AsyncMock):
+            yield
 
     @pytest.mark.asyncio
     async def test_modelscope_first_time(self, mock_config_dir):

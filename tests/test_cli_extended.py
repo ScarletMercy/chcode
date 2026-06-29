@@ -265,7 +265,7 @@ class TestMainCallback:
         mock_ctx.invoked_subcommand = None
         with patch("chcode.cli.asyncio.run") as mock_run:
             try:
-                main(mock_ctx, yolo=False, version=False)
+                main(mock_ctx, yolo=False, lang=None, version=False)
             except SystemExit:
                 pass
             mock_run.assert_called_once()
@@ -278,7 +278,7 @@ class TestMainCallback:
         mock_ctx.invoked_subcommand = None
         with patch("chcode.cli.console") as mock_console:
             try:
-                main(mock_ctx, yolo=False, version=True)
+                main(mock_ctx, yolo=False, lang=None, version=True)
             except (SystemExit, click.exceptions.Exit):
                 pass
             mock_console.print.assert_called()

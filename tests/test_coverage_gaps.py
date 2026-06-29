@@ -2792,7 +2792,7 @@ class TestSkillManagerInstallFailurePrint:
         with patch("chcode.utils.skill_manager.text", AsyncMock(return_value=str(zip_path))), \
              patch("pathlib.Path.exists", return_value=True), \
              patch("chcode.utils.skill_manager.validate_skill_package", return_value={"name": "test"}), \
-             patch("chcode.utils.skill_manager.select", AsyncMock(return_value="项目级")), \
+             patch("chcode.utils.skill_manager.select", AsyncMock(return_value="项目级 (当前工作目录)")), \
              patch("chcode.utils.skill_manager.install_skill", return_value=False):
             result = await _install_skill(session)
             # Should print failure message and complete

@@ -26,12 +26,12 @@ SKILL.md 格式：
     详细指令内容...
 """
 
-import re
 import zipfile
 import tarfile
 from pathlib import Path
 from dataclasses import dataclass, field
-import yaml
+
+from chcode.i18n import t
 
 
 # 默认 Skills 搜索路径（项目级优先，用户级兜底）
@@ -330,13 +330,13 @@ def scan_all_skills(project_path: Path | None = None) -> list[dict]:
     if project_path:
         project_skills_path = project_path / ".chat" / "skills"
         if project_skills_path.exists():
-            project_skills = _scan_skills_in_path(project_skills_path, "项目", loader)
+            project_skills = _scan_skills_in_path(project_skills_path, "project", loader)
             skills.extend(project_skills)
 
     # 扫描全局技能
     global_skills_path = Path.home() / ".chat" / "skills"
     if global_skills_path.exists():
-        global_skills = _scan_skills_in_path(global_skills_path, "全局", loader)
+        global_skills = _scan_skills_in_path(global_skills_path, "global", loader)
         skills.extend(global_skills)
 
     return skills
@@ -451,7 +451,7 @@ def validate_skill_package(archive_path: str) -> dict | None:
             }
 
     except Exception as e:
-        print(f"验证技能包失败: {e}")
+        print(t("skill.validate_failed", error=e))
         return None
 
 
@@ -523,7 +523,7 @@ def install_skill(archive_path: str, install_path: Path) -> bool:
             return True
 
     except Exception as e:
-        print(f"安装技能失败: {e}")
+        print(t("skill.install_error", error=e))
         return False
 
 

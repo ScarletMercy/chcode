@@ -14,6 +14,7 @@ from typing import Any
 import questionary
 
 from chcode.display import console
+from chcode.i18n import t
 from chcode.utils.text_utils import mask_api_key
 from chcode.utils.json_utils import build_default_fallback_config
 
@@ -22,6 +23,7 @@ async def select(
     message: str,
     choices: list[str],
     default: str | None = None,
+    style=None,
 ) -> str | None:
     """下拉单选"""
 
@@ -30,6 +32,7 @@ async def select(
             message=message,
             choices=choices,
             default=default,
+            style=style,
         ).ask()
 
     return await asyncio.to_thread(_ask)
@@ -82,11 +85,13 @@ async def password(message: str) -> str:
 async def select_or_custom(
     message: str,
     preset_choices: list[str],
-    custom_label: str = "自定义输入...",
-    custom_prompt: str = "请输入: ",
+    custom_label: str | None = None,
+    custom_prompt: str | None = None,
     default: str | None = None,
-) -> str:
+) -> str | None:
     """下拉选择 + 自定义输入。末尾有「自定义输入...」选项。"""
+    custom_label = custom_label or t("prompt.custom_input")
+    custom_prompt = custom_prompt or t("prompt.please_input")
     choices = list(preset_choices) + [custom_label]
     result = await select(message, choices, default=default)
     if result == custom_label:
@@ -118,11 +123,11 @@ MODELSCOPE_PRESETS = [
 ]
 
 API_KEY_ENV_VARS = [
-    ("BIGMODEL_API_KEY", "智谱 GLM"),
+    ("BIGMODEL_API_KEY", "provider.bigmodel"),
     ("ModelScopeToken", "ModelScope"),
     ("OPENAI_API_KEY", "OpenAI"),
     ("DEEPSEEK_API_KEY", "DeepSeek"),
-    ("DASHSCOPE_API_KEY", "通义千问"),
+    ("DASHSCOPE_API_KEY", "provider.qwen"),
     ("ANTHROPIC_API_KEY", "Anthropic Claude"),
 ]
 
@@ -132,8 +137,6 @@ TOP_K_PRESETS = ["1", "5", "10", "20", "40", "50"]
 MAX_COMPLETION_TOKENS_PRESETS = ["32768", "65536", "122880", "204800"]
 FREQ_PENALTY_PRESETS = ["0", "0.2", "0.5", "1.0", "1.5", "2.0"]
 PRESENCE_PENALTY_PRESETS = ["0", "0.2", "0.5", "1.0", "1.5", "2.0"]
-
-SKIP_LABEL = "跳过 (不设置)"
 
 
 class _SkipSentinel:
@@ -157,10 +160,13 @@ async def _ask_hyperparam(
     message: str,
     preset_choices: list[str],
     existing_value: str | None = None,
-    custom_prompt: str = "请输入: ",
+    custom_prompt: str | None = None,
 ) -> Any:
     """单个超参输入，支持「跳过」。返回值 / _SKIP / None(取消)。"""
-    choices = [SKIP_LABEL] + list(preset_choices) + ["自定义输入..."]
+    custom_prompt = custom_prompt or t("prompt.please_input")
+    skip_label = t("prompt.skip")
+    custom_label = t("prompt.custom_input")
+    choices = [skip_label] + list(preset_choices) + [custom_label]
 
     default = None
     if existing_value is not None and existing_value in preset_choices:
@@ -169,9 +175,9 @@ async def _ask_hyperparam(
     result = await select(message, choices, default=default)
     if result is None:
         return None
-    if result == SKIP_LABEL:
+    if result == skip_label:
         return _SKIP
-    if result == "自定义输入...":
+    if result == custom_label:
         raw = await text(custom_prompt)
         if raw is None or raw.strip() == "":
             return _SKIP
@@ -199,7 +205,7 @@ async def model_config_form(
     # ── 模型名称 ──
     model_name = cfg.get("model", "")
     if not model_name:
-        model_name = await text("输入模型名称: ")
+        model_name = await text(t("form.model_name"))
         if not model_name or not model_name.strip():
             return None
         model_name = model_name.strip()
@@ -207,7 +213,7 @@ async def model_config_form(
     # ── Base URL ──  (直接输入，编辑模式预填当前值)
     base_url = cfg.get("base_url", "")
     default_url = base_url if (is_editing and base_url) else ""
-    base_url = await text("输入 API Base URL:", default=default_url)
+    base_url = await text(t("form.base_url"), default=default_url)
     if not base_url or not base_url.strip():
         return None
     base_url = base_url.strip()
@@ -216,20 +222,21 @@ async def model_config_form(
     existing_api_key = cfg.get("api_key", "")
     if is_editing and existing_api_key:
         _masked = mask_api_key(existing_api_key, mask="****", short_mask="****")
-        _keep_label = f"保持当前 Key ({_masked})"
+        _keep_label = t("form.keep_current_key", masked=_masked)
+        _reinput_label = t("form.reinput_key")
         result = await select(
-            "选择 API Key 来源:",
-            [_keep_label, "重新输入 API Key..."],
+            t("form.api_key_source"),
+            [_keep_label, _reinput_label],
             default=_keep_label,
         )
         if result is None:
             return None
-        api_key = existing_api_key if result == _keep_label else await password("输入 API Key: ")
+        api_key = existing_api_key if result == _keep_label else await password(t("form.input_key"))
     else:
-        api_key = await password("输入 API Key: ")
+        api_key = await password(t("form.input_key"))
 
     if not api_key:
-        console.print("[red]API Key 不能为空[/red]")
+        console.print(f"[red]{t('form.api_key_empty')}[/red]")
         return None
 
     config: dict[str, Any] = {
@@ -243,7 +250,7 @@ async def model_config_form(
     cfg.pop("max_tokens", None)
 
     # ─── 超参（可选） ───
-    want_hyperparams = await confirm("配置超参数？", default=False)
+    want_hyperparams = await confirm(t("form.configure_hyperparams"), default=False)
     if want_hyperparams:
         # temperature
         t_val = str(cfg["temperature"]) if "temperature" in cfg else None
@@ -251,7 +258,7 @@ async def model_config_form(
             "Temperature:",
             TEMPERATURE_PRESETS,
             existing_value=t_val,
-            custom_prompt="输入 temperature: ",
+            custom_prompt=t("form.input_temperature"),
         )
         if result is None:
             return None
@@ -266,7 +273,7 @@ async def model_config_form(
             "Top P:",
             TOP_P_PRESETS,
             existing_value=tp_val,
-            custom_prompt="输入 top_p: ",
+            custom_prompt=t("form.input_top_p"),
         )
         if result is None:
             return None
@@ -286,7 +293,7 @@ async def model_config_form(
             "Top K:",
             TOP_K_PRESETS,
             existing_value=tk_val,
-            custom_prompt="输入 top_k: ",
+            custom_prompt=t("form.input_top_k"),
         )
         if result is None:
             return None
@@ -313,7 +320,7 @@ async def model_config_form(
             "Max Completion Tokens:",
             MAX_COMPLETION_TOKENS_PRESETS,
             existing_value=mct_val,
-            custom_prompt="输入 max_completion_tokens: ",
+            custom_prompt=t("form.input_max_tokens"),
         )
         if result is None:
             return None
@@ -338,7 +345,7 @@ async def model_config_form(
             "Stop Sequences:",
             [],  # 无预设，只有自定义
             existing_value=ss_val,
-            custom_prompt="输入停止序列 (逗号分隔): ",
+            custom_prompt=t("form.input_stop"),
         )
         if result is None:
             return None
@@ -355,7 +362,7 @@ async def model_config_form(
             "Frequency Penalty:",
             FREQ_PENALTY_PRESETS,
             existing_value=fp_val,
-            custom_prompt="输入 frequency_penalty: ",
+            custom_prompt=t("form.input_freq_penalty"),
         )
         if result is None:
             return None
@@ -370,7 +377,7 @@ async def model_config_form(
             "Presence Penalty:",
             PRESENCE_PENALTY_PRESETS,
             existing_value=pp_val,
-            custom_prompt="输入 presence_penalty: ",
+            custom_prompt=t("form.input_presence_penalty"),
         )
         if result is None:
             return None
@@ -388,25 +395,26 @@ async def model_config_form(
 async def configure_modelscope() -> dict | None:
     """魔搭快捷配置 — 只需 API Key，自动生成预定义模型配置。"""
     # 收集 API Key
+    manual_label = t("modelscope.manual_input")
     env_choices = [
-        f"{var} ({desc})"
+        f"{var} ({t(desc)})"
         for var, desc in API_KEY_ENV_VARS
         if var == "ModelScopeToken" and os.getenv(var)
     ]
     if env_choices:
         result = await select(
-            "检测到 ModelScope Token，是否使用？", env_choices + ["手动输入..."]
+            t("modelscope.detected_token"), env_choices + [manual_label]
         )
         if result is None:
             return None
-        if result == "手动输入...":
-            api_key = await password("输入 ModelScope API Key: ")
+        if result == manual_label:
+            api_key = await password(t("modelscope.input_key"))
         else:
             # 提取 env var 名
             var_name = result.split(" (")[0]
             api_key = os.getenv(var_name, "")
     else:
-        api_key = await password("输入 ModelScope API Key: ")
+        api_key = await password(t("modelscope.input_key"))
 
     if not api_key or not api_key.strip():
         return None

@@ -27,6 +27,7 @@ import httpx
 from langchain.tools import tool, ToolRuntime
 from pydantic import BaseModel, BeforeValidator, Field
 from chcode.display import console, render_tool_call
+from chcode.i18n import t
 from rich.text import Text
 
 from chcode.utils.shell import (
@@ -36,7 +37,7 @@ from chcode.utils.shell import (
     interpret_command_result,
 )
 from chcode.utils.skill_loader import SkillAgentContext
-from chcode.utils.multimodal import _ALL_MEDIA_EXTS, _VIDEO_EXTS
+from chcode.utils.multimodal import _ALL_MEDIA_EXTS
 from tavily import TavilyClient
 
 _tavily_client: TavilyClient | None = None
@@ -665,7 +666,7 @@ async def web_search(
     render_tool_call("web_search", query)
     client = get_tavily_client()
     if client is None:
-        return "[ERROR] Tavily API Key 未配置，请使用 /search 命令配置"
+        return t("tools.tavily_not_configured")
     return await asyncio.to_thread(
         client.search,
         query,
@@ -1063,20 +1064,20 @@ async def ask_user(
     render_tool_call("ask_user", question)
 
     if not options:
-        answer = await asyncio.to_thread(lambda: questionary.text("请输入: ").ask())
+        answer = await asyncio.to_thread(lambda: questionary.text(t("tools.please_input")).ask())
         if answer is None:
-            return "user_answer:\n(用户取消)"
+            return f"user_answer:\n{t('tools.user_cancelled')}"
         return f"user_answer:\n{answer}"
 
     try:
         selected = await _interactive_list_async(question, options, allow_multiple=is_multiple)
         if selected is None:
-            return "user_answer:\n(用户取消)"
+            return f"user_answer:\n{t('tools.user_cancelled')}"
         if isinstance(selected, list):
             selected = ", ".join(selected)
         return f"user_answer:\n{selected}"
     except Exception as e:
-        return f"user_answer:\n(询问失败: {e})"
+        return f"user_answer:\n{t('tools.query_failed', error=e)}"
 
 
 async def _ask_multi_questions(questions: list[dict]) -> str:
@@ -1091,7 +1092,7 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
     import questionary
 
     console.print()
-    console.print(f"[bold cyan]📋 批量提问 ({len(questions)} 个问题)[/bold cyan]")
+    console.print(f"[bold cyan]{t('tools.batch_questions', count=len(questions))}[/bold cyan]")
     console.print()
 
     answers = []
@@ -1100,36 +1101,36 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
         q_options = q.get("options", [])
         q_multiple = q.get("is_multiple", False)
 
-        console.print(f"[dim]问题 {i}/{len(questions)}: {q_text}[/dim]")
+        console.print(f"[dim]{t('tools.question_progress', i=i, total=len(questions), text=q_text)}[/dim]")
 
         if not q_options:
-            answer = await asyncio.to_thread(lambda: questionary.text("请输入: ").ask())
+            answer = await asyncio.to_thread(lambda: questionary.text(t("tools.please_input")).ask())
             if answer is None:
-                answers.append(f"Q{i}: (用户取消)")
+                answers.append(f"Q{i}: {t('tools.user_cancelled')}")
                 continue
             answers.append(f"Q{i}: {answer}")
         else:
             try:
                 selected = await _interactive_list_async(
-                    "选择（空格选择，回车确认）:" if q_multiple else q_text,
+                    t("tools.select_hint") if q_multiple else q_text,
                     q_options,
                     allow_multiple=q_multiple,
                 )
                 if selected is None:
-                    answers.append(f"Q{i}: (用户取消)")
+                    answers.append(f"Q{i}: {t('tools.user_cancelled')}")
                     continue
                 if isinstance(selected, list):
                     selected = ", ".join(selected)
                 answers.append(f"Q{i}: {selected}")
             except Exception as e:
-                answers.append(f"Q{i}: (询问失败: {e})")
+                answers.append(f"Q{i}: {t('tools.query_failed', error=e)}")
 
         console.print()
 
     # 汇总结果
-    result_lines = ["=== 批量提问结果 ==="]
+    result_lines = [t("tools.batch_results")]
     for i, q in enumerate(questions, 1):
-        result_lines.append(f"问题: {q.get('question', '')}\n回答: {answers[i - 1]}")
+        result_lines.append(t("tools.batch_qa", question=q.get('question', ''), answer=answers[i - 1]))
     return "\n\n".join(result_lines)
 
 
@@ -1352,10 +1353,10 @@ Args:
     render_tool_call("todo_write", f"{active} active todos")
 
     lines = []
-    for t in todo_dicts:
-        status = t.get("status", "pending")
-        content = t.get("content", "")
-        priority = t.get("priority", "medium")
+    for td in todo_dicts:
+        status = td.get("status", "pending")
+        content = td.get("content", "")
+        priority = td.get("priority", "medium")
         marker = _STATUS_MARKERS.get(status, "[ ]")
         lines.append(f"  {marker} {content} (priority: {priority})")
 
@@ -1367,10 +1368,10 @@ Args:
 
     if todo_dicts:
         console.print(Text(f"\n  {active} active todo(s):", style="bold green"))
-        for t in todo_dicts:
-            status = t.get("status", "pending")
-            content = t.get("content", "")
-            priority = t.get("priority", "medium")
+        for td in todo_dicts:
+            status = td.get("status", "pending")
+            content = td.get("content", "")
+            priority = td.get("priority", "medium")
             marker = _STATUS_MARKERS.get(status, "[ ]")
             ps = {"high": "red bold", "medium": "yellow", "low": "dim"}.get(
                 priority, ""
@@ -1477,11 +1478,7 @@ async def vision(
             unique_models.append(m)
 
     if not unique_models:
-        return (
-            "vision:\n[FAILED] 视觉模型未配置。\n"
-            "请使用 /vision 命令配置 ModelScope API Key，\n"
-            "或设置环境变量 ModelScopeToken。"
-        )
+        return t("tools.vision_not_configured")
 
     last_error = None
     for model_config in unique_models:
@@ -1516,11 +1513,11 @@ async def vision(
         except Exception as e:
             last_error = str(e)
             console.print(
-                f"[yellow]视觉模型 {model_name} 调用失败: {e}[/yellow]"
+                f"[yellow]{t('tools.vision_call_failed', model=model_name, error=e)}[/yellow]"
             )
             continue
 
-    return f"vision:\n[FAILED] 所有视觉模型均调用失败\n最后错误: {last_error}"
+    return t("tools.vision_all_failed", error=last_error)
 
 
 # Backward-compatible aliases

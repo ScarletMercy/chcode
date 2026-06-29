@@ -500,7 +500,7 @@ class TestChatREPLSlashCommands:
         repl.model_config = {}
 
         with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
-            mock_sel.return_value = "新建模型"
+            mock_sel.return_value = "新建模型 (/model new)"
             with patch("chcode.chat.configure_new_model", new_callable=AsyncMock) as mock_cfg:
                 mock_cfg.return_value = {"model": "new"}
                 with patch("chcode.agent_setup.update_summarization_model"):

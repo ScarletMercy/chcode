@@ -16,6 +16,7 @@ from typing import Any
 from rich.panel import Panel
 
 from chcode.display import console
+from chcode.i18n import set_language, t
 from chcode.prompts import select, confirm, model_config_form, text
 from chcode.utils.json_utils import CachedJsonFile
 from chcode.utils.text_utils import mask_api_key
@@ -26,7 +27,7 @@ SETTING_JSON = CONFIG_DIR / "chagent.json"
 HOMEPAGE_URL = "https://github.com/ScarletMercy/chcode"
 
 def _log_model_json_error(e: Exception, path: Path) -> None:
-    console.print(f"[red]Warning: 加载 {path} 失败: {e}[/red]")
+    console.print(f"[red]{t('config.load_failed', path=path, e=e)}[/red]")
 
 
 _model_json = CachedJsonFile(MODEL_JSON, ensure_dir=True, on_error=_log_model_json_error)
@@ -92,7 +93,7 @@ async def _test_connection(
     return_error=True 时，失败返回错误信息字符串而非 False。
     """
     if not quiet:
-        console.print("[yellow]测试连接中...[/yellow]")
+        console.print(f"[yellow]{t('connection.testing')}[/yellow]")
     try:
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
 
@@ -103,7 +104,7 @@ async def _test_connection(
         if "null value" in err_msg and "choices" in err_msg:
             return True
         if not quiet:
-            console.print(f"[red]连接测试失败: {err_msg}[/red]")
+            console.print(f"[red]{t('connection.failed', error=err_msg)}[/red]")
             if not brief:
                 console.print(f"[dim]{traceback.format_exc()}[/dim]")
         if return_error:
@@ -152,6 +153,22 @@ def _update_setting(**kwargs) -> None:
     )
 
 
+def load_language() -> str | None:
+    """读取已保存的 UI 语言（'zh' | 'en'），未设置返回 None。"""
+    data = _load_setting()
+    lang = data.get("language")
+    if lang in ("zh", "en"):
+        return lang
+    return None
+
+
+def save_language(lang: str) -> None:
+    """持久化 UI 语言到 SETTING_JSON。"""
+    if lang not in ("zh", "en"):
+        return
+    _update_setting(language=lang)
+
+
 def get_default_model_config() -> dict | None:
     """获取当前默认模型配置"""
     data = load_model_json()
@@ -168,14 +185,31 @@ def detect_env_api_keys() -> list[dict]:
     return results
 
 
+async def _ask_language_first_run() -> str:
+    """首次运行：选择语言（向导第一项）。默认中文。"""
+    zh_label = "中文 (Chinese)"
+    en_label = "English"
+    from questionary import Style
+    _no_bg = Style([("highlighted", "noinherit"), ("selected", "noinherit")])
+    result = await select(t("cmd.lang"), [zh_label, en_label], default=zh_label, style=_no_bg)
+    lang = "en" if result == en_label else "zh"
+    set_language(lang)
+    save_language(lang)
+    console.print(
+        f"[green]{t('lang.saved_zh') if lang == 'zh' else t('lang.saved_en')}[/green]"
+    )
+    return lang
+
+
 async def first_run_configure() -> dict | None:
     """首次运行配置引导"""
+    # 第一项：选择语言（决定后续整个向导的提示语言）
+    await _ask_language_first_run()
+
     console.print()
     console.print(
         Panel(
-            "[bold]ChCode[/bold] — 终端 AI 编程助手\n\n"
-            "首次运行需要配置 AI 模型连接。\n"
-            "设置环境变量后可自动检测（推荐），或手动填写配置。",
+            t("firstrun.panel"),
             border_style="cyan",
             padding=(1, 2),
         )
@@ -185,29 +219,39 @@ async def first_run_configure() -> dict | None:
     detected = detect_env_api_keys()
 
     if detected:
-        choices = [f"{d['name']} (检测到 {d['env_var']})" for d in detected]
-        choices.append("魔搭快捷配置...")
-        choices.append("手动配置...")
-        choices.append("退出")
-
-        result = await select("选择配置方式:", choices)
-        if result is None or "退出" in result:
-            console.print(
-                "[dim]设置环境变量后重新运行，或执行 chcode config new 手动配置[/dim]"
+        choices: list[str] = []
+        choice_ids: list = []  # ("env", dict) | "modelscope" | "manual" | "exit"
+        for d in detected:
+            choices.append(
+                t("firstrun.env_detected", name=d["name"], env_var=d["env_var"])
             )
+            choice_ids.append(("env", d))
+        choices.append(t("firstrun.modelscope_quick"))
+        choice_ids.append("modelscope")
+        choices.append(t("firstrun.manual"))
+        choice_ids.append("manual")
+        choices.append(t("firstrun.exit"))
+        choice_ids.append("exit")
+
+        result = await select(t("firstrun.select_method"), choices)
+        if result is None:
+            console.print(f"[dim]{t('firstrun.exit_hint')}[/dim]")
             return None
-
-        if "手动" in result:
+        idx = choices.index(result)
+        action = choice_ids[idx]
+        if action == "exit":
+            console.print(f"[dim]{t('firstrun.exit_hint')}[/dim]")
+            return None
+        if action == "manual":
             return await configure_new_model(skip_method_select=True)
-
-        if "魔搭" in result:
+        if action == "modelscope":
             return await _configure_modelscope_with_test()
 
-        idx = choices.index(result)
-        chosen = detected[idx]
+        # env provider
+        chosen = action[1]
 
         model_list = chosen["models"]
-        model = await select("选择模型:", model_list)
+        model = await select(t("model.select_to_use"), model_list)
         if model is None:
             return None
 
@@ -222,21 +266,33 @@ async def first_run_configure() -> dict | None:
             return None
 
         _merge_and_save_config(config)
-        console.print(f"[green]配置完成: {model}[/green]")
+        console.print(f"[green]{t('firstrun.config_done', model=model)}[/green]")
 
         await configure_tavily()
         await configure_langsmith()
         return config
     else:
-        console.print("[yellow]未检测到环境变量中的 API Key[/yellow]")
-        choices = ["魔搭快捷配置...", "手动配置...", "退出"]
-        result = await select("选择:", choices)
-        if result is None or "退出" in result:
-            console.print("[dim]提示: 在环境变量中设置 API Key 后重新运行，例如:[/dim]")
-            console.print("[dim]  set BIGMODEL_API_KEY=your_key[/dim]")
-            console.print("[dim]或执行 chcode config new 手动配置[/dim]")
+        console.print(f"[yellow]{t('firstrun.no_env_key')}[/yellow]")
+        choices = [
+            t("firstrun.modelscope_quick"),
+            t("firstrun.manual"),
+            t("firstrun.exit"),
+        ]
+        choice_ids = ["modelscope", "manual", "exit"]
+        result = await select(t("firstrun.select"), choices)
+        if result is None:
+            console.print(f"[dim]{t('firstrun.env_hint')}[/dim]")
+            console.print(f"[dim]{t('firstrun.env_example')}[/dim]")
+            console.print(f"[dim]{t('firstrun.manual_cmd_hint')}[/dim]")
             return None
-        if "魔搭" in result:
+        idx = choices.index(result)
+        action = choice_ids[idx]
+        if action == "exit":
+            console.print(f"[dim]{t('firstrun.env_hint')}[/dim]")
+            console.print(f"[dim]{t('firstrun.env_example')}[/dim]")
+            console.print(f"[dim]{t('firstrun.manual_cmd_hint')}[/dim]")
+            return None
+        if action == "modelscope":
             return await _configure_modelscope_with_test()
         return await configure_new_model(skip_method_select=True)
 
@@ -249,10 +305,11 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
     """
     ensure_config_dir()
     if not skip_method_select:
-        result = await select("配置方式:", ["魔搭快捷配置...", "手动配置..."])
+        choices = [t("firstrun.modelscope_quick"), t("firstrun.manual")]
+        result = await select(t("model.method_select"), choices)
         if result is None:
             return None
-        if "魔搭" in result:
+        if choices.index(result) == 0:
             return await _configure_modelscope_with_test()
     config = await model_config_form()
     if config is None:
@@ -263,7 +320,7 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
 
     # 上下文长度（默认 1M）—— 多模态询问之前；存入 metadata（ChatOpenAI 合法字段，
     # 不会透传到 API 请求），随 config 一起落盘到 model.json。
-    raw_ctx = await text("上下文长度（token 数，默认 1M）:", default="1048576") or "1048576"
+    raw_ctx = await text(t("model.context_length"), default="1048576") or "1048576"
     try:
         ctx_len = int(raw_ctx.strip().replace(",", ""))
     except ValueError:
@@ -273,23 +330,23 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
     config["metadata"] = {**(config.get("metadata") or {}), "context_length": ctx_len}
 
     _merge_and_save_config(config)
-    console.print(f"[green]模型配置已保存: {config['model']}[/green]")
+    console.print(f"[green]{t('model.saved', model=config['model'])}[/green]")
 
     # 多模态询问（仅手动配置入口触发；魔搭快捷配置已处理视觉）
-    if await confirm("该模型是否为多模态（视觉）模型？", default=False):
+    if await confirm(t("model.multimodal_ask"), default=False):
         from chcode.vision_config import add_vision_model
 
         try:
             role = add_vision_model(config)
             if role == "default":
-                console.print(f"[green]已加入视觉模型清单(默认): {config['model']}（图片将直接处理、vision 工具将停用）[/green]")
+                console.print(f"[green]{t('model.vision_added_default', model=config['model'])}[/green]")
             elif role == "fallback":
-                console.print(f"[green]已加入视觉模型清单(备用): {config['model']}（图片将直接处理、vision 工具将停用）[/green]")
+                console.print(f"[green]{t('model.vision_added_fallback', model=config['model'])}[/green]")
             else:
-                console.print("[yellow]未写入视觉配置（已存在相同配置）[/yellow]")
+                console.print(f"[yellow]{t('model.vision_duplicate')}[/yellow]")
         except Exception as e:
             # 视觉配置失败不阻断主流程（模型本身已保存）
-            console.print(f"[yellow]视觉模型配置失败（不影响主配置）: {e}[/yellow]")
+            console.print(f"[yellow]{t('model.vision_failed', error=e)}[/yellow]")
 
     await configure_tavily()
     await configure_langsmith()
@@ -307,7 +364,7 @@ async def _configure_modelscope_with_test() -> dict | None:
     default = ms_config["default"]
 
     # 测试连接（依次尝试 default + 2 个备用模型，应对速率限制）
-    console.print("[yellow]测试连接中...[/yellow]")
+    console.print(f"[yellow]{t('modelscope.testing')}[/yellow]")
     test_configs = [default]
     for i, (_, cfg) in enumerate(ms_config["fallback"].items()):
         if i >= 2:
@@ -324,7 +381,7 @@ async def _configure_modelscope_with_test() -> dict | None:
         last_err_detail = result
 
     if not connected:
-        console.print(f"[red]连接测试失败: {last_err_detail.split(chr(10))[0] if last_err_detail else ''}[/red]")
+        console.print(f"[red]{t('modelscope.connect_failed', detail=last_err_detail.split(chr(10))[0] if last_err_detail else '')}[/red]")
         if last_err_detail:
             _, *tb_lines = last_err_detail.split("\n")
             console.print(f"[dim]{chr(10).join(tb_lines)}[/dim]")
@@ -332,14 +389,14 @@ async def _configure_modelscope_with_test() -> dict | None:
 
     _merge_and_save_config(default, fallback_updates=ms_config["fallback"])
     fallback_names = ", ".join(ms_config["fallback"].keys())
-    console.print(f"[green]配置完成: {default['model']} (默认)[/green]")
-    console.print(f"[dim]备用模型 ({len(ms_config['fallback'])} 个): {fallback_names}[/dim]")
+    console.print(f"[green]{t('modelscope.config_done', model=default['model'])}[/green]")
+    console.print(f"[dim]{t('modelscope.fallback_count', count=len(ms_config['fallback']), names=fallback_names)}[/dim]")
 
     # 魔搭配置完成后，自动同步视觉模型配置
     from chcode.vision_config import auto_configure_vision
     vision_default = auto_configure_vision()
     if vision_default:
-        console.print(f"[dim]视觉模型已自动配置: {vision_default.get('model', '未知')}[/dim]")
+        console.print(f"[dim]{t('modelscope.vision_auto', model=vision_default.get('model', t('modelscope.vision_unknown')))}[/dim]")
 
     await configure_tavily()
     await configure_langsmith()
@@ -351,7 +408,7 @@ async def edit_current_model() -> dict | None:
     data = load_model_json()
     current = data.get("default", {})
     if not current:
-        console.print("[yellow]没有当前模型配置，请新建[/yellow]")
+        console.print(f"[yellow]{t('model.edit_none')}[/yellow]")
         return await configure_new_model()
 
     config = await model_config_form(existing_config=current)
@@ -367,7 +424,7 @@ async def edit_current_model() -> dict | None:
 
     data["default"] = config
     save_model_json(data)
-    console.print(f"[green]模型配置已更新: {config['model']}[/green]")
+    console.print(f"[green]{t('model.updated', model=config['model'])}[/green]")
     return config
 
 
@@ -378,28 +435,30 @@ async def switch_model() -> dict | None:
     fallback = data.get("fallback", {})
 
     if not default:
-        console.print("[yellow]请先配置默认模型[/yellow]")
+        console.print(f"[yellow]{t('model.switch_no_default')}[/yellow]")
         return await configure_new_model()
 
     if not fallback:
-        console.print("[yellow]没有备用模型可切换[/yellow]")
+        console.print(f"[yellow]{t('model.switch_no_fallback')}[/yellow]")
         return None
 
-    # 构建选项列表
+    # 构建选项列表（带“当前默认”标记）；choice_names 平行保存干净模型名，
+    # 供语言无关地取回选中项（避免依赖翻译后的标记文本）
     current_name = default.get("model", "")
     choices = []
+    choice_names = []
     for name in fallback:
-        tag = " (当前默认)" if name == current_name else ""
+        tag = t("model.current_default_tag") if name == current_name else ""
         choices.append(f"{name}{tag}")
+        choice_names.append(name)
 
-    result = await select("选择要使用的模型:", choices)
+    result = await select(t("model.select_to_use"), choices)
     if result is None:
         return None
 
-    # 提取模型名（去掉 " (当前默认)" 后缀）
-    selected_name = result.replace(" (当前默认)", "")
+    selected_name = choice_names[choices.index(result)]
 
-    ok = await confirm(f"确定切换到 {selected_name}？当前默认将移至备用列表")
+    ok = await confirm(t("model.switch_confirm", model=selected_name))
     if not ok:
         return None
 
@@ -410,7 +469,7 @@ async def switch_model() -> dict | None:
     data["default"] = selected_config
     data["fallback"] = fallback
     save_model_json(data)
-    console.print(f"[green]已切换到: {selected_name}[/green]")
+    console.print(f"[green]{t('model.switched', model=selected_name)}[/green]")
     return selected_config
 
 
@@ -454,7 +513,7 @@ async def configure_tavily() -> None:
         from chcode.utils.tools import update_tavily_api_key
 
         update_tavily_api_key(tavily_env)
-        console.print("[dim]检测到 TAVILY_API_KEY 环境变量，已自动配置 Tavily[/dim]")
+        console.print(f"[dim]{t('tavily.detected_env')}[/dim]")
         return
 
     data = _load_setting()
@@ -464,25 +523,25 @@ async def configure_tavily() -> None:
 
         update_tavily_api_key(current)
         console.print(
-            f"[dim]已配置 Tavily: {mask_api_key(current)}[/dim]"
+            f"[dim]{t('tavily.configured', key=mask_api_key(current))}[/dim]"
         )
         return
 
     console.print()
-    result = await select("是否配置 Tavily 搜索引擎?", ["是", "否"])
-    if result is None or result == "否":
-        console.print("[dim]已跳过，后续可通过 /search 命令配置[/dim]")
+    result = await select(t("tavily.ask_configure"), [t("common.yes"), t("common.no")])
+    if result is None or result == t("common.no"):
+        console.print(f"[dim]{t('tavily.skipped')}[/dim]")
         return
 
-    new_key = await text("请输入 Tavily API Key:")
+    new_key = await text(t("tavily.input_key"))
     if new_key:
         save_tavily_api_key(new_key)
         from chcode.utils.tools import update_tavily_api_key
 
         update_tavily_api_key(new_key)
-        console.print("[green]Tavily API Key 已保存并生效[/green]")
+        console.print(f"[green]{t('tavily.saved')}[/green]")
     else:
-        console.print("[dim]已取消[/dim]")
+        console.print(f"[dim]{t('common.cancelled')}[/dim]")
 
 
 # ─── LangSmith 配置 ──────────────────────────────────────
@@ -616,26 +675,26 @@ async def configure_langsmith() -> dict:
         project = os.getenv("LANGSMITH_PROJECT", "") or "chcode"
         tracing = os.getenv("LANGSMITH_TRACING", "").lower() == "true"
         _apply_langsmith_env(tracing, project, env_key)
-        console.print("[dim]检测到 LANGSMITH_API_KEY 环境变量，已自动配置 LangSmith[/dim]")
+        console.print(f"[dim]{t('langsmith.detected_env')}[/dim]")
         return {"tracing": tracing, "project": project, "api_key": env_key}
 
     # 3. 引导配置
     console.print()
-    result = await select("是否配置 LangSmith 追踪?", ["是", "否"])
-    if result is None or result == "否":
+    result = await select(t("langsmith.ask_configure"), [t("common.yes"), t("common.no")])
+    if result is None or result == t("common.no"):
         os.environ["LANGSMITH_TRACING"] = "false"
         _persist_env("LANGSMITH_TRACING", "false")
-        console.print("[dim]已跳过，后续可通过 /langsmith 命令配置[/dim]")
+        console.print(f"[dim]{t('langsmith.skipped')}[/dim]")
         return {"tracing": False, "project": "", "api_key": ""}
 
-    project_name = await text("请输入 LangSmith 项目名称:", default="chcode") or "chcode"
-    api_key = await text("请输入 LangSmith API Key:")
+    project_name = await text(t("langsmith.input_project"), default="chcode") or "chcode"
+    api_key = await text(t("langsmith.input_key"))
 
     if not api_key:
-        console.print("[dim]已取消[/dim]")
+        console.print(f"[dim]{t('common.cancelled')}[/dim]")
         return {"tracing": False, "project": "", "api_key": ""}
 
     project_name = project_name.strip() or "chcode"
     _apply_langsmith_env(True, project_name, api_key)
-    console.print("[green]LangSmith 配置已写入环境变量，重启后生效[/green]")
+    console.print(f"[green]{t('langsmith.saved')}[/green]")
     return {"tracing": True, "project": project_name, "api_key": api_key}

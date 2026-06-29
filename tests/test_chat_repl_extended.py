@@ -1207,7 +1207,7 @@ class TestCmdMessagesForkPathChoices:
                                                             call_kwargs = mock_soc.call_args
                                                             choices = call_kwargs[0][1]
                                                             assert str(saved) in choices
-                                                            assert "自定义路径..." in choices
+                                                            assert call_kwargs[1]["custom_label"] == "自定义路径..."
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1228,10 +1228,11 @@ class TestCmdMessagesForkPathChoices:
                     with patch("chcode.chat.select_or_custom", new_callable=AsyncMock, return_value="") as mock_soc:
                         await repl._cmd_messages("")
 
-                        # select_or_custom should be called with only "自定义路径..." as choices
+                        # select_or_custom should be called with empty choices and custom_label kwarg
                         mock_soc.assert_called_once()
                         choices = mock_soc.call_args[0][1]
-                        assert choices == ["自定义路径..."]
+                        assert choices == []
+                        assert mock_soc.call_args[1]["custom_label"] == "自定义路径..."
 
 
 # ============================================================================

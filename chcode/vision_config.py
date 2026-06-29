@@ -13,6 +13,7 @@ import os
 
 from chcode.config import CONFIG_DIR, ensure_config_dir
 from chcode.display import console
+from chcode.i18n import t
 from chcode.prompts import select, confirm, password
 from chcode.utils.json_utils import CachedJsonFile, build_default_fallback_config
 from chcode.utils.text_utils import mask_api_key
@@ -237,25 +238,26 @@ async def configure_vision_interactive() -> dict | None:
     current_default = current.get("default", {})
     has_config = bool(current_default and current_default.get("api_key"))
 
+    back_label = t("common.back")
     if has_config:
         action = await select(
-            "视觉模型配置:",
-            ["查看当前配置", "重新配置", "切换模型", "返回"],
+            t("vision.menu"),
+            [t("vision.view"), t("vision.reconfigure"), t("vision.switch"), back_label],
         )
     else:
         action = await select(
-            "视觉模型未配置，是否现在配置？",
-            ["配置视觉模型", "返回"],
+            t("vision.unconfigured_ask"),
+            [t("vision.configure"), back_label],
         )
 
-    if action is None or action == "返回":
+    if action is None or action == back_label:
         return None
 
-    if action == "查看当前配置":
+    if action == t("vision.view"):
         _display_vision_config(current)
         return None
 
-    if action == "切换模型":
+    if action == t("vision.switch"):
         return await _switch_vision_model()
 
     # 配置
@@ -266,26 +268,27 @@ async def _configure_vision_wizard() -> dict | None:
     """配置向导"""
     # 选择 API Key 来源
     env_key = os.getenv("ModelScopeToken", "")
+    manual_label = t("vision.manual_key")
     choices = []
     if env_key:
-        choices.append(f"使用环境变量 ModelScopeToken ({mask_api_key(env_key)})")
-    choices.append("手动输入 API Key")
+        choices.append(t("vision.use_env_token", masked=mask_api_key(env_key)))
+    choices.append(manual_label)
 
-    result = await select("选择 API Key 来源:", choices)
+    result = await select(t("vision.select_key_source"), choices)
     if result is None:
         return None
 
-    if result.startswith("使用环境变量"):
-        api_key = env_key
-    else:
-        api_key = await password("输入 ModelScope API Key:")
+    if result == manual_label:
+        api_key = await password(t("vision.input_key"))
         if not api_key or not api_key.strip():
             return None
         api_key = api_key.strip()
+    else:
+        api_key = env_key
 
     # 选择默认模型
     preset_names = [p["model"] for p in VISION_MODEL_PRESETS]
-    default_choice = await select("选择默认视觉模型:", preset_names, default=preset_names[0])
+    default_choice = await select(t("vision.select_default"), preset_names, default=preset_names[0])
     if default_choice is None:
         return None
 
@@ -299,9 +302,9 @@ async def _configure_vision_wizard() -> dict | None:
     save_vision_json(config)
 
     fallback = config["fallback"]
-    console.print(f"[green]视觉模型配置完成: {default_choice} (默认)[/green]")
+    console.print(f"[green]{t('vision.config_done', model=default_choice)}[/green]")
     fallback_names = ", ".join(fallback.keys())
-    console.print(f"[dim]备用模型 ({len(fallback)} 个): {fallback_names}[/dim]")
+    console.print(f"[dim]{t('vision.fallback_count', count=len(fallback), names=fallback_names)}[/dim]")
 
     return config["default"]
 
@@ -313,26 +316,28 @@ async def _switch_vision_model() -> dict | None:
     fallback = data.get("fallback", {})
 
     if not default:  # pragma: no cover
-        console.print("[yellow]请先配置默认视觉模型[/yellow]")  # pragma: no cover
+        console.print(f"[yellow]{t('vision.no_default')}[/yellow]")  # pragma: no cover
         return await _configure_vision_wizard()  # pragma: no cover
 
     if not fallback:  # pragma: no cover
-        console.print("[yellow]没有备用视觉模型可切换[/yellow]")  # pragma: no cover
+        console.print(f"[yellow]{t('vision.no_fallback')}[/yellow]")  # pragma: no cover
         return None  # pragma: no cover
 
     current_name = default.get("model", "")
+    tag = t("model.current_default_tag")
     choices = []
     for name in fallback:
-        tag = " (当前默认)" if name == current_name else ""
-        choices.append(f"{name}{tag}")
+        suffix = tag if name == current_name else ""
+        choices.append(f"{name}{suffix}")
 
-    result = await select("选择要使用的视觉模型:", choices)
+    result = await select(t("vision.select_to_use"), choices)
     if result is None:  # pragma: no cover
         return None  # pragma: no cover
 
-    selected_name = result.replace(" (当前默认)", "")
+    # 提取模型名（去掉翻译后的“当前默认”标记）
+    selected_name = result.replace(tag, "")
 
-    ok = await confirm(f"确定切换到 {selected_name}？当前默认将移至备用列表")
+    ok = await confirm(t("vision.switch_confirm", model=selected_name))
     if not ok:
         return None
 
@@ -343,7 +348,7 @@ async def _switch_vision_model() -> dict | None:
     data["default"] = selected_config
     data["fallback"] = fallback
     save_vision_json(data)
-    console.print(f"[green]已切换到: {selected_name}[/green]")
+    console.print(f"[green]{t('vision.switched', model=selected_name)}[/green]")
     return selected_config
 
 
@@ -355,17 +360,17 @@ def _display_vision_config(config: dict) -> None:
     fallback = config.get("fallback", {})
 
     if not default:
-        console.print("[yellow]未配置视觉模型[/yellow]")
+        console.print(f"[yellow]{t('vision.not_configured')}[/yellow]")
         return
 
-    console.print(f"[bold]默认视觉模型:[/bold] {default.get('model', '未知')}")
+    console.print(f"[bold]{t('vision.default_label')}[/bold] {default.get('model', t('vision.unknown'))}")
 
     if fallback:
-        table = Table(title="备用视觉模型")
-        table.add_column("模型", style="cyan")
-        table.add_column("状态", style="green")
+        table = Table(title=t("vision.fallback_table_title"))
+        table.add_column(t("vision.col_model"), style="cyan")
+        table.add_column(t("vision.col_status"), style="green")
         for name in fallback:
             table.add_row(name, "✓")
         console.print(table)
     else:
-        console.print("[dim]无备用模型[/dim]")
+        console.print(f"[dim]{t('vision.no_fallback_dim')}[/dim]")

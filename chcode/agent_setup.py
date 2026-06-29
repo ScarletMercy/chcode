@@ -36,6 +36,7 @@ from chcode.utils.modelscope_ratelimit import is_modelscope_model, get_modelscop
 from chcode.utils.multimodal import is_multimodal_model
 from chcode.utils.skill_loader import SkillAgentContext
 from chcode.display import console
+from chcode.i18n import t
 from chcode.utils.tool_result_pipeline import (
     clean_tool_output,
     truncate_large_result,
@@ -249,7 +250,7 @@ async def filter_vision_tool(
 
         if is_multimodal_model(model_name):
             return ToolMessage(
-                content="当前模型支持原生视觉，图片/视频已直接嵌入消息，无需调用 vision 工具。请直接分析消息中的图片/视频内容。",
+                content=t("agent.vision_native_filter"),
                 tool_call_id=request.tool_call["id"],
                 status="error",
             )
@@ -274,15 +275,15 @@ async def model_retry_with_backoff(
             if retry_count >= max_retries:
                 fallback = _load_fallback_config()
                 if fallback:
-                    console.print(f"[yellow]主模型重试{retry_count}次失败，切换到备用模型...[/yellow]")
-                    raise ModelSwitchError("切换到备用模型")
-                console.print(f"[red]请求失败，无备用模型可用，放弃请求\n  {e}[/red]")
+                    console.print(f"[yellow]{t('agent.switch_to_fallback', count=retry_count)}[/yellow]")
+                    raise ModelSwitchError(t("agent.switch_error"))
+                console.print(f"[red]{t('agent.no_fallback_giveup', error=e)}[/red]")
                 raise
 
             delay_idx = min(retry_count - 1, len(RETRY_DELAYS) - 1)
             delay = RETRY_DELAYS[delay_idx]
 
-            console.print(f"[yellow]请求失败 ({retry_count}/{max_retries}), {delay}秒后重试...\n  {e}[/yellow]")
+            console.print(f"[yellow]{t('agent.retry_in', count=retry_count, max=max_retries, delay=delay, error=e)}[/yellow]")
 
             await asyncio.sleep(delay)
 

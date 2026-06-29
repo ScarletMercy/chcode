@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
 import pytest
 
+from chcode.i18n import t
 from chcode.prompts import (
     select,
     confirm,
@@ -16,7 +17,6 @@ from chcode.prompts import (
     model_config_form,
     _SkipSentinel,
     _SKIP,
-    SKIP_LABEL,
     TEMPERATURE_PRESETS,
     API_KEY_ENV_VARS,
 )
@@ -222,7 +222,7 @@ class TestModelConfigForm:
 
     async def test_skip_hyperparam(self):
         async def _select_skip(msg, choices, default=None, **kwargs):
-            return SKIP_LABEL
+            return t("prompt.skip")
         with patch("chcode.prompts.text", _text_route({"Base URL": "https://api.openai.com/v1"})), \
              patch("chcode.prompts.password", _mock_password_async("sk-123")), \
              patch("chcode.prompts.confirm", _mock_confirm_async(True)), \

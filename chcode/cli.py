@@ -13,6 +13,14 @@ warnings.filterwarnings("ignore", message="urllib3.*doesn't match a supported ve
 warnings.filterwarnings("ignore", message="chardet.*doesn't match a supported version")
 
 
+def _app_version() -> str:
+    """获取版本号；元数据缺失（未 pip 安装）时回退到 '0.0.0+unknown'。"""
+    try:
+        return _pkg_version("chcode")
+    except Exception:
+        return "0.0.0+unknown"
+
+
 def _setup_langsmith_guard():
     """静默吞掉 LangSmith SDK 的 429/连接错误 stderr 输出，防止污染终端 UI"""
     _suppressed = False
@@ -60,6 +68,7 @@ _setup_langsmith_guard()
 
 import typer  # noqa: E402
 from chcode.display import console  # noqa: E402
+from chcode.i18n import t  # noqa: E402
 
 app = typer.Typer(
     name="chcode",
@@ -71,20 +80,39 @@ app = typer.Typer(
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    yolo: bool = typer.Option(
-        False, "--yolo", "-y", help="启用 Yolo 模式（自动批准所有操作）"
-    ),
-    version: bool = typer.Option(False, "--version", "-v", help="显示版本"),
-):
-    """ChCode — 终端 AI 编程助手"""
+        yolo: bool = typer.Option(
+            False, "--yolo", "-y", help="启用 Yolo 模式 / Enable Yolo mode (auto-approve all actions)"
+        ),
+        lang: str = typer.Option(
+            None, "--lang", help="UI 语言 / language (zh | en)"
+        ),
+        version: bool = typer.Option(False, "--version", "-v", help="显示版本 / Show version"),
+    ):
+    """ChCode — 终端 AI 编程助手 / Terminal AI coding assistant"""
     if version:
-        console.print(f"chcode v{_pkg_version('chcode')}")
+        console.print(f"chcode v{_app_version()}")
         raise typer.Exit()
+
+    # 尽早解析 UI 语言：--lang 标志 > 已保存配置 > 系统 locale 自动检测
+    _resolve_language(lang)
 
     if ctx.invoked_subcommand is not None:
         return
 
     asyncio.run(_run_chat(yolo))
+
+
+def _resolve_language(flag: str | None) -> str:
+    """按优先级确定并设置 UI 语言：标志 > chagent.json > locale 自动检测。"""
+    from chcode.config import load_language
+    from chcode.i18n import set_language, detect_locale_language
+
+    if flag:
+        return set_language(flag)
+    saved = load_language()
+    if saved:
+        return set_language(saved)
+    return set_language(detect_locale_language())
 
 
 async def _run_chat(yolo: bool) -> None:
@@ -100,7 +128,7 @@ async def _run_chat(yolo: bool) -> None:
         raise typer.Exit(1)
 
     if not ok:
-        console.print("[red]初始化失败[/red]")
+        console.print(f"[red]{t('cli.init_failed')}[/red]")
         raise typer.Exit(1)
 
     try:
@@ -113,7 +141,7 @@ async def _run_chat(yolo: bool) -> None:
 def config(
     action: str = typer.Argument("edit", help="edit | new | switch"),
 ):
-    """模型配置管理"""
+    """模型配置管理 / Model configuration management"""
     asyncio.run(_run_config(action))
 
 
@@ -127,25 +155,25 @@ async def _run_config(action: str) -> None:
     elif action == "switch":
         await switch_model()
     else:
-        console.print(f"[yellow]未知操作: {action}[/yellow]")
-        console.print("可用操作: new, edit, switch")
+        console.print(f"[yellow]{t('cli.unknown_action', action=action)}[/yellow]")
+        console.print(t("cli.available_actions"))
 
 
 @app.command()
 def homepage():
-    """打开项目主页"""
+    """打开项目主页 / Open project homepage"""
     import webbrowser
 
     from chcode.config import HOMEPAGE_URL
 
-    console.print(f"正在打开: {HOMEPAGE_URL}")
+    console.print(t("cli.opening", url=HOMEPAGE_URL))
     webbrowser.open(HOMEPAGE_URL)
 
 
 @app.command()
 def version():
-    """显示版本"""
-    console.print(f"chcode v{_pkg_version('chcode')}")
+    """显示版本 / Show version"""
+    console.print(f"chcode v{_app_version()}")
 
 
 if __name__ == "__main__":

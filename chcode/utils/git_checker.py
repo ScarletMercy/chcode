@@ -6,6 +6,8 @@ Git可用性检查工具
 """
 import subprocess
 
+from chcode.i18n import t
+
 
 def check_git_availability() -> tuple[bool, str, str|None]:
     """
@@ -24,14 +26,14 @@ def check_git_availability() -> tuple[bool, str, str|None]:
 
         if result.returncode == 0: #  0 表示命令执行成功
             version_info = result.stdout.strip()
-            return True, "Git可用", version_info
+            return True, t("git.available"), version_info
         else: # 非0值表示执行失败
-            error_msg = result.stderr.strip() if result.stderr else "未知错误"
-            return False, f"Git命令执行失败: {error_msg}", None
+            error_msg = result.stderr.strip() if result.stderr else t("git.unknown_error")
+            return False, t("git.cmd_failed", error=error_msg), None
 
     except FileNotFoundError:
-        return False, "未找到Git命令，请确保Git已安装并添加到PATH环境变量中", None
+        return False, t("git.not_found"), None
     except subprocess.TimeoutExpired:
-        return False, "Git命令执行超时", None
+        return False, t("git.timeout"), None
     except Exception as e:
-        return False, f"检查Git时发生异常: {str(e)}", None
+        return False, t("git.exception", error=str(e)), None
