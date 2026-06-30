@@ -1646,8 +1646,7 @@ class TestSkillManagerDescTruncation:
         from unittest.mock import MagicMock
 
         # Create a mock session with long skill description
-        session = MagicMock()
-        session.workplace_path = MagicMock()
+        session = Path("/tmp")
 
         # Mock scan_all_skills to return a skill with long description
         long_desc = "a" * 100  # 100 character description
@@ -1674,8 +1673,7 @@ class TestSkillManagerSkillNotFound:
         from chcode.utils.skill_manager import _list_skills
         from unittest.mock import MagicMock
 
-        session = MagicMock()
-        session.workplace_path = MagicMock()
+        session = Path("/tmp")
 
         with patch("chcode.utils.skill_manager.scan_all_skills") as mock_scan:
             mock_scan.return_value = [{
@@ -1712,7 +1710,7 @@ class TestSkillManagerDeleteCancelled:
         skill = {"name": "test", "path": "/tmp/test"}
 
         with patch("chcode.utils.skill_manager.confirm", AsyncMock(return_value=False)):
-            result = await _delete_skill(skill, MagicMock())
+            result = await _delete_skill(skill)
             # Should return early without deleting
             assert result is None
 
@@ -1725,8 +1723,7 @@ class TestSkillManagerInstallCancelled:
         from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock
 
-        session = MagicMock()
-        session.workplace_path = MagicMock()
+        session = Path("/tmp")
 
         with patch("chcode.utils.skill_manager.text", AsyncMock(return_value="")):
             result = await _install_skill(session)
@@ -1742,8 +1739,7 @@ class TestSkillManagerFileNotExists:
         from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock
 
-        session = MagicMock()
-        session.workplace_path = MagicMock()
+        session = Path("/tmp")
 
         with patch("chcode.utils.skill_manager.text", AsyncMock(return_value="/nonexistent/file.zip")):
             with patch("pathlib.Path.exists", return_value=False):
@@ -1761,10 +1757,8 @@ class TestSkillManagerInstallFails:
         from unittest.mock import MagicMock, patch
         import tempfile
 
-        session = MagicMock()
-        session.workplace_path = tempfile.mkdtemp()
+        session = Path(tempfile.mkdtemp())
 
-        # Create a dummy file
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
             f.write(b"not a real zip")
             temp_path = f.name
@@ -2467,7 +2461,7 @@ class TestSkillManagerDeleteSelectReturns:
 
         with patch("chcode.utils.skill_manager.confirm", AsyncMock(return_value=True)), \
              patch("chcode.utils.skill_manager.select", AsyncMock(return_value=None)):
-            result = await _delete_skill(skill, MagicMock())
+            result = await _delete_skill(skill)
             # Should return early after select
             assert result is None
 
@@ -2481,8 +2475,7 @@ class TestSkillManagerInstallLocationNone:
         from unittest.mock import MagicMock, patch
         import tempfile
 
-        session = MagicMock()
-        session.workplace_path = tempfile.mkdtemp()
+        session = Path(tempfile.mkdtemp())
 
         zip_path = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
         zip_path.write(b"PK")  # Minimal zip
@@ -2783,8 +2776,7 @@ class TestSkillManagerInstallFailurePrint:
         from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock, patch, AsyncMock
 
-        session = MagicMock()
-        session.workplace_path = tmp_path
+        session = tmp_path
 
         zip_path = tmp_path / "test.zip"
         zip_path.write_bytes(b"PK")

@@ -14,10 +14,9 @@ from chcode.utils.skill_manager import (
 
 @pytest.fixture
 def mock_session(tmp_path):
-    s = MagicMock()
-    s.workplace_path = tmp_path / "workplace"
-    s.workplace_path.mkdir(parents=True, exist_ok=True)
-    return s
+    workplace = tmp_path / "workplace"
+    workplace.mkdir(parents=True, exist_ok=True)
+    return workplace
 
 
 class TestManageSkills:
@@ -90,7 +89,7 @@ class TestDeleteSkill:
     async def test_user_cancels(self, tmp_path):
         skill = {"name": "s1", "path": str(tmp_path)}
         with patch("chcode.utils.skill_manager.confirm", new_callable=AsyncMock, return_value=False) as mock_confirm:
-            await _delete_skill(skill, MagicMock())
+            await _delete_skill(skill)
             mock_confirm.assert_called_once()
 
     async def test_success_manager(self, tmp_path):
@@ -98,13 +97,13 @@ class TestDeleteSkill:
         d.mkdir()
         skill = {"name": "s1", "path": str(d)}
         with patch("chcode.utils.skill_manager.confirm", new_callable=AsyncMock, return_value=True):
-            await _delete_skill(skill, MagicMock())
+            await _delete_skill(skill)
         assert not d.exists()
 
     async def test_failure(self, tmp_path):
         skill = {"name": "s1", "path": str(tmp_path / "nope")}
         with patch("chcode.utils.skill_manager.confirm", new_callable=AsyncMock, return_value=True) as mock_confirm:
-            await _delete_skill(skill, MagicMock())
+            await _delete_skill(skill)
             mock_confirm.assert_called_once()
 
 
@@ -222,7 +221,7 @@ class TestDeleteSkillException:
         with patch("chcode.utils.skill_manager.confirm", new_callable=AsyncMock, return_value=True) as mock_confirm, \
              patch("shutil.rmtree", side_effect=PermissionError("Access denied")):
             # Should handle PermissionError gracefully
-            await _delete_skill(skill, MagicMock())
+            await _delete_skill(skill)
             # Verify confirm was called and directory still exists (rmtree failed)
             mock_confirm.assert_called_once()
             assert d.exists(), "Directory should still exist because rmtree failed"

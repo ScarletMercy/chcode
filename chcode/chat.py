@@ -723,10 +723,7 @@ class ChatREPL:
         console.print()
 
     async def _cmd_skill(self, _arg: str) -> None:
-        if not self.session_mgr:
-            render_error(t("chat.skill.init_first"))
-            return
-        await manage_skills(self.session_mgr)
+        await manage_skills(self.workplace_path)
 
     async def _cmd_history(self, _arg: str) -> None:
 
@@ -968,18 +965,20 @@ class ChatREPL:
         from chcode.vision_config import configure_vision_interactive  # pragma: no cover
         await configure_vision_interactive()  # pragma: no cover
 
+    # Tavily搜索配置
     async def _cmd_search(self, _arg: str) -> None:
         from chcode.config import load_tavily_api_key, save_tavily_api_key
         from chcode.utils.tools import update_tavily_api_key
 
-        current = load_tavily_api_key()
+        current = load_tavily_api_key() # 加载当前tavily api key
         masked = (
             mask_api_key(current)
             if current and len(current) > 10
             else (current or t("chat.search.unset"))
-        )
-        render_info(t("chat.search.current_key", key=masked))
+        ) # mask api key
+        render_info(t("chat.search.current_key", key=masked)) # 显示mask后的api key
 
+        # 变量化选项标签
         back_label = t("common.back")
         configure_label = t("chat.search.configure")
         clear_label = t("chat.search.clear")
@@ -995,12 +994,13 @@ class ChatREPL:
 
         new_key = await text(t("chat.search.input_key"))
         if new_key:
-            save_tavily_api_key(new_key)
-            update_tavily_api_key(new_key)
+            save_tavily_api_key(new_key)  # 持久化到配置文件
+            update_tavily_api_key(new_key) # 重建运行时全局 TavilyClient
             render_success(t("chat.search.saved"))
         else:
             render_warning(t("chat.search.cancelled"))
 
+    # Common/Yolo 模式切换
     async def _cmd_mode(self, _arg: str) -> None:
         action = await select(
             t("chat.mode.select"),
@@ -1011,10 +1011,11 @@ class ChatREPL:
         self.yolo = "Yolo" in action
         from chcode.agent_setup import update_hitl_config
 
-        update_hitl_config(self.yolo)
+        update_hitl_config(self.yolo) # 更新 人在闭环 中间配置
         mode_str = "Yolo" if self.yolo else "Common"
         render_success(t("chat.mode.switched", mode=mode_str))
 
+    # 切换工作目录
     async def _cmd_workdir(self, _arg: str) -> None:
         saved = load_workplace()
         choices = [str(saved)] if saved else []

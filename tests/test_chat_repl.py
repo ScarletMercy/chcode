@@ -679,24 +679,14 @@ class TestChatREPLSlashCommands:
                 assert mock_print.called  # Console should have been used
 
     @pytest.mark.asyncio
-    async def test_cmd_skill_no_session_mgr(self):
+    async def test_cmd_skill_calls_manage_skills_with_workplace_path(self):
         repl = ChatREPL()
-        repl.session_mgr = None
-
-        with patch("chcode.chat.render_error") as mock_err:
-            await repl._cmd_skill("")
-
-            mock_err.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cmd_skill_with_session_mgr(self):
-        repl = ChatREPL()
-        repl.session_mgr = Mock()
+        repl.workplace_path = Path("/tmp")
 
         with patch("chcode.chat.manage_skills", new_callable=AsyncMock) as mock_ms:
             await repl._cmd_skill("")
 
-            mock_ms.assert_called_once_with(repl.session_mgr)
+            mock_ms.assert_called_once_with(repl.workplace_path)
 
     @pytest.mark.asyncio
     async def test_cmd_history_no_session(self):

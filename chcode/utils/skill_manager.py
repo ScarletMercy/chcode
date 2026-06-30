@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -20,11 +19,8 @@ from chcode.utils.skill_loader import (
     install_skill,
 )
 
-if TYPE_CHECKING:
-    from chcode.utils.session import SessionManager
 
-
-async def manage_skills(session: SessionManager) -> None:
+async def manage_skills(workplace_path: Path) -> None:
     """技能管理主菜单"""
     view_label = t("skill.view_installed")
     install_label = t("skill.install_new")
@@ -38,9 +34,9 @@ async def manage_skills(session: SessionManager) -> None:
             return
 
         if action == view_label:
-            await _list_skills(session)
+            await _list_skills(workplace_path)
         elif action == install_label:
-            await _install_skill(session)
+            await _install_skill(workplace_path)
 
 
 def _skill_type_label(type_value: str) -> str:
@@ -49,9 +45,9 @@ def _skill_type_label(type_value: str) -> str:
     return translated if translated != f"skill.type.{type_value}" else type_value
 
 
-async def _list_skills(session: SessionManager) -> None:
+async def _list_skills(workplace_path: Path) -> None:
     """列出所有已安装技能，支持下拉选择操作"""
-    skills = scan_all_skills(session.workplace_path)
+    skills = scan_all_skills(workplace_path)
     if not skills:
         console.print(f"[yellow]{t('skill.none_installed')}[/yellow]")
         return
@@ -94,7 +90,7 @@ async def _list_skills(session: SessionManager) -> None:
     if op == view_detail_label:
         await _show_skill_detail(skill)
     elif op == delete_label:
-        await _delete_skill(skill, session)
+        await _delete_skill(skill)
     elif op == back_label:
         return
 
@@ -117,7 +113,7 @@ async def _show_skill_detail(skill: dict) -> None:
     )
 
 
-async def _delete_skill(skill: dict, session: SessionManager) -> None:
+async def _delete_skill(skill: dict) -> None:
     """删除技能"""
     ok = await confirm(
         t("skill.delete_confirm", name=skill["name"]), default=False
@@ -135,7 +131,7 @@ async def _delete_skill(skill: dict, session: SessionManager) -> None:
         console.print(f"[red]{t('skill.delete_failed', error=e)}[/red]")
 
 
-async def _install_skill(session: SessionManager) -> None:
+async def _install_skill(workplace_path: Path) -> None:
     """安装技能"""
     file_path = await text(t("skill.input_archive_path"))
     if not file_path:
@@ -164,7 +160,7 @@ async def _install_skill(session: SessionManager) -> None:
         return
 
     if choices.index(location) == 0:
-        install_path = session.workplace_path / ".chat" / "skills"
+        install_path = workplace_path / ".chat" / "skills"
     else:
         install_path = Path.home() / ".chat" / "skills"
 
