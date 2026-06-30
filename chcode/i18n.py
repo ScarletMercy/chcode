@@ -1,7 +1,7 @@
 """
 国际化（i18n）核心 — 轻量字典方案
 
-提供 t(key) 翻译入口与语言管理。文案存放在 chcode/strings/{zh,en}.py。
+提供 t(key) 翻译入口与语言管理。文案存放在 chcode/strings.py（每个 key 内联 zh/en）。
 回退链：当前语言 → 中文 → key 本身（永不抛异常）。
 """
 

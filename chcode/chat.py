@@ -214,7 +214,7 @@ def _get_group_display(group: list) -> str:
             if len(text_content) > 60:
                 content += "..."
             return content
-    return t("chat.empty_group")
+    return t("chat.empty_group")  # zh：（空消息组）/ en: (empty message group)
 
 
 # 收集即将被压缩的消息的消息id组
