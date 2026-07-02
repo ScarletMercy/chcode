@@ -100,3 +100,15 @@ class TestRenderFunctions:
         with patch("chcode.display.console", mock_console):
             display.render_welcome()
             assert mock_console.print.call_count >= 2
+            # 校验 Panel 内容：含 ChCode 与翻译标题，且 "ChCode — " 前缀不重复
+            from rich.panel import Panel
+
+            panel = next(
+                (c.args[0] for c in mock_console.print.call_args_list if c.args and isinstance(c.args[0], Panel)),
+                None,
+            )
+            assert panel is not None, "should print a Panel"
+            content = panel.renderable
+            assert "ChCode" in content
+            assert "终端 AI 编程助手" in content  # 默认中文
+            assert "ChCode — ChCode" not in content  # 防止前缀重复

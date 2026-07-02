@@ -268,7 +268,7 @@ def render_welcome() -> None:
     console.print()
     console.print(
         Panel(
-            "[bold]ChCode[/bold] — Terminal-based AI Coding Agent\n"
+            "[bold]ChCode[/bold] — " + t("display.welcome_title") + "\n"
             + t("display.welcome_hint"),
             border_style="cyan",
             padding=(1, 2),

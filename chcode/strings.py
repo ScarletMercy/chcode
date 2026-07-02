@@ -1087,6 +1087,10 @@ MESSAGES = {
         "en": "Agent {type} main model failed, switched to fallback model, please retry",
     },
     # ─── display 欢迎页 / spinner ───
+    "display.welcome_title": {
+        "zh": "终端 AI 编程助手",
+        "en": "Terminal-based AI Coding Agent",
+    },
     "display.welcome_hint": {
         "zh": "Enter 发送 | Ctrl+Enter 换行 | /help 查看命令\nCtrl+C 中断生成 | Tab 切换模式 | /quit 退出",
         "en": "Enter to send | Ctrl+Enter for newline | /help for commands\nCtrl+C to interrupt | Tab to toggle mode | /quit to exit",
@@ -1229,6 +1233,63 @@ MESSAGES = {
     "provider.qwen": {
         "zh": "通义千问",
         "en": "Qwen",
+    },
+    # ─── 工具描述（/tools 命令显示）───
+    "tool_desc.load_skill": {
+        "zh": "加载技能的详细指令。当用户请求匹配某个技能描述时使用。",
+        "en": "Load a skill's detailed instructions. Use when the user's request matches a skill description.",
+    },
+    "tool_desc.bash": {
+        "zh": "执行 Shell 命令（自动检测平台、跟踪工作目录）。",
+        "en": "Execute a shell command with automatic platform detection and CWD tracking.",
+    },
+    "tool_desc.read_file": {
+        "zh": "读取文件内容。",
+        "en": "Read the contents of a file.",
+    },
+    "tool_desc.write_file": {
+        "zh": "写入内容到文件。",
+        "en": "Write content to a file.",
+    },
+    "tool_desc.glob": {
+        "zh": "按 glob 模式查找文件。",
+        "en": "Find files matching a glob pattern.",
+    },
+    "tool_desc.grep": {
+        "zh": "在文件中搜索正则表达式模式。",
+        "en": "Search for a pattern in files.",
+    },
+    "tool_desc.edit": {
+        "zh": "通过替换文本编辑文件。",
+        "en": "Edit a file by replacing text.",
+    },
+    "tool_desc.list_dir": {
+        "zh": "列出目录内容。",
+        "en": "List contents of a directory.",
+    },
+    "tool_desc.web_search": {
+        "zh": "执行网络搜索。",
+        "en": "Run a web search.",
+    },
+    "tool_desc.web_fetch": {
+        "zh": "从指定 URL 获取内容并转换为文本。",
+        "en": "Fetch content from a specified URL and convert it to text.",
+    },
+    "tool_desc.ask_user": {
+        "zh": "向用户提出一个或多个交互式问题。",
+        "en": "Ask the user one or more questions interactively with predefined options.",
+    },
+    "tool_desc.agent": {
+        "zh": "启动子代理自主执行任务。",
+        "en": "Launch a sub-agent to perform a task autonomously.",
+    },
+    "tool_desc.todo_write": {
+        "zh": "创建和管理结构化的任务列表。",
+        "en": "Create and manage a structured task list for the current coding session.",
+    },
+    "tool_desc.vision": {
+        "zh": "使用视觉模型分析图片或视频。",
+        "en": "Analyze an image or video using a vision model.",
     },
 }
 

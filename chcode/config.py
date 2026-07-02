@@ -21,10 +21,10 @@ from chcode.prompts import select, confirm, model_config_form, text
 from chcode.utils.json_utils import CachedJsonFile
 from chcode.utils.text_utils import mask_api_key
 
+HOMEPAGE_URL = "https://github.com/ScarletMercy/chcode" # 项目github地址
 CONFIG_DIR = Path.home() / ".chat"
 MODEL_JSON = CONFIG_DIR / "model.json"
 SETTING_JSON = CONFIG_DIR / "chagent.json"
-HOMEPAGE_URL = "https://github.com/ScarletMercy/chcode"
 
 def _log_model_json_error(e: Exception, path: Path) -> None:
     console.print(f"[red]{t('config.load_failed', path=path, e=e)}[/red]")
@@ -34,11 +34,6 @@ _model_json = CachedJsonFile(MODEL_JSON, ensure_dir=True, on_error=_log_model_js
 
 
 ENV_TO_CONFIG: dict[str, dict[str, str | list[str]]] = {
-    # "ZAI_API_KEY": {
-    #     "name": "智谱 GLM Coding Plan",
-    #     "base_url": "https://open.bigmodel.cn/api/coding/paas/v4 ",
-    #     "models": ["glm-4.7", "glm-5","glm-5-turbo","glm-5.1"],
-    # },  # 智谱官方coding plan暂不支持本编程工具
     "OPENAI_API_KEY": {
         "name": "OpenAI",
         "base_url": "https://api.openai.com/v1",
@@ -59,11 +54,6 @@ ENV_TO_CONFIG: dict[str, dict[str, str | list[str]]] = {
         "base_url":"https://api.kimi.com/coding/v1",
         "models":["kimi-for-coding"]
     }
-    # "DASHSCOPE_API_KEY": {
-    #     "name": "通义千问",
-    #     "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    #     "models": ["qwen3.5-plus", "qwen-turbo"],
-    # },
 }
 
 # 确保.chat配置目录存在

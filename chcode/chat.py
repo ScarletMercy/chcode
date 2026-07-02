@@ -77,6 +77,7 @@ from chcode.utils.git_checker import check_git_availability
 from chcode.utils.git_manager import GitManager
 from chcode.utils.modelscope_ratelimit import get_ratelimit, is_modelscope_model
 
+
 # ─── 命令自动补全 ──────────────────────────────────────
 
 SLASH_COMMANDS = {
@@ -715,7 +716,10 @@ class ChatREPL:
             console.print(f"[dim]{t('chat.tools.native_vision')}[/dim]")
             console.print()
         for tool in ALL_TOOLS:
-            desc = (tool.description or "").split("\n")[0]  # 如果有工具描述，则只取第一行的
+            # 优先取当前语言的翻译描述，缺失时回退到英文 docstring 首行
+            _desc_key = f"tool_desc.{tool.name}"
+            _translated = t(_desc_key)
+            desc = _translated if _translated != _desc_key else (tool.description or "").split("\n")[0]
             is_disabled = tool.name == "vision" and native_vision
             style = "dim" if is_disabled else "cyan"  # 样式；dim：灰色（禁用时），cyan：青色（未禁用时）
             suffix = t("chat.tools.disabled") if is_disabled else ""  # 后缀
@@ -875,7 +879,7 @@ class ChatREPL:
                 ##-----------------------第二层处理 （提取包含 "summary" 的 JSON 对象（模型可能在 JSON 前输出思考内容））-------------------------------
                 # 针对"简单情况"——LLM 在 JSON 前说了一堆废话（如"好的，压缩后的内容如下："）——用非贪婪匹配从文本中抠出第一个包含 "summary" 键的 扁平 JSON 对象。
                 json_match = re.search(r'\{[^{}]*"summary"[^{}]*\}', content)  #
-                """ 
+                r"""
                 正则表达式分解:
                 \{：匹配左花括号 {（转义字符，因为 { 在正则中有特殊含义）。
                 [^{}]*：匹配任意数量（包括零个）非花括号的字符（即 { 和 } 以外的字符）。
@@ -1017,37 +1021,38 @@ class ChatREPL:
 
     # 切换工作目录
     async def _cmd_workdir(self, _arg: str) -> None:
-        saved = load_workplace()
-        choices = [str(saved)] if saved else []
+        saved = load_workplace() # 加载上次工作目录路径
+        choices = [str(saved)] if saved else [] # 将其当做旧的工作目录选项
 
-        result = await select_or_custom(
+        result = await select_or_custom(  # 选择上一次的工作目录或 输入新的 工作目录路径
             t("chat.workdir.select"),
             choices,
             custom_label=t("chat.workdir.custom"),
             custom_prompt=t("chat.workdir.custom_prompt"),
         )
-        if not result:
+        if not result: # 不选择则直接退出此命令
             return
 
-        new_path = Path(result)
-        if not new_path.exists():
+        new_path = Path(result) # 将选择的 工作目录路径 转化 成 Path对象
+        if not new_path.exists(): # 判断路径是否存在
             render_error(t("chat.workdir.not_exist"))
             return
 
-        self.workplace_path = new_path
-        self._skill_loader = None  # 工作目录变了，失效缓存
-        os.chdir(self.workplace_path)
-        save_workplace(self.workplace_path)
+        self.workplace_path = new_path # 将实例路径 切换到 新选择的路径
+        self._skill_loader = None  # 工作目录变了，失效Skill路径缓存
+        os.chdir(self.workplace_path) # cd <new-path>
+        save_workplace(self.workplace_path) # 缓存当前的新的工作目录路径，作为下次可快捷选择的路径
 
-        # 重建子目录
+        # 重建子目录（skill和会话 等目录）
         self._ensure_chat_dir(self.workplace_path)
 
-        # 关闭旧 checkpointer 连接，重建会话和 agent
+        # 关闭旧 checkpointer（会话） 连接，重建会话和 agent
         await self._rebuild_agent(rebuild_session=True)
 
-        await self._init_git()
+        await self._init_git() # git init
         render_success(t("chat.workdir.current", path=self.workplace_path))
 
+    # 打开项目github主页
     async def _cmd_homepage(self, _arg: str) -> None:
         import webbrowser
 
@@ -1056,6 +1061,7 @@ class ChatREPL:
         render_success(t("chat.opening", url=HOMEPAGE_URL))
         webbrowser.open(HOMEPAGE_URL)
 
+    # 中英切换
     async def _cmd_lang(self, _arg: str) -> None:
         """运行时切换 UI 语言并持久化。"""
         from chcode.i18n import set_language, get_language
@@ -1084,12 +1090,12 @@ class ChatREPL:
     async def _cmd_help(self, _arg: str) -> None:
         from rich.table import Table
 
-        table = Table(title=t("chat.help.title"))
-        table.add_column(t("chat.help.col_cmd"), style="cyan")
-        table.add_column(t("chat.help.col_desc"))
-        for cmd, desc_key in SLASH_COMMANDS.items():
+        table = Table(title=t("chat.help.title")) # 创建表格实例
+        table.add_column(t("chat.help.col_cmd"), style="cyan") # 添加命令列
+        table.add_column(t("chat.help.col_desc")) # 添加命令描述列
+        for cmd, desc_key in SLASH_COMMANDS.items(): # 添加 每个命令的 命令名 和 命令描述
             table.add_row(cmd, t(desc_key))
-        console.print(table)
+        console.print(table) # 打印出来
 
     async def _cmd_quit(self, _arg: str) -> None:
         raise EOFError()
@@ -1098,18 +1104,19 @@ class ChatREPL:
 
     async def _cmd_messages(self, _arg: str) -> None:
         """管理历史消息：编辑、分叉、删除"""
-        if not self.agent or not self.session_mgr:
+        if not self.agent or not self.session_mgr: # 检查agent实例和 会话管理器 是否存在
             render_error(t("chat.messages.no_agent"))
             return
 
-        state = await self.agent.aget_state(self.session_mgr.config)
-        messages: list[BaseMessage] = state.values.get("messages", [])
+        state = await self.agent.aget_state(self.session_mgr.config) # 取出 agent 当前 state
+        messages: list[BaseMessage] = state.values.get("messages", []) # 从state中获取消息列表
 
-        groups = _group_messages_by_turn(messages)
-        if not groups:
+        groups = _group_messages_by_turn(messages) # 按照 从某个HumanMessage到下一个HumanMessage的上一个消息为一组 来对消息进行分组
+        if not groups: # 消息列表中没有消息
             render_warning(t("chat.messages.none"))
             return
 
+        # 变量化选项标签
         edit_label = t("chat.messages.edit")
         fork_label = t("chat.messages.fork")
         delete_label = t("chat.messages.delete")
@@ -1122,26 +1129,26 @@ class ChatREPL:
 
             # 构建选项列表（带返回选项）
             options = []
-            for idx, group in enumerate(groups):
-                display = _get_group_display(group)
-                options.append(f"[{idx + 1}] {display}")
+            for idx, group in enumerate(groups): # 遍历消息分组
+                display = _get_group_display(group) # 获取消息组中第一个HumanMessage的前60个字符
+                options.append(f"[{idx + 1}] {display}") # [消息组索引] 第一条HumanMessage消息的前60个字符
 
             if action == delete_label:
-                # 多选
+                # 多选 消息组
                 chosen_list = await checkbox(
                     t("chat.messages.select_delete"), options
                 )
                 if not chosen_list:
-                    continue  # 返回操作选择
+                    continue  # 没有选择消息就回车 则 返回操作选择
 
                 ok = await confirm(
                     t("chat.messages.delete_confirm", count=len(chosen_list)), default=False
-                )
+                ) # 是否确认删除
                 if not ok:
                     continue
 
-                delete_ids = []
-                for chosen in chosen_list:
+                delete_ids = [] # 初始化 要被删除的 消息 的 消息id 的列表
+                for chosen in chosen_list: # 遍历消息组选项
                     try:
                         sel_idx = int(chosen.split("]")[0].replace("[", "")) - 1
                         if 0 <= sel_idx < len(groups):

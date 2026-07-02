@@ -1122,12 +1122,13 @@ class TestCmdToolsDisplayList:
 
                 # console.print is called multiple times: header, empty line, tool line, empty line
                 assert mock_print.call_count >= 3
-                # Check the tool print call contains the name and first line of description
+                # Check the tool print call contains the name and description (from i18n translation)
                 tool_calls = [c for c in mock_print.call_args_list]
                 found_tool = False
                 for call in tool_calls:
                     args_str = str(call)
-                    if "read_file" in args_str and "Read file contents" in args_str:
+                    # 默认语言为中文，描述从 i18n 翻译字典获取
+                    if "read_file" in args_str and "读取文件" in args_str:
                         found_tool = True
                         break
                 assert found_tool, "Tool name and description should be printed"
