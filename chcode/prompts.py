@@ -123,11 +123,11 @@ MODELSCOPE_PRESETS = [
 ]
 
 API_KEY_ENV_VARS = [
-    ("BIGMODEL_API_KEY", "provider.bigmodel"),
+    ("BIGMODEL_API_KEY", "BigModel (GLM)"),
     ("ModelScopeToken", "ModelScope"),
     ("OPENAI_API_KEY", "OpenAI"),
     ("DEEPSEEK_API_KEY", "DeepSeek"),
-    ("DASHSCOPE_API_KEY", "provider.qwen"),
+    ("DASHSCOPE_API_KEY", "DashScope (Qwen)"),
     ("ANTHROPIC_API_KEY", "Anthropic Claude"),
 ]
 

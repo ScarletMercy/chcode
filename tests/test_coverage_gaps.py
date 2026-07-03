@@ -1645,8 +1645,7 @@ class TestSkillManagerDescTruncation:
         from chcode.utils.skill_manager import _list_skills
         from unittest.mock import MagicMock
 
-        # Create a mock session with long skill description
-        session = Path("/tmp")
+        workplace_path = Path("/tmp")
 
         # Mock scan_all_skills to return a skill with long description
         long_desc = "a" * 100  # 100 character description
@@ -1660,7 +1659,7 @@ class TestSkillManagerDescTruncation:
 
             # Mock select to return "返回" to exit early
             with patch("chcode.utils.skill_manager.select", AsyncMock(return_value="返回")):
-                result = await _list_skills(session)
+                result = await _list_skills(workplace_path)
                 # Should complete without error
                 assert result is None
 
@@ -1673,7 +1672,7 @@ class TestSkillManagerSkillNotFound:
         from chcode.utils.skill_manager import _list_skills
         from unittest.mock import MagicMock
 
-        session = Path("/tmp")
+        workplace_path = Path("/tmp")
 
         with patch("chcode.utils.skill_manager.scan_all_skills") as mock_scan:
             mock_scan.return_value = [{
@@ -1694,7 +1693,7 @@ class TestSkillManagerSkillNotFound:
                 return "返回"
 
             with patch("chcode.utils.skill_manager.select", side_effect=mock_select):
-                result = await _list_skills(session)
+                result = await _list_skills(workplace_path)
                 # Should handle not-found case gracefully
                 assert result is None
 
@@ -1723,10 +1722,10 @@ class TestSkillManagerInstallCancelled:
         from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock
 
-        session = Path("/tmp")
+        workplace_path = Path("/tmp")
 
         with patch("chcode.utils.skill_manager.text", AsyncMock(return_value="")):
-            result = await _install_skill(session)
+            result = await _install_skill(workplace_path)
             # Should return early
             assert result is None
 
@@ -1739,11 +1738,11 @@ class TestSkillManagerFileNotExists:
         from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock
 
-        session = Path("/tmp")
+        workplace_path = Path("/tmp")
 
         with patch("chcode.utils.skill_manager.text", AsyncMock(return_value="/nonexistent/file.zip")):
             with patch("pathlib.Path.exists", return_value=False):
-                result = await _install_skill(session)
+                result = await _install_skill(workplace_path)
                 # Should handle non-existent file gracefully
                 assert result is None
 
@@ -1757,7 +1756,7 @@ class TestSkillManagerInstallFails:
         from unittest.mock import MagicMock, patch
         import tempfile
 
-        session = Path(tempfile.mkdtemp())
+        workplace_path = Path(tempfile.mkdtemp())
 
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
             f.write(b"not a real zip")
@@ -1768,7 +1767,7 @@ class TestSkillManagerInstallFails:
                 with patch("pathlib.Path.exists", return_value=True):
                     with patch("chcode.utils.skill_manager.select", AsyncMock(return_value="项目级")):
                         with patch("chcode.utils.skill_manager.validate_skill_package", return_value=None):
-                            result = await _install_skill(session)
+                            result = await _install_skill(workplace_path)
                             # Should handle installation failure gracefully
                             assert result is None
         finally:
@@ -2475,7 +2474,7 @@ class TestSkillManagerInstallLocationNone:
         from unittest.mock import MagicMock, patch
         import tempfile
 
-        session = Path(tempfile.mkdtemp())
+        workplace_path = Path(tempfile.mkdtemp())
 
         zip_path = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
         zip_path.write(b"PK")  # Minimal zip
@@ -2486,7 +2485,7 @@ class TestSkillManagerInstallLocationNone:
                  patch("pathlib.Path.exists", return_value=True), \
                  patch("chcode.utils.skill_manager.validate_skill_package", return_value={"name": "test"}), \
                  patch("chcode.utils.skill_manager.select", AsyncMock(return_value=None)):
-                result = await _install_skill(session)
+                result = await _install_skill(workplace_path)
                 # Should return early
                 assert result is None
         finally:
@@ -2776,7 +2775,7 @@ class TestSkillManagerInstallFailurePrint:
         from chcode.utils.skill_manager import _install_skill
         from unittest.mock import MagicMock, patch, AsyncMock
 
-        session = tmp_path
+        workplace_path = tmp_path
 
         zip_path = tmp_path / "test.zip"
         zip_path.write_bytes(b"PK")
@@ -2786,7 +2785,7 @@ class TestSkillManagerInstallFailurePrint:
              patch("chcode.utils.skill_manager.validate_skill_package", return_value={"name": "test"}), \
              patch("chcode.utils.skill_manager.select", AsyncMock(return_value="项目级 (当前工作目录)")), \
              patch("chcode.utils.skill_manager.install_skill", return_value=False):
-            result = await _install_skill(session)
+            result = await _install_skill(workplace_path)
             # Should print failure message and complete
             assert result is None
 

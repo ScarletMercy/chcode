@@ -574,10 +574,6 @@ MESSAGES = {
         "zh": "技能管理",
         "en": "Skill management",
     },
-    "chat.skill.init_first": {
-        "zh": "请先初始化工作目录",
-        "en": "Please initialize the workdir first",
-    },
     # ─── /tools ───
     "cmd.tools": {
         "zh": "显示内置工具",
@@ -1225,14 +1221,6 @@ MESSAGES = {
     "modelscope.input_key": {
         "zh": "输入 ModelScope API Key: ",
         "en": "Enter ModelScope API Key: ",
-    },
-    "provider.bigmodel": {
-        "zh": "智谱 GLM",
-        "en": "Zhipu GLM",
-    },
-    "provider.qwen": {
-        "zh": "通义千问",
-        "en": "Qwen",
     },
     # ─── 工具描述（/tools 命令显示）───
     "tool_desc.load_skill": {

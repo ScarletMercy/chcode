@@ -13,50 +13,50 @@ from chcode.utils.skill_manager import (
 
 
 @pytest.fixture
-def mock_session(tmp_path):
+def mock_workplace_path(tmp_path):
     workplace = tmp_path / "workplace"
     workplace.mkdir(parents=True, exist_ok=True)
     return workplace
 
 
 class TestManageSkills:
-    async def test_return_early(self, mock_session):
+    async def test_return_early(self, mock_workplace_path):
         with patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, return_value="返回"):
-            result = await manage_skills(mock_session)
+            result = await manage_skills(mock_workplace_path)
             assert result is None  # manage_skills returns None when returning early
 
-    async def test_view_skills_branch(self, mock_session):
+    async def test_view_skills_branch(self, mock_workplace_path):
         with patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, side_effect=["查看已安装技能", "返回"]), \
              patch("chcode.utils.skill_manager._list_skills", new_callable=AsyncMock) as mock_list:
-            await manage_skills(mock_session)
+            await manage_skills(mock_workplace_path)
             assert mock_list.called  # _list_skills should be called
 
-    async def test_install_skill_branch(self, mock_session):
+    async def test_install_skill_branch(self, mock_workplace_path):
         with patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, side_effect=["安装新技能", "返回"]), \
              patch("chcode.utils.skill_manager._install_skill", new_callable=AsyncMock) as mock_install:
-            await manage_skills(mock_session)
+            await manage_skills(mock_workplace_path)
             assert mock_install.called  # _install_skill should be called
 
-    async def test_none_returns(self, mock_session):
+    async def test_none_returns(self, mock_workplace_path):
         with patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, return_value=None):
-            result = await manage_skills(mock_session)
+            result = await manage_skills(mock_workplace_path)
             assert result is None  # manage_skills returns None when select returns None
 
 
 class TestListSkills:
-    async def test_empty_skills(self, mock_session):
+    async def test_empty_skills(self, mock_workplace_path):
         with patch("chcode.utils.skill_manager.scan_all_skills", return_value=[]):
-            result = await _list_skills(mock_session)
+            result = await _list_skills(mock_workplace_path)
             assert result is None  # _list_skills returns None when no skills
 
-    async def test_skills_with_operations(self, mock_session):
+    async def test_skills_with_operations(self, mock_workplace_path):
         skills = [{"name": "s1", "type": "project", "description": "desc", "path": "/p"}]
         with patch("chcode.utils.skill_manager.scan_all_skills", return_value=skills), \
              patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, return_value="返回") as mock_sel:
-            await _list_skills(mock_session)
+            await _list_skills(mock_workplace_path)
             assert mock_sel.called  # select should be called when skills exist
 
-    async def test_view_detail(self, mock_session, tmp_path):
+    async def test_view_detail(self, mock_workplace_path, tmp_path):
         skill_dir = tmp_path / "skill1"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text("# My Skill\nInstructions here.", encoding="utf-8")
@@ -64,7 +64,7 @@ class TestListSkills:
         with patch("chcode.utils.skill_manager.scan_all_skills", return_value=skills), \
              patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, side_effect=["s1 (project)", "查看详情"]) as mock_sel, \
              patch("chcode.utils.skill_manager._show_skill_detail", new_callable=AsyncMock) as mock_show:
-            await _list_skills(mock_session)
+            await _list_skills(mock_workplace_path)
             assert mock_show.called  # _show_skill_detail should be called
 
 
@@ -108,25 +108,25 @@ class TestDeleteSkill:
 
 
 class TestInstallSkill:
-    async def test_empty_path(self, mock_session):
+    async def test_empty_path(self, mock_workplace_path):
         with patch("chcode.utils.skill_manager.text", new_callable=AsyncMock, return_value=""):
-            result = await _install_skill(mock_session)
+            result = await _install_skill(mock_workplace_path)
             assert result is None  # Should return None when path is empty
 
-    async def test_file_not_exists_for_install(self, mock_session):
+    async def test_file_not_exists_for_install(self, mock_workplace_path):
         with patch("chcode.utils.skill_manager.text", new_callable=AsyncMock, return_value="/nonexistent.zip"):
-            result = await _install_skill(mock_session)
+            result = await _install_skill(mock_workplace_path)
             assert result is None  # Should return None when file doesn't exist
 
-    async def test_invalid_package_manager(self, mock_session, tmp_path):
+    async def test_invalid_package_manager(self, mock_workplace_path, tmp_path):
         bad_zip = tmp_path / "bad.zip"
         bad_zip.write_bytes(b"not a real zip")
         with patch("chcode.utils.skill_manager.text", new_callable=AsyncMock, return_value=str(bad_zip)), \
              patch("chcode.utils.skill_manager.validate_skill_package", return_value=None):
-            result = await _install_skill(mock_session)
+            result = await _install_skill(mock_workplace_path)
             assert result is None  # Should return None for invalid package
 
-    async def test_valid_install(self, mock_session, tmp_path):
+    async def test_valid_install(self, mock_workplace_path, tmp_path):
         import zipfile
         zip_path = tmp_path / "good.zip"
         with zipfile.ZipFile(zip_path, "w") as zf:
@@ -135,14 +135,14 @@ class TestInstallSkill:
              patch("chcode.utils.skill_manager.validate_skill_package", return_value={"name": "test"}), \
              patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, return_value="项目级 (当前工作目录)"), \
              patch("chcode.utils.skill_manager.install_skill", return_value=True) as mock_install:
-            await _install_skill(mock_session)
+            await _install_skill(mock_workplace_path)
             assert mock_install.called  # install_skill should be called
 
 
 class TestListSkillsOperationBranches:
     """Cover lines 79-88: operation select branches."""
 
-    async def test_view_detail_branch(self, mock_session, tmp_path):
+    async def test_view_detail_branch(self, mock_workplace_path, tmp_path):
         """Cover lines 83-84: select returns '查看详情'."""
         skill_dir = tmp_path / "skill1"
         skill_dir.mkdir()
@@ -152,10 +152,10 @@ class TestListSkillsOperationBranches:
         with patch("chcode.utils.skill_manager.scan_all_skills", return_value=skills), \
              patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, side_effect=["s1 (project)", "查看详情"]) as mock_sel, \
              patch("chcode.utils.skill_manager._show_skill_detail", new_callable=AsyncMock) as mock_show:
-            await _list_skills(mock_session)
+            await _list_skills(mock_workplace_path)
             assert mock_show.called  # _show_skill_detail should be called
 
-    async def test_delete_branch(self, mock_session, tmp_path):
+    async def test_delete_branch(self, mock_workplace_path, tmp_path):
         """Cover lines 85-86: select returns '删除技能'."""
         skill_dir = tmp_path / "skill1"
         skill_dir.mkdir()
@@ -165,10 +165,10 @@ class TestListSkillsOperationBranches:
         with patch("chcode.utils.skill_manager.scan_all_skills", return_value=skills), \
              patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, side_effect=["s1 (project)", "删除技能"]) as mock_sel, \
              patch("chcode.utils.skill_manager._delete_skill", new_callable=AsyncMock) as mock_delete:
-            await _list_skills(mock_session)
+            await _list_skills(mock_workplace_path)
             assert mock_delete.called  # _delete_skill should be called
 
-    async def test_return_from_operations(self, mock_session, tmp_path):
+    async def test_return_from_operations(self, mock_workplace_path, tmp_path):
         """Cover lines 87-88: select returns '返回' from operations."""
         skill_dir = tmp_path / "skill1"
         skill_dir.mkdir()
@@ -177,25 +177,25 @@ class TestListSkillsOperationBranches:
 
         with patch("chcode.utils.skill_manager.scan_all_skills", return_value=skills), \
              patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, side_effect=["s1 (project)", "返回"]) as mock_sel:
-            result = await _list_skills(mock_session)
+            result = await _list_skills(mock_workplace_path)
             assert result is None  # Should return None when returning from operations
 
 
 class TestManageSkillsBranches:
     """Cover lines 30-41: main menu branches."""
 
-    async def test_view_installed_skills(self, mock_session):
+    async def test_view_installed_skills(self, mock_workplace_path):
         """Cover lines 38-39: '查看已安装技能' branch."""
         with patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, side_effect=["查看已安装技能", "返回"]), \
              patch("chcode.utils.skill_manager._list_skills", new_callable=AsyncMock) as mock_list:
-            await manage_skills(mock_session)
+            await manage_skills(mock_workplace_path)
             assert mock_list.called  # _list_skills should be called
 
-    async def test_install_new_skill(self, mock_session):
+    async def test_install_new_skill(self, mock_workplace_path):
         """Cover lines 40-41: '安装新技能' branch."""
         with patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, side_effect=["安装新技能", "返回"]), \
              patch("chcode.utils.skill_manager._install_skill", new_callable=AsyncMock) as mock_install:
-            await manage_skills(mock_session)
+            await manage_skills(mock_workplace_path)
             assert mock_install.called  # _install_skill should be called
 
 
@@ -230,7 +230,7 @@ class TestDeleteSkillException:
 class TestInstallSkillGlobalLocation:
     """Cover line 156: global install location."""
 
-    async def test_install_global_location(self, mock_session, tmp_path):
+    async def test_install_global_location(self, mock_workplace_path, tmp_path):
         """Cover line 156: select '全局级' install location."""
         import zipfile
         zip_path = tmp_path / "good.zip"
@@ -241,14 +241,14 @@ class TestInstallSkillGlobalLocation:
              patch("chcode.utils.skill_manager.validate_skill_package", return_value={"name": "test"}), \
              patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, return_value="全局级 (用户目录)"), \
              patch("chcode.utils.skill_manager.install_skill", return_value=True) as mock_install:
-            await _install_skill(mock_session)
+            await _install_skill(mock_workplace_path)
             assert mock_install.called  # install_skill should be called
 
 
 class TestInstallSkillInvalidPackage:
     """Cover line 142-143: invalid skill package."""
 
-    async def test_invalid_package_no_skill_md(self, mock_session, tmp_path):
+    async def test_invalid_package_no_skill_md(self, mock_workplace_path, tmp_path):
         """Cover lines 142-143: validate_skill_package returns None."""
         bad_zip = tmp_path / "bad.zip"
         bad_zip.write_bytes(b"not a real zip")
@@ -256,5 +256,5 @@ class TestInstallSkillInvalidPackage:
         with patch("chcode.utils.skill_manager.text", new_callable=AsyncMock, return_value=str(bad_zip)), \
              patch("pathlib.Path.exists", return_value=True), \
              patch("chcode.utils.skill_manager.validate_skill_package", return_value=None):
-            result = await _install_skill(mock_session)
+            result = await _install_skill(mock_workplace_path)
             assert result is None  # Should return None for invalid package

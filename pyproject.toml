@@ -1,6 +1,6 @@
 [project]
 name = "chcode"
-version = "0.1.2"
+version = "0.1.3"
 description = "Terminal-based AI coding agent with typer+rich"
 authors = [{name = "Flymo Han", email = "minimizeball@foxmail.com"}]
 license = "MIT"
