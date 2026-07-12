@@ -1225,6 +1225,17 @@ class ChatREPL:
                 return
 
             elif action == fork_label:
+                target_group = groups[sel_idx]
+                edit_msg = None
+                for msg in target_group:
+                    if msg.type == "human":
+                        edit_msg = msg
+                        break
+
+                if not edit_msg:
+                    render_warning(t("chat.messages.no_human"))
+                    continue
+
                 ok = await confirm(
                     t("chat.messages.fork_confirm", idx=sel_idx + 1), default=True
                 )
@@ -1288,14 +1299,15 @@ class ChatREPL:
 
                 need_messages = []
                 for i, group in enumerate(groups):
-                    need_messages.extend(group)
-                    if i == sel_idx:
+                    if i >= sel_idx:
                         break
+                    need_messages.extend(group)
 
-                await self.agent.aupdate_state(
-                    self.session_mgr.config,
-                    {"messages": need_messages},
-                )
+                if need_messages:
+                    await self.agent.aupdate_state(
+                        self.session_mgr.config,
+                        {"messages": need_messages},
+                    )
 
                 # 先初始化 git
                 await self._init_git()
@@ -1311,6 +1323,7 @@ class ChatREPL:
                     except Exception as e:
                         render_warning(t("chat.git.rollback_failed", error=e))
 
+                self._edit_buffer = get_text_content(edit_msg.content)
                 render_success(t("chat.messages.fork_done", path=self.workplace_path))
                 await self._load_conversation()
                 return

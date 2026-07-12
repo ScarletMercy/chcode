@@ -835,8 +835,8 @@ MESSAGES = {
         "en": "Select a message group to edit (everything after it will be deleted):",
     },
     "chat.messages.fork_hint": {
-        "zh": "选择 Fork 点（此消息组将保留在分支中）:",
-        "en": "Select the fork point (this group will be kept in the branch):",
+        "zh": "选择要 Fork 的消息组（从此消息组分叉：复制到新目录，再回溯到该组之前，该组的提问回填到输入框）:",
+        "en": "Select a message group to fork (branches off here: copies to a new workdir, then rewinds to before this group, with its prompt refilled into the input box):",
     },
     "chat.messages.invalid": {
         "zh": "无效的选择",
@@ -871,8 +871,8 @@ MESSAGES = {
         "en": "Copy failed:\n{tb}",
     },
     "chat.messages.fork_done": {
-        "zh": "分支已创建！工作目录: {path}",
-        "en": "Branch created! Workdir: {path}",
+        "zh": "分支已创建！工作目录: {path}。消息已加载到输入框，修改后发送即可重新生成",
+        "en": "Branch created! Workdir: {path}. Message loaded into the input box; edit and send to regenerate",
     },
     # ─── 复制目录（Windows 保留名等）───
     "chat.copy.skip_reserved": {

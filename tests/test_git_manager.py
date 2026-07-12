@@ -17,7 +17,7 @@ def _mock_run(returncode=0, stdout="", stderr=""):
 
 class TestGitManager:
     def test_init_shadow_fresh(self, tmp_path: Path):
-        """cp-repo 不存在 -> 完整建仓 + 配置 + 空提交"""
+        """cp-repo 不存在 -> 完整建仓 + 配置 + add+commit"""
         gm = GitManager(str(tmp_path))
         calls = []
 
@@ -32,8 +32,26 @@ class TestGitManager:
         assert ["config", "--local", "core.bare", "false"] in calls
         assert ["config", "--local", "user.name", "chcode"] in calls
         assert ["config", "--local", "core.autocrlf", "false"] in calls
+        assert ["add", "."] in calls
         assert ["commit", "-m", "init", "--allow-empty"] in calls
         assert (gm.cp_repo_dir / "info" / "exclude").read_text() == gm.SHADOW_EXCLUDE
+
+    def test_init_shadow_includes_existing_files(self, tmp_path: Path):
+        """有文件时 init 含项目初始文件；rollback 到 init 保留原有文件、删除后续改动"""
+        import subprocess
+        (tmp_path / "原有.py").write_text("src", encoding="utf-8")
+        gm = GitManager(str(tmp_path))
+        assert gm.init_shadow() is True
+        r = subprocess.run(
+            ["git", f"--git-dir={gm.cp_repo_dir}", "show", "HEAD:原有.py"],
+            cwd=str(tmp_path), capture_output=True, text=True,
+        )
+        assert r.returncode == 0 and r.stdout == "src"
+        (tmp_path / "新.txt").write_text("new", encoding="utf-8")
+        assert gm.add_commit("msg1") == 2
+        assert gm.rollback(["msg1"], ["msg1"]) == 1
+        assert (tmp_path / "原有.py").exists()
+        assert not (tmp_path / "新.txt").exists()
 
     def test_init_shadow_idempotent(self, tmp_path: Path):
         """cp-repo 已存在 -> 跳过重建，仅 _ensure_init_checkpoint"""
@@ -79,7 +97,7 @@ class TestGitManager:
         (tmp_path / "a.txt").write_text("v2", encoding="utf-8")
         (tmp_path / "b.txt").write_text("new", encoding="utf-8")
         assert gm.add_commit("msg2") == 3
-        # rollback 到 msg1 的父提交(init 空)，a/b 均被移除
+        # rollback 到 msg1 的父提交(=init)；本用例 init 时目录为空，故 a/b 均被移除
         assert gm.rollback(["msg1"], ["msg1", "msg2"]) == 1
         assert not (tmp_path / "a.txt").exists()
         assert not (tmp_path / "b.txt").exists()

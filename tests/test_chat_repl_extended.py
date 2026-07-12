@@ -1497,8 +1497,8 @@ class TestCmdMessagesForkFullFlow:
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-    async def test_fork_rebuilds_agent_and_sets_state(self):
-        """Fork should rebuild agent and update state with forked messages."""
+    async def test_fork_at_first_group_skips_state_and_backfills(self):
+        """sel_idx==0：新 agent 本就为空，跳过 aupdate_state；回填 group0 的 human。"""
         import tempfile
         tmp = Path(tempfile.mkdtemp())
         try:
@@ -1529,13 +1529,49 @@ class TestCmdMessagesForkFullFlow:
                                                                 await repl._cmd_messages("")
 
                                                                 assert repl.agent == new_agent
+                                                                # sel_idx==0：need_messages 为空，跳过 aupdate_state；回填 group0 的 human
+                                                                new_agent.aupdate_state.assert_not_called()
+                                                                assert repl._edit_buffer == "test1"
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    async def test_fork_keeps_prior_groups_and_backfills(self):
+        """sel_idx>0：保留 sel_idx 之前的组，回填 sel_idx 的 human 到输入框。"""
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            old_path = tmp / "old"
+            new_path = tmp / "new"
+            old_path.mkdir()
+            new_path.mkdir()
+
+            msg1 = HumanMessage("test1", id="m1")
+            msg2 = AIMessage("resp1", id="m2")
+            msg3 = HumanMessage("test2", id="m3")
+            msg4 = AIMessage("resp2", id="m4")
+            repl = _make_fork_repl(messages=[msg1, msg2, msg3, msg4], workplace=old_path)
+            new_agent = _make_new_agent()
+
+            with patch("chcode.chat.select", new_callable=AsyncMock, side_effect=["分叉消息", "[2] test2"]):
+                with patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True):
+                    with patch("chcode.chat.load_workplace", return_value=None):
+                        with patch("chcode.chat.select_or_custom", new_callable=AsyncMock, return_value=str(new_path)):
+                            with patch("chcode.chat.os.chdir"):
+                                with patch("chcode.chat.save_workplace"):
+                                    with patch("chcode.chat.render_info"):
+                                        with patch("chcode.chat.SessionManager", return_value=MagicMock()):
+                                            with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock, return_value=Mock()):
+                                                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=new_agent):
+                                                    with patch.object(repl, "_init_git", new_callable=AsyncMock):
+                                                        with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
+                                                            with patch("chcode.chat.render_success"):
+                                                                await repl._cmd_messages("")
+
                                                                 new_agent.aupdate_state.assert_called_once()
                                                                 call_args = new_agent.aupdate_state.call_args
                                                                 messages = call_args[0][1]["messages"]
-                                                                # Should only have group 0 messages (msg1, msg2)
-                                                                assert len(messages) == 2
-                                                                assert messages[0].id == "m1"
-                                                                assert messages[1].id == "m2"
+                                                                assert [m.id for m in messages] == ["m1", "m2"]
+                                                                assert repl._edit_buffer == "test2"
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

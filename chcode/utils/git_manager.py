@@ -77,6 +77,8 @@ class GitManager:
             exclude_file = self.cp_repo_dir / "info" / "exclude"
             exclude_file.parent.mkdir(parents=True, exist_ok=True)
             exclude_file.write_text(self.SHADOW_EXCLUDE, encoding="utf-8")
+            # add 后 commit：有文件则 init 含项目初始文件，空目录则 --allow-empty 兜底空提交
+            self._run(["add", "."])
             self._run(["commit", "-m", "init", "--allow-empty"])
         self._ensure_init_checkpoint()
         return self._run(["rev-parse", "--verify", "HEAD"]).returncode == 0
