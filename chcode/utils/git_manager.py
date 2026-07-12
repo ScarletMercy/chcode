@@ -101,6 +101,9 @@ class GitManager:
 
     def add_commit(self, message_ids: str, files: list | None = None) -> bool:
         """添加文件并提交"""
+        # 空消息无需显式拦截：ids 为空意味着 messages 中无 human —— 只在 _cleanup_last_turn
+        # 删组(has_ai=False，即本轮无 AIMessage)后出现，无 AIMessage 即无工具调用、工作区无改动，
+        # git "nothing to commit" 自然兜底，不会留下脏 index。
         if files is None:
             files = ["."]
         if self._run(["add"] + files).returncode != 0:
@@ -146,6 +149,7 @@ class GitManager:
         def _classify_checkpoint_keys():
             before = []
             at_or_after = []
+            # message_ids 非空由调用方保证：edit/fork 已校验选中组含 human，分组结构每组亦非空
             fork_id = message_ids[0]
             fork_index = all_ids.index(fork_id) if fork_id in all_ids else -1
 
@@ -206,6 +210,7 @@ class GitManager:
 
         elif not has_before and has_after:
             # Case 2：前无提交后有提交 -> 回溯到初始提交
+            # "init" 必存在：init_shadow 启动时经 _ensure_init_checkpoint 幂等回填
             aim_id = checkpointer_dict["init"]
 
             for k in at_or_after_keys:

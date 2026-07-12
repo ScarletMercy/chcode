@@ -1559,7 +1559,11 @@ class ChatREPL:
             if ai_started:
                 render_ai_end()
 
-            # 后处理（上下文更新 + Git 提交）放到后台，不阻塞输入框
+            # 后处理（上下文更新 + Git 提交）放到后台，不阻塞输入框。
+            # 看似 fire-and-forget 会与 /edit、/fork 的 rollback 并发操作
+            # checkpoints.json（add_commit/rollback 均为非原子读-改-写），
+            # 但 add_commit 仅几十~几百 ms，而下一轮输入或 edit/fork 须经秒级
+            # 人机交互，天然串行化——竞态不可达。引入非交互入口（脚本/批量/重试）时需重评。
             asyncio.create_task(self._post_process())
 
         finally:
