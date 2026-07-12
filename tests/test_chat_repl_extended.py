@@ -2001,10 +2001,9 @@ class TestBottomToolbar:
         assert "cwd:" in toolbar_output
 
     async def test_toolbar_shows_git_info(self):
-        """Toolbar should include Git checkpoint count when git is enabled."""
+        """Toolbar should include Git indicator when git is enabled."""
         repl = ChatREPL()
         repl.git = True
-        repl._git_cp_count = 5
         repl.model_config = {"model": "test"}
         repl._prompt_session = None
 
@@ -2024,7 +2023,6 @@ class TestBottomToolbar:
 
         toolbar_output = str(captured_toolbar_fn())
         assert "Git" in toolbar_output
-        assert "5 cp" in toolbar_output
 
     async def test_toolbar_shows_context_text(self):
         """Toolbar should include _context_text when it is non-empty."""

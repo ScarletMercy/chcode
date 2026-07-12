@@ -60,7 +60,6 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 - Working directory **rolls back with message edits**
 - Create **branches from any message** (fork)
 - Edit / fork / delete history messages via `/messages`
-- Checkpoint counter in status bar
 
 ### Human-in-the-Loop
 
@@ -83,7 +82,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 
 ### Rich Terminal UI
 
-- Real-time **status bar** — context usage %, git checkpoint count, ModelScope API quota
+- Real-time **status bar** — context usage %, git status indicator, ModelScope API quota
 - **Streaming output** with token-by-token rendering
 - Slash command auto-completion
 - Color-coded tool approval UI with **inline diff preview** for file edits

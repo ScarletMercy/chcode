@@ -263,7 +263,6 @@ class ChatREPL:
         self.session_mgr: SessionManager | None = None  # 会话管理器
         self.git_manager: GitManager | None = None  # git管理器
         self.git = False  # git是否激活
-        self._git_cp_count = 0  # git提交数
         self._stop_requested = False  # 暂停agent的flag
         self._processing = False
         self._prompt_session = None  # 初始化 prompt-toolkit 会话（用于命令自动补全）
@@ -385,8 +384,6 @@ class ChatREPL:
             self.git_manager = GitManager(str(self.workplace_path))
             shadow_ready = await asyncio.to_thread(self.git_manager.init_shadow)
             self.git = bool(shadow_ready)
-            if self.git:
-                self._git_cp_count = self.git_manager.count_checkpoints()
 
     # ─── 主循环 ────────────────────────────────────────
 
@@ -474,7 +471,7 @@ class ChatREPL:
                     else f"<ansired>{t('chat.status.yolo_mode')}</ansired>"
                 )
                 if self.git and self.git_manager:
-                    parts.append(f"Git ({self._git_cp_count} cp)")
+                    parts.append('<style fg="#FFA500">Git</style>')
                 wp = str(self.workplace_path) if self.workplace_path else ""
                 if wp:
                     parts.append(f"cwd: {wp}")
@@ -956,9 +953,7 @@ class ChatREPL:
                 return
 
         if self.git:
-            count = self.git_manager.count_checkpoints()
-            self._git_cp_count = count
-            render_success(t("chat.git.repo_init", count=count))
+            render_success(t("chat.git.repo_init"))
         else:
             render_warning(t("chat.git.repo_not_init"))
 
@@ -1210,11 +1205,9 @@ class ChatREPL:
 
                 if self.git and self.git_manager:
                     try:
-                        result = await asyncio.to_thread(
+                        await asyncio.to_thread(
                             self.git_manager.rollback, no_need_ids, all_ids
                         )
-                        if isinstance(result, int) and not isinstance(result, bool):
-                            self._git_cp_count = result
                     except Exception as e:
                         render_warning(t("chat.git.rollback_failed", error=e))
 
@@ -1315,11 +1308,9 @@ class ChatREPL:
                 # 回滚工作目录
                 if self.git and self.git_manager:
                     try:
-                        result = await asyncio.to_thread(
+                        await asyncio.to_thread(
                             self.git_manager.rollback, no_need_ids, all_ids
                         )
-                        if isinstance(result, int) and not isinstance(result, bool):
-                            self._git_cp_count = result
                     except Exception as e:
                         render_warning(t("chat.git.rollback_failed", error=e))
 
@@ -1587,11 +1578,9 @@ class ChatREPL:
             if self.git and self.git_manager:
                 new_msgs = find_and_slice_from_end(messages, "human")
                 ids = [m.id for m in new_msgs]
-                result = await asyncio.to_thread(
+                await asyncio.to_thread(
                     self.git_manager.add_commit, "&".join(ids)
                 )
-                if isinstance(result, int) and not isinstance(result, bool):
-                    self._git_cp_count = result
         except Exception:
             pass
 

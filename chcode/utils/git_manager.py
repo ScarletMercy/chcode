@@ -99,7 +99,7 @@ class GitManager:
                 json.dumps(data, indent=4), encoding="utf-8"
             )
 
-    def add_commit(self, message_ids: str, files: list | None = None) -> bool | int:
+    def add_commit(self, message_ids: str, files: list | None = None) -> bool:
         """添加文件并提交"""
         if files is None:
             files = ["."]
@@ -110,9 +110,7 @@ class GitManager:
         if self.checkpoints_file.exists():
             existing = json.loads(self.checkpoints_file.read_text(encoding="utf-8"))
 
-        # CP# 取写入前的检查点数，回滚后不跳号
-        commit_msg = f"{message_ids} (CP#{len(existing)})"
-        commit_result = self._run(["commit", "-m", commit_msg])
+        commit_result = self._run(["commit", "-m", message_ids])
 
         if commit_result.returncode == 0:
             # 获取提交ID
@@ -121,15 +119,14 @@ class GitManager:
                 commit_id = hash_result.stdout.strip()
 
                 checkpoint_dict = {message_ids: commit_id, **existing}
-                count = len(checkpoint_dict)
                 self.checkpoints_file.write_text(
                     json.dumps(checkpoint_dict, indent=4), encoding="utf-8"
                 )
 
-                return count
+                return True
         return False
 
-    def rollback(self, message_ids: list[str], all_ids: list[str]) -> bool | int:
+    def rollback(self, message_ids: list[str], all_ids: list[str]) -> bool:
         """回滚到指定检查点
         第一步：检查是否存在精确匹配（存在于JSON中有对应提交的ID），如果有则直接回溯到其上一次提交
         第二步：如果没有精确匹配，才进入模糊匹配逻辑，按以下三种情况进行处理：
@@ -181,15 +178,13 @@ class GitManager:
             for k in keys_to_remove_set:
                 checkpointer_dict.pop(k, None)
 
-            count = len(checkpointer_dict)
-
             try:
                 reset_result = self._run(["reset", "--hard", aim_id])
                 if reset_result.returncode == 0:
                     self.checkpoints_file.write_text(
                         json.dumps(checkpointer_dict, indent=4), encoding="utf-8"
                     )
-                    return count
+                    return True
                 else:
                     return False
             except Exception:
@@ -218,13 +213,9 @@ class GitManager:
 
         elif has_before and not has_after:
             # Case 3：前有提交后无提交 -> 不回溯
-            count = len(checkpointer_dict)
-            return count
+            return True
         else:
-            count = len(checkpointer_dict)
-            return count
-
-        count = len(checkpointer_dict)
+            return True
 
         try:
             reset_result = self._run(["reset", "--hard", aim_id])
@@ -232,19 +223,8 @@ class GitManager:
                 self.checkpoints_file.write_text(
                     json.dumps(checkpointer_dict, indent=4), encoding="utf-8"
                 )
-                return count
+                return True
             else:
                 return False
         except Exception:
             return False
-
-    def count_checkpoints(self, count: int | None = None) -> int:
-        """统计检查点数量"""
-        if count is None:
-            if not self.checkpoints_file.exists():
-                return 0
-            json_data = self.checkpoints_file.read_text(encoding="utf-8")
-            checkpointer_dict = json.loads(json_data)
-            return len(checkpointer_dict)
-        else:
-            return count

@@ -48,8 +48,8 @@ class TestGitManager:
         )
         assert r.returncode == 0 and r.stdout == "src"
         (tmp_path / "新.txt").write_text("new", encoding="utf-8")
-        assert gm.add_commit("msg1") == 2
-        assert gm.rollback(["msg1"], ["msg1"]) == 1
+        assert gm.add_commit("msg1") is True
+        assert gm.rollback(["msg1"], ["msg1"]) is True
         assert (tmp_path / "原有.py").exists()
         assert not (tmp_path / "新.txt").exists()
 
@@ -93,12 +93,12 @@ class TestGitManager:
         gm = GitManager(str(tmp_path))
         assert gm.init_shadow() is True
         (tmp_path / "a.txt").write_text("v1", encoding="utf-8")
-        assert gm.add_commit("msg1") == 2
+        assert gm.add_commit("msg1") is True
         (tmp_path / "a.txt").write_text("v2", encoding="utf-8")
         (tmp_path / "b.txt").write_text("new", encoding="utf-8")
-        assert gm.add_commit("msg2") == 3
+        assert gm.add_commit("msg2") is True
         # rollback 到 msg1 的父提交(=init)；本用例 init 时目录为空，故 a/b 均被移除
-        assert gm.rollback(["msg1"], ["msg1", "msg2"]) == 1
+        assert gm.rollback(["msg1"], ["msg1", "msg2"]) is True
         assert not (tmp_path / "a.txt").exists()
         assert not (tmp_path / "b.txt").exists()
 
@@ -111,7 +111,7 @@ class TestGitManager:
         gm = GitManager(str(src))
         assert gm.init_shadow() is True
         (src / "a.txt").write_text("src-v1", encoding="utf-8")
-        assert gm.add_commit("msg1") == 2
+        assert gm.add_commit("msg1") is True
 
         dst = tmp_path / "dst"
         shutil.copytree(src, dst)
@@ -120,7 +120,8 @@ class TestGitManager:
 
         gm2 = GitManager(str(dst))
         assert gm2.init_shadow() is True  # cp-repo 已存在，跳过 init
-        assert gm2.add_commit("forkmsg") == 3
+        # 仅复制层继承（源全部+新消息）；完整 fork 经 rollback 裁剪见 test_fork_rollback_trims_checkpoints_real
+        assert gm2.add_commit("forkmsg") is True
 
         def head_show(path):
             r = subprocess.run(
@@ -132,6 +133,43 @@ class TestGitManager:
         assert head_show("a.txt") == "dst-v2"  # 不是 src 的 src-v1
         assert head_show("b.txt") == "dst-new"
 
+    def test_fork_rollback_trims_checkpoints_real(self, tmp_path: Path):
+        """真实 git：完整 fork 序列经 rollback 裁剪 fork 点及之后的检查点
+
+        test_init_shadow_fork_real 只测复制层继承（计数=源全部+新消息）；
+        本条覆盖 rollback 裁剪，锁定 fork 后计数 = fork 点之前 + 新消息。
+        """
+        import shutil
+        src = tmp_path / "src"
+        src.mkdir()
+        gm = GitManager(str(src))
+        assert gm.init_shadow() is True
+        (src / "a.txt").write_text("v1", encoding="utf-8")
+        assert gm.add_commit("m1") is True
+        (src / "a.txt").write_text("v2", encoding="utf-8")
+        assert gm.add_commit("m2") is True  # fork 点
+        (src / "a.txt").write_text("v3", encoding="utf-8")
+        assert gm.add_commit("m3") is True
+
+        dst = tmp_path / "dst"
+        shutil.copytree(src, dst)
+
+        gm2 = GitManager(str(dst))
+        assert gm2.init_shadow() is True  # cp-repo 已存在，跳过 init
+        assert len(json.loads(gm2.checkpoints_file.read_text(encoding="utf-8"))) == 4  # 复制后全量继承源会话
+
+        # fork 点 = m2：rollback 裁剪 m2/m3，工作目录回到 m1
+        assert gm2.rollback(["m2", "m3"], ["m1", "m2", "m3"]) is True
+        assert (dst / "a.txt").read_text(encoding="utf-8") == "v1"  # 回到 m1，不是 v3
+
+        data = json.loads(gm2.checkpoints_file.read_text(encoding="utf-8"))
+        assert "init" in data and "m1" in data
+        assert "m2" not in data and "m3" not in data
+
+        # fork 后新消息会改文件；计数 = fork 点之前(init+m1) + 新消息
+        (dst / "a.txt").write_text("fork-v", encoding="utf-8")
+        assert gm2.add_commit("forkmsg") is True
+
     def test_init_shadow_corrupt_real(self, tmp_path: Path):
         """真实 git：cp-repo 存在但无 HEAD（如 fork 复制中断）-> 删除重建后可用"""
         gm = GitManager(str(tmp_path))
@@ -142,7 +180,7 @@ class TestGitManager:
         assert not (gm.cp_repo_dir / "partial").exists()
         # 仓库正常可用
         (tmp_path / "a.txt").write_text("v1", encoding="utf-8")
-        assert gm.add_commit("m1") == 2
+        assert gm.add_commit("m1") is True
 
     def test_add_commit_success(self, tmp_path: Path):
         gm = GitManager(str(tmp_path))
@@ -162,27 +200,13 @@ class TestGitManager:
 
         with patch.object(gm, "_run", side_effect=mock_run):
             result = gm.add_commit("msg1")
-            assert result == 1
+            assert result is True
 
     def test_add_commit_add_fails(self, tmp_path: Path):
         gm = GitManager(str(tmp_path))
         with patch.object(gm, "_run", return_value=_mock_run(1)):
             result = gm.add_commit("msg1")
             assert result is False
-
-    def test_count_checkpoints_file(self, tmp_path: Path):
-        gm = GitManager(str(tmp_path))
-        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
-        gm.checkpoints_file.write_text(json.dumps({"a": "h1", "b": "h2"}))
-        assert gm.count_checkpoints() == 2
-
-    def test_count_checkpoints_no_file(self, tmp_path: Path):
-        gm = GitManager(str(tmp_path))
-        assert gm.count_checkpoints() == 0
-
-    def test_count_checkpoints_with_arg(self, tmp_path: Path):
-        gm = GitManager(str(tmp_path))
-        assert gm.count_checkpoints(5) == 5
 
     def test_run_timeout(self, tmp_path: Path):
         import subprocess

@@ -687,8 +687,8 @@ MESSAGES = {
         "en": "Git unavailable: {status}",
     },
     "chat.git.repo_init": {
-        "zh": "Git 仓库已初始化 ({count} 个检查点)",
-        "en": "Git repository initialized ({count} checkpoints)",
+        "zh": "Git 仓库已初始化",
+        "en": "Git repository initialized",
     },
     "chat.git.repo_not_init": {
         "zh": "Git 仓库未初始化",

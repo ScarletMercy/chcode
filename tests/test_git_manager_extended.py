@@ -17,6 +17,11 @@ def _mock_run(returncode=0, stdout="", stderr=""):
     return result
 
 
+def _cp_keys(gm):
+    """读取 checkpoints.json 的键集合"""
+    return set(json.loads(gm.checkpoints_file.read_text()).keys())
+
+
 class TestRollback:
     """Tests for rollback with fuzzy matching"""
 
@@ -34,7 +39,8 @@ class TestRollback:
 
         with patch.object(gm, "_run", return_value=_mock_run(0)):
             result = gm.rollback(["msg1", "msg2"], ["msg1", "msg2"])
-            assert result == 1  # Only "init" remains
+            assert result is True
+            assert _cp_keys(gm) == {"init"}  # Only "init" remains
 
     def test_rollback_fuzzy_has_before_has_after(self, tmp_path: Path):
         """Fuzzy match: has_before + has_after -> rollback to before"""
@@ -53,8 +59,9 @@ class TestRollback:
         # msg1 is before, msg4 is after
         with patch.object(gm, "_run", return_value=_mock_run(0)):
             result = gm.rollback(["msg3"], ["msg1", "msg3", "msg4"])
+            assert result is True
             # Should rollback to msg1, remove msg4
-            assert result == 2  # init + msg1 remain
+            assert _cp_keys(gm) == {"init", "msg1"}
 
     def test_rollback_fuzzy_no_before_has_after(self, tmp_path: Path):
         """Fuzzy match: no_before + has_after -> rollback to init"""
@@ -72,8 +79,9 @@ class TestRollback:
         # No before, msg3 is after
         with patch.object(gm, "_run", return_value=_mock_run(0)):
             result = gm.rollback(["msg1"], ["msg1", "msg3"])
+            assert result is True
             # Should rollback to init, remove msg3
-            assert result == 1  # Only init remains
+            assert _cp_keys(gm) == {"init"}
 
     def test_rollback_fuzzy_has_before_no_after(self, tmp_path: Path):
         """Fuzzy match: has_before + no_after -> no rollback"""
@@ -91,8 +99,9 @@ class TestRollback:
         # msg1 is before, no after -> no rollback
         with patch.object(gm, "_run", return_value=_mock_run(0)):
             result = gm.rollback(["msg3"], ["msg1", "msg3"])
-            # Should NOT rollback, return current count
-            assert result == 2  # init + msg1
+            assert result is True
+            # Should NOT rollback, file unchanged
+            assert _cp_keys(gm) == {"init", "msg1"}
 
     def test_rollback_no_checkpoints_file(self, tmp_path: Path):
         """No checkpoints file returns False"""
@@ -219,7 +228,7 @@ class TestAddCommit:
 
         with patch.object(gm, "_run", side_effect=mock_run):
             result = gm.add_commit("msg1", files=["file1.py", "file2.py"])
-            assert result == 1
+            assert result is True
             # Check that add was called with specific files
             assert calls[0] == ["add", "file1.py", "file2.py"]
 
@@ -240,32 +249,6 @@ class TestAddCommit:
             assert result is False
 
 
-class TestCountCheckpoints:
-    """Additional tests for count_checkpoints"""
-
-    def test_count_checkpoints_with_file(self, tmp_path: Path):
-        """Count from existing file"""
-        gm = GitManager(str(tmp_path))
-        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
-
-        content = {"msg1": "hash1", "msg2": "hash2", "init": "hash0"}
-        gm.checkpoints_file.write_text(json.dumps(content))
-
-        result = gm.count_checkpoints()
-        assert result == 3
-
-    def test_count_checkpoints_file_invalid_json(self, tmp_path: Path):
-        """Invalid JSON raises JSONDecodeError"""
-        gm = GitManager(str(tmp_path))
-        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
-
-        gm.checkpoints_file.write_text("invalid json")
-
-        with pytest.raises(json.JSONDecodeError):
-            gm.count_checkpoints()
-        assert True  # pytest.raises verifies the exception
-
-
 class TestRollbackClassifyCheckpoints:
     """Tests for _classify_checkpoint_keys helper in rollback"""
 
@@ -284,8 +267,9 @@ class TestRollbackClassifyCheckpoints:
         # Rolling back msg3, msg1 is before, msg2 is after
         with patch.object(gm, "_run", return_value=_mock_run(0)):
             result = gm.rollback(["msg3"], ["msg1", "msg3", "msg2"])
+            assert result is True
             # Should only keep init and msg1
-            assert result == 2
+            assert _cp_keys(gm) == {"init", "msg1"}
 
     def test_classify_msg_not_in_all_ids(self, tmp_path: Path):
         """Message IDs not in all_ids are excluded from classification but remain"""
@@ -302,10 +286,9 @@ class TestRollbackClassifyCheckpoints:
 
         with patch.object(gm, "_run", return_value=_mock_run(0)):
             result = gm.rollback(["msg2"], ["msg1", "msg2", "msg3"])
-            # msg1 is before, msg3 is after
-            # unknown_msg is excluded from classification (not in all_ids)
+            assert result is True
             # After rollback: init + msg1 + unknown_msg remain (msg3 removed)
-            assert result == 3
+            assert _cp_keys(gm) == {"init", "msg1", "unknown_msg"}
 
     def test_classify_compound_key(self, tmp_path: Path):
         """Compound keys (msg1&msg2) use first part for classification"""
@@ -321,8 +304,9 @@ class TestRollbackClassifyCheckpoints:
         # Looking for msg3, msg1 is before
         with patch.object(gm, "_run", return_value=_mock_run(0)):
             result = gm.rollback(["msg3"], ["msg1", "msg3"])
+            assert result is True
             # Should keep init and compound key
-            assert result == 2
+            assert _cp_keys(gm) == {"init", "msg1&msg2"}
 
 
 class TestRollbackForkIndex:
@@ -342,9 +326,10 @@ class TestRollbackForkIndex:
         # Fork msg99 not in all_ids
         with patch.object(gm, "_run", return_value=_mock_run(0)):
             result = gm.rollback(["msg99"], ["msg1", "msg2"])
+            assert result is True
             # With fork_index=-1, everything is "at_or_after"
             # So no before, has after -> rollback to init
-            assert result == 1
+            assert _cp_keys(gm) == {"init"}
 
 
 class TestRollbackMultipleKeys:
@@ -366,8 +351,9 @@ class TestRollbackMultipleKeys:
         # Looking for msg3, msg1 is before, msg4+msg5 are after
         with patch.object(gm, "_run", return_value=_mock_run(0)):
             result = gm.rollback(["msg3"], ["msg1", "msg3", "msg4", "msg5"])
+            assert result is True
             # Should keep init and msg1 only
-            assert result == 2
+            assert _cp_keys(gm) == {"init", "msg1"}
 
 
 # ============================================================================
@@ -418,8 +404,7 @@ class TestAddCommitExistingCheckpoints:
 
         with patch.object(gm, "_run", side_effect=mock_run):
             result = gm.add_commit("msg1")
-            # Should have 2 entries: existing_msg + msg1
-            assert result == 2
+            assert result is True
             # Verify the file was updated
             data = json.loads(gm.checkpoints_file.read_text())
             assert "existing_msg" in data
@@ -462,7 +447,7 @@ class TestRollbackElseBranch:
     """Cover lines 204-205: rollback else branch, no before and no after."""
 
     def test_rollback_no_before_no_after(self, tmp_path: Path):
-        """Lines 204-205: neither before nor after checkpoints, returns count."""
+        """Lines 204-205: neither before nor after checkpoints, returns True (no-op)."""
         gm = GitManager(str(tmp_path))
         gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -476,8 +461,9 @@ class TestRollbackElseBranch:
         # which is excluded from classification), so both before and after are empty
         with patch.object(gm, "_run", return_value=_mock_run(0)):
             result = gm.rollback(["msg1"], ["msg1"])
-            # else branch: returns len(checkpointer_dict) = 1 (only "init")
-            assert result == 1
+            assert result is True
+            # else branch: no reset, file unchanged (only "init")
+            assert _cp_keys(gm) == {"init"}
 
 
 # ============================================================================

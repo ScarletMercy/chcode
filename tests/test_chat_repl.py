@@ -99,7 +99,6 @@ class TestChatREPLInit:
         assert repl.session_mgr is None
         assert repl.git_manager is None
         assert repl.git is False
-        assert repl._git_cp_count == 0
         assert repl._stop_requested is False
         assert repl._processing is False
         assert repl._prompt_session is None
@@ -242,14 +241,12 @@ class TestChatREPLInitGit:
             mock_thread.return_value = (True, "ok", "2.0.0")
             with patch("chcode.chat.GitManager") as mock_gm:
                 mock_repo = Mock()
-                mock_repo.count_checkpoints.return_value = 5
                 mock_gm.return_value = mock_repo
 
                 await repl._init_git()
 
                 assert repl.git is True
                 assert repl.git_manager == mock_repo
-                assert repl._git_cp_count == 5
 
     @pytest.mark.asyncio
     async def test_init_git_not_available(self, tmp_path):
@@ -274,7 +271,6 @@ class TestChatREPLInitGit:
             with patch("chcode.chat.GitManager") as mock_gm:
                 mock_repo = Mock()
                 mock_repo.init_shadow = Mock()
-                mock_repo.count_checkpoints.return_value = 0
                 mock_gm.return_value = mock_repo
 
                 await repl._init_git()
@@ -776,7 +772,6 @@ class TestChatREPLCmdGit:
 
         async def mock_init_git():
             repl.git_manager = Mock()
-            repl.git_manager.count_checkpoints.return_value = 0
 
         with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=(True, "ok", "2.0.0")), \
              patch.object(repl, "_init_git", side_effect=mock_init_git), \
@@ -795,20 +790,6 @@ class TestChatREPLCmdGit:
                 await repl._cmd_git("")
 
                 mock_err.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cmd_git_shows_count(self):
-        repl = ChatREPL()
-        mock_gm = Mock()
-        mock_gm.count_checkpoints.return_value = 3
-        repl.git_manager = mock_gm
-        repl.git = True
-
-        with patch("chcode.chat.render_success") as mock_success:
-            await repl._cmd_git("")
-
-            assert repl._git_cp_count == 3
-            mock_success.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_cmd_git_not_init(self):
@@ -1540,15 +1521,15 @@ class TestChatREPLPostProcess:
         repl.model_config = {"model": "gpt-4"}
         repl.git = True
         repl.git_manager = Mock()
-        repl.git_manager.add_commit = Mock(return_value=5)
+        repl.git_manager.add_commit = Mock(return_value=True)
 
         with patch("chcode.chat.get_context_usage_text", return_value="1000/128000"):
             with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-                mock_thread.return_value = 5
+                mock_thread.return_value = True
                 await repl._post_process()
 
                 assert repl._context_text == "1000/128000"
-                assert repl._git_cp_count == 5
+                mock_thread.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_post_process_no_git(self):
