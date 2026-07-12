@@ -140,33 +140,6 @@ class TestRollback:
             assert result is False
 
 
-class TestCreateGitignore:
-    """Tests for create_gitignore with default content"""
-
-    def test_create_gitignore_default_content(self, tmp_path: Path):
-        """Creates .gitignore with default MINIMAL_GITIGNORE"""
-        gm = GitManager(str(tmp_path))
-        gm.gitignore_file = tmp_path / ".gitignore"
-
-        with patch.object(gm, "_run", return_value=_mock_run(0)):
-            result = gm.create_gitignore()
-            assert result is True
-            content = gm.gitignore_file.read_text()
-            assert ".git" in content
-            assert ".chat" in content
-            assert ".venv" in content
-
-    def test_create_gitignore_exception_handling(self, tmp_path: Path):
-        """Exception handling returns False"""
-        gm = GitManager(str(tmp_path))
-
-        # Make the path invalid to trigger exception
-        gm.gitignore_file = tmp_path / "nonexistent" / ".gitignore"
-
-        result = gm.create_gitignore()
-        assert result is False
-
-
 class TestRunErrorCases:
     """Tests for _run error cases"""
 
@@ -200,71 +173,6 @@ class TestRunErrorCases:
             with pytest.raises(RuntimeError) as exc_info:
                 gm._run(["status"])
             assert "执行失败" in str(exc_info.value)
-
-
-class TestInit:
-    """Tests for init with existing repo"""
-
-    def test_init_existing_repo_creates_checkpoints(self, tmp_path: Path):
-        """Init on existing repo creates checkpoints file"""
-        gm = GitManager(str(tmp_path))
-        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # Simulate existing repo
-        with patch.object(gm, "is_repo", return_value=True), \
-             patch.object(gm, "_run", return_value=_mock_run(0, stdout="abc123\n")):
-            result = gm.init()
-            assert result is False
-            assert gm.checkpoints_file.exists()
-            content = json.loads(gm.checkpoints_file.read_text())
-            assert "init" in content
-
-    def test_init_existing_repo_preserves_checkpoints(self, tmp_path: Path):
-        """Init preserves existing checkpoints file"""
-        gm = GitManager(str(tmp_path))
-        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # Create existing checkpoints
-        existing = {"msg1": "abc123"}
-        gm.checkpoints_file.write_text(json.dumps(existing))
-
-        with patch.object(gm, "is_repo", return_value=True), \
-             patch.object(gm, "_run", return_value=_mock_run(0, stdout="def456\n")):
-            result = gm.init()
-            assert result is False
-            content = json.loads(gm.checkpoints_file.read_text())
-            assert content["msg1"] == "abc123"
-            assert "init" in content
-
-    def test_init_new_repo_creates_checkpoints(self, tmp_path: Path):
-        """Init on new repo creates checkpoints file"""
-        gm = GitManager(str(tmp_path))
-        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
-        gm.gitignore_file = tmp_path / ".gitignore"
-
-        calls = []
-
-        def mock_run(args, **kwargs):
-            calls.append(args)
-            return _mock_run(0)
-
-        with patch.object(gm, "is_repo", return_value=False), \
-             patch.object(gm, "_run", side_effect=mock_run), \
-             patch.object(gm, "create_gitignore", return_value=True):
-            result = gm.init()
-            assert result is True
-            assert gm.checkpoints_file.exists()
-
-    def test_init_new_repo_creates_gitignore(self, tmp_path: Path):
-        """Init on new repo creates gitignore if missing"""
-        gm = GitManager(str(tmp_path))
-        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
-
-        with patch.object(gm, "is_repo", return_value=False), \
-             patch.object(gm, "_run", return_value=_mock_run(0)):
-            result = gm.init()
-            assert result is True
-            assert gm.gitignore_file.exists()
 
 
 class TestAddCommit:
@@ -329,18 +237,6 @@ class TestAddCommit:
 
         with patch.object(gm, "_run", side_effect=mock_run):
             result = gm.add_commit("msg1")
-            assert result is False
-
-
-class TestIsRepo:
-    """Additional tests for is_repo"""
-
-    def test_is_repo_exception(self, tmp_path: Path):
-        """Exception during is_repo check"""
-        gm = GitManager(str(tmp_path))
-
-        with patch.object(gm, "_run", side_effect=OSError("Error")):
-            result = gm.is_repo()
             assert result is False
 
 

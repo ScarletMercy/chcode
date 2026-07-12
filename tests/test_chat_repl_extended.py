@@ -1373,7 +1373,7 @@ class TestCmdMessagesForkFullFlow:
             shutil.rmtree(tmp, ignore_errors=True)
 
     async def test_fork_copies_git_directory(self):
-        """When .git directory exists in old_path, shutil.copytree should copy it."""
+        """When .chat/cp-repo exists in old_path, shutil.copytree should copy it."""
         import tempfile
         tmp = Path(tempfile.mkdtemp())
         try:
@@ -1381,10 +1381,10 @@ class TestCmdMessagesForkFullFlow:
             new_path = tmp / "new"
             old_path.mkdir()
             new_path.mkdir()
-            # Create .git in old_path
-            old_git = old_path / ".git"
-            old_git.mkdir()
-            (old_git / "config").write_text("git config here")
+            # Create shadow repo in old_path/.chat/cp-repo
+            old_cp = old_path / ".chat" / "cp-repo"
+            old_cp.mkdir(parents=True)
+            (old_cp / "config").write_text("shadow config here")
 
             repl = _make_fork_repl(workplace=old_path)
             new_agent = _make_new_agent()
@@ -1414,8 +1414,8 @@ class TestCmdMessagesForkFullFlow:
                                                             with patch("chcode.chat.render_success"):
                                                                 await repl._cmd_messages("")
 
-                                                                # .git should have been copied to new_path
-                                                                assert (new_path / ".git" / "config").exists()
+                                                                # shadow repo should have been copied to new_path
+                                                                assert (new_path / ".chat" / "cp-repo" / "config").exists()
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1973,7 +1973,6 @@ class TestBottomToolbar:
         repl._prompt_session = None
 
         mock_git_mgr = MagicMock()
-        mock_git_mgr.is_repo.return_value = True
         repl.git_manager = mock_git_mgr
 
         captured_toolbar_fn = None

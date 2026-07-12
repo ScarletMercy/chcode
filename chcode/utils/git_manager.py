@@ -3,19 +3,21 @@
 import subprocess
 from pathlib import Path
 import json
+import shutil
 
 
 class GitManager:
-    """增强版Git检查点管理器，支持.gitignore管理"""
+    """影子 git 检查点管理器：仓库在 .chat/cp-repo，不碰用户 .git"""
 
-    MINIMAL_GITIGNORE = ".git\n.chat\n.venv\n.gitignore\n__pycache__\n*.pyc\n.pytest_cache\n.coverage\n.pytest_cache/\n"
+    SHADOW_EXCLUDE = (
+        ".chat/\n.git/\n.venv/\n__pycache__/\n*.pyc\nnode_modules/\n"
+        "dist/\nbuild/\n.pytest_cache/\n.coverage\n*.egg-info/\n"
+    )
 
     def __init__(self, repo_path: str = "."):
         self.repo_path = Path(repo_path).resolve()
-        self.checkpoints_file = self.repo_path / ".git" / "checkpoints.json"
-        self.gitignore_file = self.repo_path / ".gitignore"
-        self.current_id = 0
-        self._is_repo: bool | None = None
+        self.cp_repo_dir = self.repo_path / ".chat" / "cp-repo"
+        self.checkpoints_file = self.cp_repo_dir / "checkpoints.json"
 
     def _run(
         self, args: list, timeout: int = 30, silent: bool = True
@@ -29,7 +31,7 @@ class GitManager:
         """
         try:
             result = subprocess.run(
-                ["git"] + args,
+                ["git", f"--git-dir={self.cp_repo_dir}"] + args,
                 cwd=str(self.repo_path),
                 capture_output=True,
                 text=True,
@@ -50,33 +52,34 @@ class GitManager:
         except Exception as e:
             raise RuntimeError(f"Git命令执行失败: {e}")
 
-    def is_repo(self) -> bool:
-        """检查是否为Git仓库"""
-        if self._is_repo is not None:
-            return self._is_repo
-        try:
-            self._is_repo = self._run(["rev-parse", "--git-dir"]).returncode == 0
-            return self._is_repo
-        except Exception:
-            return False
+    def init_shadow(self) -> bool:
+        """初始化影子 git 仓库，幂等：已存在且有效则跳过，半残则删除重建。
 
-    def init(self) -> bool:
-        """初始化Git仓库"""
-        if self.is_repo():
-            if not self.checkpoints_file.exists():
-                self.checkpoints_file.write_text(
-                    json.dumps({}, indent=4), encoding="utf-8"
-                )
-            self._ensure_init_checkpoint()
-            return False
-        if not self.gitignore_file.exists():
-            self.create_gitignore()
-        result = self._run(["init"])
-        if result.returncode == 0:
-            # 初始空提交，确保后续 commit 不会因空仓库失败
+        git-dir 在非 .git 路径下 init 默认是 bare；翻 core.bare=false 后以 cwd 为
+        工作树（_run 的 cwd 即 repo_path），不写 core.worktree，fork 后天然正确。
+        """
+        valid = (
+            self.cp_repo_dir.exists()
+            and self._run(["rev-parse", "--verify", "HEAD"]).returncode == 0
+        )
+        if not valid:
+            # 目录在但 HEAD 无效（如 fork 复制中断）视为半残，删除重建
+            if self.cp_repo_dir.exists():
+                shutil.rmtree(self.cp_repo_dir, ignore_errors=True)
+            self.cp_repo_dir.parent.mkdir(parents=True, exist_ok=True)
+            if self._run(["init"]).returncode != 0:
+                return False
+            # 非 bare 才能用 cwd 当工作树；不继承用户 git 配置
+            self._run(["config", "--local", "core.bare", "false"])
+            self._run(["config", "--local", "user.name", "chcode"])
+            self._run(["config", "--local", "user.email", "chcode@local"])
+            self._run(["config", "--local", "core.autocrlf", "false"])
+            exclude_file = self.cp_repo_dir / "info" / "exclude"
+            exclude_file.parent.mkdir(parents=True, exist_ok=True)
+            exclude_file.write_text(self.SHADOW_EXCLUDE, encoding="utf-8")
             self._run(["commit", "-m", "init", "--allow-empty"])
         self._ensure_init_checkpoint()
-        return result.returncode == 0
+        return self._run(["rev-parse", "--verify", "HEAD"]).returncode == 0
 
     def _ensure_init_checkpoint(self) -> None:
         """确保 checkpoints.json 中存在 "init" 条目，供 rollback 使用"""
@@ -101,8 +104,12 @@ class GitManager:
         if self._run(["add"] + files).returncode != 0:
             return False
 
-        # 提交
-        commit_msg = f"{message_ids} (CP#{self.current_id + 1})"
+        existing: dict = {}
+        if self.checkpoints_file.exists():
+            existing = json.loads(self.checkpoints_file.read_text(encoding="utf-8"))
+
+        # CP# 取写入前的检查点数，回滚后不跳号
+        commit_msg = f"{message_ids} (CP#{len(existing)})"
         commit_result = self._run(["commit", "-m", commit_msg])
 
         if commit_result.returncode == 0:
@@ -111,18 +118,12 @@ class GitManager:
             if hash_result.returncode == 0:
                 commit_id = hash_result.stdout.strip()
 
-                checkpoint_dict = {}
-                checkpoint_dict[message_ids] = commit_id
-                if self.checkpoints_file.exists():
-                    checkpoint_dict.update(
-                        json.loads(self.checkpoints_file.read_text(encoding="utf-8"))
-                    )
+                checkpoint_dict = {message_ids: commit_id, **existing}
                 count = len(checkpoint_dict)
                 self.checkpoints_file.write_text(
                     json.dumps(checkpoint_dict, indent=4), encoding="utf-8"
                 )
 
-                self.current_id += 1
                 return count
         return False
 
@@ -245,18 +246,3 @@ class GitManager:
             return len(checkpointer_dict)
         else:
             return count
-
-    def create_gitignore(self, content: str|None = None) -> bool:
-        """创建.gitignore文件，屏蔽.git和.venv等"""
-        try:
-            if content is None:
-                content = self.MINIMAL_GITIGNORE
-
-            with open(self.gitignore_file, "w", encoding="utf-8") as f:
-                f.write(content)
-
-            self._run(["add", ".gitignore"])
-            return True
-        except Exception as e:
-            print(f"创建.gitignore失败: {e}")
-            return False

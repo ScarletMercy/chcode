@@ -16,39 +16,115 @@ def _mock_run(returncode=0, stdout="", stderr=""):
 
 
 class TestGitManager:
-    def test_is_repo_true(self, tmp_path: Path):
+    def test_init_shadow_fresh(self, tmp_path: Path):
+        """cp-repo 不存在 -> 完整建仓 + 配置 + 空提交"""
         gm = GitManager(str(tmp_path))
-        with patch.object(gm, "_run", return_value=_mock_run(0)):
-            assert gm.is_repo() is True
+        calls = []
 
-    def test_is_repo_false(self, tmp_path: Path):
-        gm = GitManager(str(tmp_path))
-        gm._is_repo = None
-        with patch.object(gm, "_run", return_value=_mock_run(128)):
-            assert gm.is_repo() is False
+        def mock_run(args, **kwargs):
+            calls.append(args)
+            return _mock_run(0, stdout="abc123\n" if args[0] == "rev-list" else "")
 
-    def test_is_repo_cached(self, tmp_path: Path):
-        gm = GitManager(str(tmp_path))
-        gm._is_repo = True
-        assert gm.is_repo() is True
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.init_shadow()
+        assert result is True
+        assert calls[0] == ["init"]
+        assert ["config", "--local", "core.bare", "false"] in calls
+        assert ["config", "--local", "user.name", "chcode"] in calls
+        assert ["config", "--local", "core.autocrlf", "false"] in calls
+        assert ["commit", "-m", "init", "--allow-empty"] in calls
+        assert (gm.cp_repo_dir / "info" / "exclude").read_text() == gm.SHADOW_EXCLUDE
 
-    def test_init_already_repo(self, tmp_path: Path):
+    def test_init_shadow_idempotent(self, tmp_path: Path):
+        """cp-repo 已存在 -> 跳过重建，仅 _ensure_init_checkpoint"""
         gm = GitManager(str(tmp_path))
-        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
-        with patch.object(gm, "is_repo", return_value=True), \
-             patch.object(gm, "_run", return_value=_mock_run(0, stdout="abc123\n")):
-            result = gm.init()
-            assert result is False
+        gm.cp_repo_dir.mkdir(parents=True, exist_ok=True)  # 模拟已存在
+        calls = []
 
-    def test_init_new_repo(self, tmp_path: Path):
+        def mock_run(args, **kwargs):
+            calls.append(args)
+            return _mock_run(0, stdout="abc123\n" if args[0] == "rev-list" else "")
+
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.init_shadow()
+        assert result is True
+        assert ["init"] not in calls
+        assert ["add", "-A"] not in calls
+        assert not any(c[0] == "commit" for c in calls)
+        assert not any(c[0] == "config" for c in calls)
+
+    def test_init_shadow_init_fails(self, tmp_path: Path):
+        """git init 返回非 0 -> 早退返回 False，不继续 config/commit"""
         gm = GitManager(str(tmp_path))
-        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
-        gm.gitignore_file = tmp_path / ".gitignore"
-        with patch.object(gm, "is_repo", return_value=False), \
-             patch.object(gm, "_run", return_value=_mock_run(0)), \
-             patch.object(gm, "create_gitignore", return_value=True):
-            result = gm.init()
-            assert result is True
+        calls = []
+
+        def mock_run(args, **kwargs):
+            calls.append(args)
+            if args[0] == "init":
+                return _mock_run(128, stderr="init failed")
+            return _mock_run(0)
+
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.init_shadow()
+        assert result is False
+        assert not any(c[0] == "config" for c in calls)
+        assert not any(c[0] == "commit" for c in calls)
+
+    def test_init_shadow_fresh_real(self, tmp_path: Path):
+        """真实 git：init_shadow 后 add_commit / rollback 正常"""
+        gm = GitManager(str(tmp_path))
+        assert gm.init_shadow() is True
+        (tmp_path / "a.txt").write_text("v1", encoding="utf-8")
+        assert gm.add_commit("msg1") == 2
+        (tmp_path / "a.txt").write_text("v2", encoding="utf-8")
+        (tmp_path / "b.txt").write_text("new", encoding="utf-8")
+        assert gm.add_commit("msg2") == 3
+        # rollback 到 msg1 的父提交(init 空)，a/b 均被移除
+        assert gm.rollback(["msg1"], ["msg1", "msg2"]) == 1
+        assert not (tmp_path / "a.txt").exists()
+        assert not (tmp_path / "b.txt").exists()
+
+    def test_init_shadow_fork_real(self, tmp_path: Path):
+        """真实 git：fork(复制 .chat/cp-repo)后新位置追踪自己的文件，不串旧路径"""
+        import shutil
+        import subprocess
+        src = tmp_path / "src"
+        src.mkdir()
+        gm = GitManager(str(src))
+        assert gm.init_shadow() is True
+        (src / "a.txt").write_text("src-v1", encoding="utf-8")
+        assert gm.add_commit("msg1") == 2
+
+        dst = tmp_path / "dst"
+        shutil.copytree(src, dst)
+        (dst / "a.txt").write_text("dst-v2", encoding="utf-8")
+        (dst / "b.txt").write_text("dst-new", encoding="utf-8")
+
+        gm2 = GitManager(str(dst))
+        assert gm2.init_shadow() is True  # cp-repo 已存在，跳过 init
+        assert gm2.add_commit("forkmsg") == 3
+
+        def head_show(path):
+            r = subprocess.run(
+                ["git", f"--git-dir={gm2.cp_repo_dir}", "show", f"HEAD:{path}"],
+                cwd=str(dst), capture_output=True, text=True,
+            )
+            return r.stdout
+
+        assert head_show("a.txt") == "dst-v2"  # 不是 src 的 src-v1
+        assert head_show("b.txt") == "dst-new"
+
+    def test_init_shadow_corrupt_real(self, tmp_path: Path):
+        """真实 git：cp-repo 存在但无 HEAD（如 fork 复制中断）-> 删除重建后可用"""
+        gm = GitManager(str(tmp_path))
+        gm.cp_repo_dir.mkdir(parents=True, exist_ok=True)
+        (gm.cp_repo_dir / "partial").write_text("junk", encoding="utf-8")
+        assert gm.init_shadow() is True
+        # 半残内容被清理
+        assert not (gm.cp_repo_dir / "partial").exists()
+        # 仓库正常可用
+        (tmp_path / "a.txt").write_text("v1", encoding="utf-8")
+        assert gm.add_commit("m1") == 2
 
     def test_add_commit_success(self, tmp_path: Path):
         gm = GitManager(str(tmp_path))
@@ -89,21 +165,6 @@ class TestGitManager:
     def test_count_checkpoints_with_arg(self, tmp_path: Path):
         gm = GitManager(str(tmp_path))
         assert gm.count_checkpoints(5) == 5
-
-    def test_create_gitignore(self, tmp_path: Path):
-        gm = GitManager(str(tmp_path))
-        gm.gitignore_file = tmp_path / ".gitignore"
-        with patch.object(gm, "_run", return_value=_mock_run(0)):
-            result = gm.create_gitignore()
-            assert result is True
-            assert gm.gitignore_file.exists()
-
-    def test_create_gitignore_custom_content(self, tmp_path: Path):
-        gm = GitManager(str(tmp_path))
-        gm.gitignore_file = tmp_path / ".gitignore"
-        with patch.object(gm, "_run", return_value=_mock_run(0)):
-            gm.create_gitignore("custom\n")
-            assert gm.gitignore_file.read_text() == "custom\n"
 
     def test_run_timeout(self, tmp_path: Path):
         import subprocess
