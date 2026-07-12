@@ -290,6 +290,107 @@ class TestRollbackClassifyCheckpoints:
             # After rollback: init + msg1 + unknown_msg remain (msg3 removed)
             assert _cp_keys(gm) == {"init", "msg1", "unknown_msg"}
 
+    def test_orphan_not_flip_case2_to_case1(self, tmp_path: Path):
+        """orphan 不得作为唯一 before 把 Case 2(回溯 init)翻成 Case 1(回溯到 orphan)"""
+        gm = GitManager(str(tmp_path))
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
+        checkpoints = {"init": "abc000", "msg1": "def111", "msg2": "ghi222"}
+        gm.checkpoints_file.write_text(json.dumps(checkpoints))
+
+        reset_targets = []
+
+        def mock_run(args, **kwargs):
+            if args[:2] == ["reset", "--hard"]:
+                reset_targets.append(args[2])
+            return _mock_run(0)
+
+        # 编辑第一组(msg2 为 all_ids 首位 => 无合法 before),msg1 为 orphan
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.rollback(["msg2", "msg3"], ["msg2", "msg3"])
+            assert result is True
+        # 应回溯 init(abc000),而非 orphan msg1 的提交(def111)
+        assert reset_targets == ["abc000"]
+
+    def test_multiple_orphans_all_skipped_to_init(self, tmp_path: Path):
+        """多个 orphan 全部跳过,不挑其中任意一个当目标,统一回溯 init"""
+        gm = GitManager(str(tmp_path))
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
+        checkpoints = {
+            "init": "abc000",
+            "del1": "def111",  # orphan:已删轮次 1
+            "del2": "ghi222",  # orphan:已删轮次 2
+            "cur": "jkl333",
+        }
+        gm.checkpoints_file.write_text(json.dumps(checkpoints))
+
+        reset_targets = []
+
+        def mock_run(args, **kwargs):
+            if args[:2] == ["reset", "--hard"]:
+                reset_targets.append(args[2])
+            return _mock_run(0)
+
+        # 编辑第一组(cur 为 all_ids 首位 => 无合法 before),del1/del2 均 orphan
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.rollback(["cur", "cur2"], ["cur", "cur2"])
+            assert result is True
+        # 回溯 init,而非 del1/del2 任一;两个 orphan 都保留
+        assert reset_targets == ["abc000"]
+        assert _cp_keys(gm) == {"init", "del1", "del2"}
+
+    def test_orphan_not_target_when_legit_before_exists(self, tmp_path: Path):
+        """有合法 before 时,目标取合法前驱,orphan 既不当目标也不被删"""
+        gm = GitManager(str(tmp_path))
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
+        checkpoints = {
+            "init": "abc000",
+            "old": "bef111",  # 合法 before
+            "del": "def222",  # orphan
+            "cur": "ghi333",
+        }
+        gm.checkpoints_file.write_text(json.dumps(checkpoints))
+
+        reset_targets = []
+
+        def mock_run(args, **kwargs):
+            if args[:2] == ["reset", "--hard"]:
+                reset_targets.append(args[2])
+            return _mock_run(0)
+
+        # 编辑第二组:old(idx0)<fork_index(1) => 合法 before;del 是 orphan
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.rollback(["cur", "x"], ["old", "cur"])
+            assert result is True
+        # 目标是合法前驱 old(bef111),不是 orphan del(def222);del 保留
+        assert reset_targets == ["bef111"]
+        assert _cp_keys(gm) == {"init", "old", "del"}
+
+    def test_exact_match_path_preserves_orphan(self, tmp_path: Path):
+        """精确匹配路径不受 orphan 影响:目标取 key 父提交,orphan 保留"""
+        gm = GitManager(str(tmp_path))
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
+        checkpoints = {
+            "init": "abc000",
+            "del": "def111",  # orphan
+            "cur": "ghi333",
+        }
+        gm.checkpoints_file.write_text(json.dumps(checkpoints))
+
+        reset_targets = []
+
+        def mock_run(args, **kwargs):
+            if args[:2] == ["reset", "--hard"]:
+                reset_targets.append(args[2])
+            return _mock_run(0)
+
+        # message_ids_str="cur" 命中键 => 精确匹配路径
+        with patch.object(gm, "_run", side_effect=mock_run):
+            result = gm.rollback(["cur"], ["cur"])
+            assert result is True
+        # 目标是 cur 的父提交(ghi333~1),orphan del 保留
+        assert reset_targets == ["ghi333~1"]
+        assert _cp_keys(gm) == {"init", "del"}
+
     def test_classify_compound_key(self, tmp_path: Path):
         """Compound keys (msg1&msg2) use first part for classification"""
         gm = GitManager(str(tmp_path))

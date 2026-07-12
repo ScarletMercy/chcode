@@ -153,14 +153,13 @@ class GitManager:
             fork_id = message_ids[0]
             fork_index = all_ids.index(fork_id) if fork_id in all_ids else -1
 
-            unknown_idx = -1
             for k in list(checkpointer_dict.keys()):
                 if k == "init":
                     continue
                 first_msg_id = k.split("&")[0]
                 if first_msg_id not in all_ids:
-                    before.append((unknown_idx, k))
-                    unknown_idx -= 1
+                    # orphan(跨会话键或已删轮次)：保留不删，但不参与分类，
+                    # 否则成唯一 before 键会把 Case 2(回溯 init)翻成 Case 1(回溯到它)
                     continue
                 idx = all_ids.index(first_msg_id)
                 if idx < fork_index:
@@ -210,7 +209,8 @@ class GitManager:
 
         elif not has_before and has_after:
             # Case 2：前无提交后有提交 -> 回溯到初始提交
-            # "init" 必存在：init_shadow 启动时经 _ensure_init_checkpoint 幂等回填
+            # "init" 必存在：init_shadow 启动时经 _ensure_init_checkpoint 幂等回填；
+            # orphan 跳过后无合法 before 的回退都落本分支，此保证更吃重，勿破坏
             aim_id = checkpointer_dict["init"]
 
             for k in at_or_after_keys:
