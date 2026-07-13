@@ -7,6 +7,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from chcode.display import render_warning
+from chcode.i18n import t
+
 
 def atomic_write_json(
     path: Path,
@@ -37,12 +40,10 @@ class CachedJsonFile:
         *,
         indent: int = 4,
         ensure_dir: bool = False,
-        on_error: object = None,
     ):
         self.path = path
         self.indent = indent
         self.ensure_dir = ensure_dir
-        self._on_error = on_error
         self._cache: tuple[float, dict] | None = None
 
     def load(self) -> dict:
@@ -56,8 +57,7 @@ class CachedJsonFile:
             self._cache = (mtime, data)
             return data
         except Exception as e:
-            if self._on_error:
-                self._on_error(e, self.path)
+            render_warning(t("config.load_failed", path=self.path, e=e))
             return {}
 
     def save(self, data: dict) -> None:

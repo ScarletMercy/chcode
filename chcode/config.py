@@ -26,11 +26,7 @@ CONFIG_DIR = Path.home() / ".chat"
 MODEL_JSON = CONFIG_DIR / "model.json"
 SETTING_JSON = CONFIG_DIR / "chagent.json"
 
-def _log_model_json_error(e: Exception, path: Path) -> None:
-    console.print(f"[red]{t('config.load_failed', path=path, e=e)}[/red]")
-
-
-_model_json = CachedJsonFile(MODEL_JSON, ensure_dir=True, on_error=_log_model_json_error)
+_model_json = CachedJsonFile(MODEL_JSON, ensure_dir=True)
 
 
 ENV_TO_CONFIG: dict[str, dict[str, str | list[str]]] = {

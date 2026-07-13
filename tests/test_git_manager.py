@@ -192,6 +192,8 @@ class TestGitManager:
             call_count += 1
             if args[0] == "add":
                 return _mock_run(0)
+            elif args[0] == "diff":
+                return _mock_run(1)
             elif args[0] == "commit":
                 return _mock_run(0)
             elif args[0] == "rev-parse":
@@ -207,6 +209,84 @@ class TestGitManager:
         with patch.object(gm, "_run", return_value=_mock_run(1)):
             result = gm.add_commit("msg1")
             assert result is False
+
+    def test_add_commit_no_changes(self, tmp_path: Path):
+        """真实 git:无改动时 add_commit 返回 True,不新增 checkpoint"""
+        gm = GitManager(str(tmp_path))
+        assert gm.init_shadow() is True
+        assert gm.add_commit("m1") is True
+        data = json.loads(gm.checkpoints_file.read_text(encoding="utf-8"))
+        assert "m1" not in data
+
+    def test_add_commit_json_corrupt(self, tmp_path: Path):
+        """existing json 损坏:特有告警 + 返回 False,不崩"""
+        gm = GitManager(str(tmp_path))
+        assert gm.init_shadow() is True
+        gm.checkpoints_file.write_text("{ broken json", encoding="utf-8")
+        (tmp_path / "a.txt").write_text("v1", encoding="utf-8")
+        with patch("chcode.utils.git_manager.render_warning"):
+            assert gm.add_commit("m1") is False
+        log = gm._run(["log", "--format=%s"]).stdout
+        assert "m1" not in log  # 边角 2:损坏 fail-fast,commit 未发生,不留孤儿
+
+    def test_rollback_json_corrupt(self, tmp_path: Path):
+        """checkpoints.json 损坏:特有告警 + 返回 False,不崩,文件不动"""
+        gm = GitManager(str(tmp_path))
+        assert gm.init_shadow() is True
+        gm.checkpoints_file.write_text("{ broken json", encoding="utf-8")
+        with patch("chcode.utils.git_manager.render_warning"):
+            assert gm.rollback(["m1"], ["m1"]) is False
+        # fail-fast:读失败不写,文件保持损坏原样(对齐 add_commit)
+        assert gm.checkpoints_file.read_text(encoding="utf-8") == "{ broken json"
+
+    def test_init_shadow_json_corrupt(self, tmp_path: Path):
+        """checkpoints.json 损坏:init 告警 + return,不崩,文件不动,不被覆写成 {init}"""
+        gm = GitManager(str(tmp_path))
+        assert gm.init_shadow() is True
+        gm.checkpoints_file.write_text("{ broken json", encoding="utf-8")
+        with patch("chcode.utils.git_manager.render_warning"):
+            assert gm.init_shadow() is True
+        # fail-fast:读失败不写,文件保持损坏原样(对齐 add_commit/rollback)
+        assert gm.checkpoints_file.read_text(encoding="utf-8") == "{ broken json"
+
+    def test_add_commit_write_fails_rolls_back_commit(self, tmp_path: Path):
+        """write-json 失败:撤 commit,工作区改动保留"""
+        gm = GitManager(str(tmp_path))
+        assert gm.init_shadow() is True
+        (tmp_path / "a.txt").write_text("v1", encoding="utf-8")
+        with patch.object(gm, "_write_checkpoints", side_effect=OSError("disk full")):
+            assert gm.add_commit("m1") is False
+        log = gm._run(["log", "--format=%s"]).stdout
+        assert "m1" not in log
+        # 工作区改动保留(reset --mixed 不删工作区文件)
+        assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "v1"
+        data = json.loads(gm.checkpoints_file.read_text(encoding="utf-8"))
+        assert "m1" not in data
+
+    def test_undo_commit_mixed_nonzero_falls_back_to_soft(self, tmp_path: Path):
+        """mixed rc≠0(如盘满)时落 soft：锁定 A 修复"""
+        gm = GitManager(str(tmp_path))
+        calls = []
+
+        def mock_run(args, **kwargs):
+            calls.append(args)
+            if args[0] == "reset" and args[1] == "--mixed":
+                return _mock_run(1)  # mixed 失败(盘满写不了 index)
+            return _mock_run(0)  # soft 成功
+
+        with patch.object(gm, "_run", side_effect=mock_run):
+            gm._undo_commit("deadbeef")
+        # soft 被调 = A 已修(修前 mixed rc≠0 不 raise，soft 不触发)
+        assert any(a[0] == "reset" and a[1] == "--soft" for a in calls)
+
+    def test_undo_commit_both_fail_warns(self, tmp_path: Path):
+        """mixed 和 soft 都败时告警，不静默留孤儿：锁定 E 修复"""
+        gm = GitManager(str(tmp_path))
+
+        with patch.object(gm, "_run", return_value=_mock_run(1)):
+            with patch("chcode.utils.git_manager.render_warning") as rw:
+                gm._undo_commit("deadbeef")
+        rw.assert_called_once()
 
     def test_run_timeout(self, tmp_path: Path):
         import subprocess

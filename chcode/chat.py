@@ -1205,9 +1205,11 @@ class ChatREPL:
 
                 if self.git and self.git_manager:
                     try:
-                        await asyncio.to_thread(
+                        ok = await asyncio.to_thread(
                             self.git_manager.rollback, no_need_ids, all_ids
                         )
+                        if not ok:
+                            render_warning(t("chat.git.rollback_returned_false"))
                     except Exception as e:
                         render_warning(t("chat.git.rollback_failed", error=e))
 
@@ -1308,9 +1310,11 @@ class ChatREPL:
                 # 回滚工作目录
                 if self.git and self.git_manager:
                     try:
-                        await asyncio.to_thread(
+                        ok = await asyncio.to_thread(
                             self.git_manager.rollback, no_need_ids, all_ids
                         )
+                        if not ok:
+                            render_warning(t("chat.git.rollback_returned_false"))
                     except Exception as e:
                         render_warning(t("chat.git.rollback_failed", error=e))
 
@@ -1561,7 +1565,7 @@ class ChatREPL:
 
             # 后处理（上下文更新 + Git 提交）放到后台，不阻塞输入框。
             # 看似 fire-and-forget 会与 /edit、/fork 的 rollback 并发操作
-            # checkpoints.json（add_commit/rollback 均为非原子读-改-写），
+            # checkpoints.json（add_commit/rollback 读-改-写整体仍非原子，写步骤已原子），
             # 但 add_commit 仅几十~几百 ms，而下一轮输入或 edit/fork 须经秒级
             # 人机交互，天然串行化——竞态不可达。引入非交互入口（脚本/批量/重试）时需重评。
             asyncio.create_task(self._post_process())
@@ -1580,13 +1584,18 @@ class ChatREPL:
             self._context_text = get_context_usage_text(messages, max_ctx)
 
             if self.git and self.git_manager:
-                new_msgs = find_and_slice_from_end(messages, "human")
-                ids = [m.id for m in new_msgs]
-                await asyncio.to_thread(
-                    self.git_manager.add_commit, "&".join(ids)
-                )
-        except Exception:
-            pass
+                try:
+                    new_msgs = find_and_slice_from_end(messages, "human")
+                    ids = [m.id for m in new_msgs]
+                    ok = await asyncio.to_thread(
+                        self.git_manager.add_commit, "&".join(ids)
+                    )
+                    if not ok:
+                        render_warning(t("chat.git.checkpoint_returned_false"))
+                except Exception as e:
+                    render_warning(t("chat.git.checkpoint_failed", error=e))
+        except Exception as e:
+            render_warning(t("chat.git.post_process_ctx_failed", error=e))
 
     async def _collect_decisions_async(self, interrupt_chunk) -> list[dict]:
         """收集 HITL 决策"""

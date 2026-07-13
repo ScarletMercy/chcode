@@ -199,6 +199,8 @@ class TestAddCommit:
             call_count += 1
             if args[0] == "add":
                 return _mock_run(0)
+            elif args[0] == "diff":
+                return _mock_run(1)
             elif args[0] == "commit":
                 return _mock_run(0)
             elif args[0] == "rev-parse":
@@ -220,6 +222,8 @@ class TestAddCommit:
             calls.append(args)
             if args[0] == "add":
                 return _mock_run(0)
+            elif args[0] == "diff":
+                return _mock_run(1)
             elif args[0] == "commit":
                 return _mock_run(0)
             elif args[0] == "rev-parse":
@@ -240,6 +244,8 @@ class TestAddCommit:
         def mock_run(args, **kwargs):
             if args[0] == "add":
                 return _mock_run(0)
+            elif args[0] == "diff":
+                return _mock_run(1)
             elif args[0] == "commit":
                 return _mock_run(1)
             return _mock_run(0)
@@ -497,6 +503,8 @@ class TestAddCommitExistingCheckpoints:
         def mock_run(args, **kwargs):
             if args[0] == "add":
                 return _mock_run(0)
+            elif args[0] == "diff":
+                return _mock_run(1)
             elif args[0] == "commit":
                 return _mock_run(0)
             elif args[0] == "rev-parse":

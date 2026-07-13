@@ -4,6 +4,10 @@ import subprocess
 from pathlib import Path
 import json
 import shutil
+import os
+
+from chcode.display import render_warning
+from chcode.i18n import t
 
 
 class GitManager:
@@ -83,51 +87,95 @@ class GitManager:
         self._ensure_init_checkpoint()
         return self._run(["rev-parse", "--verify", "HEAD"]).returncode == 0
 
+    def _write_checkpoints(self, data: dict) -> None:
+        tmp = self.checkpoints_file.with_suffix(".tmp")
+        try:
+            tmp.write_text(json.dumps(data, indent=4), encoding="utf-8")
+            os.replace(tmp, self.checkpoints_file)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+
     def _ensure_init_checkpoint(self) -> None:
         """确保 checkpoints.json 中存在 "init" 条目，供 rollback 使用"""
         if not self.checkpoints_file.exists():
-            self.checkpoints_file.write_text(
-                json.dumps({}, indent=4), encoding="utf-8"
-            )
-        data = json.loads(self.checkpoints_file.read_text(encoding="utf-8"))
+            self._write_checkpoints({})
+        try:
+            data = json.loads(self.checkpoints_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            render_warning(t("chat.git.checkpoint_json_corrupt"))
+            return
+        except OSError as e:
+            render_warning(t("chat.git.checkpoint_read_failed", error=e))
+            return
         if "init" in data:
             return
         hash_result = self._run(["rev-list", "--max-parents=0", "HEAD"])
         if hash_result.returncode == 0 and hash_result.stdout.strip():
             data["init"] = hash_result.stdout.strip().split("\n")[-1]
-            self.checkpoints_file.write_text(
-                json.dumps(data, indent=4), encoding="utf-8"
-            )
+            self._write_checkpoints(data)
 
-    def add_commit(self, message_ids: str, files: list | None = None) -> bool:
-        """添加文件并提交"""
-        # 空消息无需显式拦截：ids 为空意味着 messages 中无 human —— 只在 _cleanup_last_turn
-        # 删组(has_ai=False，即本轮无 AIMessage)后出现，无 AIMessage 即无工具调用、工作区无改动，
-        # git "nothing to commit" 自然兜底，不会留下脏 index。
-        if files is None:
-            files = ["."]
-        if self._run(["add"] + files).returncode != 0:
+    def _undo_commit(self, pre_head: str) -> None:
+        """撤回刚生成的 commit，尽力回退 HEAD 到 pre_head，不抛异常。"""
+        # mixed 失败(rc≠0 或异常)退 --soft：soft 只移 HEAD、不写 index，比 mixed 快得多，
+        # mixed 超时(写整个 index)时 soft 仍可能成
+        if self._reset_ok("--mixed", pre_head) or self._reset_ok("--soft", pre_head):
+            return
+        # 两者都败：commit 未撤成，留孤儿
+        render_warning(t("chat.git.undo_failed"))
+
+    def _reset_ok(self, mode: str, pre_head: str) -> bool:
+        try:
+            return self._run(["reset", mode, pre_head]).returncode == 0
+        except Exception:
             return False
 
-        existing: dict = {}
-        if self.checkpoints_file.exists():
-            existing = json.loads(self.checkpoints_file.read_text(encoding="utf-8"))
-
-        commit_result = self._run(["commit", "-m", message_ids])
-
-        if commit_result.returncode == 0:
-            # 获取提交ID
-            hash_result = self._run(["rev-parse", "HEAD"])
-            if hash_result.returncode == 0:
-                commit_id = hash_result.stdout.strip()
-
-                checkpoint_dict = {message_ids: commit_id, **existing}
-                self.checkpoints_file.write_text(
-                    json.dumps(checkpoint_dict, indent=4), encoding="utf-8"
-                )
-
+    def add_commit(self, message_ids: str, files: list | None = None) -> bool:
+        """True=已提交或无改动；False=失败（调用方告警）。"""
+        if files is None:
+            files = ["."]
+        try:
+            if self._run(["add"] + files).returncode != 0:
+                return False
+            # diff --cached --quiet: 0=无差异, 1=有差异, 其他=git 出错
+            diff_rc = self._run(["diff", "--cached", "--quiet"]).returncode
+            if diff_rc == 0:
                 return True
-        return False
+            if diff_rc != 1:
+                return False
+            # HEAD 必存在（init_shadow 已建立），故不校验 returncode
+            pre_head = self._run(["rev-parse", "HEAD"]).stdout.strip()
+            existing: dict = {}
+            if self.checkpoints_file.exists():
+                try:
+                    existing = json.loads(self.checkpoints_file.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    render_warning(t("chat.git.checkpoint_json_corrupt"))
+                    return False
+                except OSError as e:
+                    render_warning(t("chat.git.checkpoint_read_failed", error=e))
+                    return False
+            if self._run(["commit", "-m", message_ids]).returncode != 0:
+                return False
+            hash_result = self._run(["rev-parse", "HEAD"])
+            if hash_result.returncode != 0:
+                self._undo_commit(pre_head)
+                return False
+            commit_id = hash_result.stdout.strip()
+        except RuntimeError:
+            return False
+        try:
+            # existing = 此前各轮写入的检查点。message_ids 由本轮 human 消息 ID 拼成，每轮唯一、
+            # 不会已在 existing 中，故 {message_ids: ..., **existing} 不存在旧值覆盖新值的问题。
+            self._write_checkpoints({message_ids: commit_id, **existing})
+        except OSError:
+            # 撤 commit 以保 json 与 commit 一致；只捕 OSError（data 均为 str，json.dumps 不抛其它）
+            self._undo_commit(pre_head)
+            return False
+        return True
 
     def rollback(self, message_ids: list[str], all_ids: list[str]) -> bool:
         """回滚到指定检查点
@@ -140,8 +188,15 @@ class GitManager:
         if not self.checkpoints_file.exists():
             return False
 
-        json_data = self.checkpoints_file.read_text(encoding="utf-8")
-        checkpointer_dict: dict = json.loads(json_data)
+        try:
+            json_data = self.checkpoints_file.read_text(encoding="utf-8")
+            checkpointer_dict: dict = json.loads(json_data)
+        except json.JSONDecodeError:
+            render_warning(t("chat.git.checkpoint_json_corrupt"))
+            return False
+        except OSError as e:
+            render_warning(t("chat.git.checkpoint_read_failed", error=e))
+            return False
 
         message_ids_str = "&".join(message_ids)
 
@@ -184,9 +239,7 @@ class GitManager:
             try:
                 reset_result = self._run(["reset", "--hard", aim_id])
                 if reset_result.returncode == 0:
-                    self.checkpoints_file.write_text(
-                        json.dumps(checkpointer_dict, indent=4), encoding="utf-8"
-                    )
+                    self._write_checkpoints(checkpointer_dict)
                     return True
                 else:
                     return False
@@ -225,9 +278,7 @@ class GitManager:
         try:
             reset_result = self._run(["reset", "--hard", aim_id])
             if reset_result.returncode == 0:
-                self.checkpoints_file.write_text(
-                    json.dumps(checkpointer_dict, indent=4), encoding="utf-8"
-                )
+                self._write_checkpoints(checkpointer_dict)
                 return True
             else:
                 return False

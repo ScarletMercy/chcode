@@ -698,6 +698,34 @@ MESSAGES = {
         "zh": "Git 回滚失败: {error}",
         "en": "Git rollback failed: {error}",
     },
+    "chat.git.rollback_returned_false": {
+        "zh": "Git 回滚未完成",
+        "en": "Git rollback did not complete",
+    },
+    "chat.git.checkpoint_failed": {
+        "zh": "检查点提交失败: {error}",
+        "en": "Checkpoint commit failed: {error}",
+    },
+    "chat.git.checkpoint_returned_false": {
+        "zh": "检查点提交或写入未完成",
+        "en": "Checkpoint commit or write did not complete",
+    },
+    "chat.git.checkpoint_json_corrupt": {
+        "zh": "checkpoints.json 损坏",
+        "en": "checkpoints.json corrupted",
+    },
+    "chat.git.checkpoint_read_failed": {
+        "zh": "checkpoints 读取失败: {error}",
+        "en": "checkpoints read failed: {error}",
+    },
+    "chat.git.undo_failed": {
+        "zh": "撤回检查点提交失败，git 与 checkpoints.json 可能不一致",
+        "en": "Failed to undo checkpoint commit; git may diverge from checkpoints.json",
+    },
+    "chat.git.post_process_ctx_failed": {
+        "zh": "上下文用量更新失败: {error}",
+        "en": "Context usage update failed: {error}",
+    },
     # ─── /search ───
     "cmd.search": {
         "zh": "配置 Tavily 搜索 API Key",
