@@ -88,6 +88,22 @@ class TestGitManager:
         assert not any(c[0] == "config" for c in calls)
         assert not any(c[0] == "commit" for c in calls)
 
+    def test_init_shadow_probe_exception(self, tmp_path: Path):
+        """探针 _run 抛异常(超时/杀软锁/权限)-> 降级返回 False 并告警，不穿到启动"""
+        gm = GitManager(str(tmp_path))
+        gm.cp_repo_dir.mkdir(parents=True)  # 短路 and 需 exists=True 才会触发探针
+
+        def mock_run(args, **kwargs):
+            if args[0] == "rev-parse":
+                raise RuntimeError("杀软锁定 cp-repo")
+            return _mock_run(0)
+
+        with patch("chcode.utils.git_manager.render_warning") as rw:
+            with patch.object(gm, "_run", side_effect=mock_run):
+                result = gm.init_shadow()
+        assert result is False
+        rw.assert_called_once()
+
     def test_init_shadow_fresh_real(self, tmp_path: Path):
         """真实 git：init_shadow 后 add_commit / rollback 正常"""
         gm = GitManager(str(tmp_path))
@@ -217,6 +233,17 @@ class TestGitManager:
         assert gm.add_commit("m1") is True
         data = json.loads(gm.checkpoints_file.read_text(encoding="utf-8"))
         assert "m1" not in data
+
+    def test_add_commit_exclude_lost_keeps_cp_repo_untracked(self, tmp_path: Path):
+        """exclude 丢失后 add_commit 补写,不把 cp-repo 自身暂存(防自毁链)"""
+        gm = GitManager(str(tmp_path))
+        assert gm.init_shadow() is True
+        (gm.cp_repo_dir / "info" / "exclude").unlink()  # 模拟杀软/误删
+        (tmp_path / "a.txt").write_text("v1", encoding="utf-8")
+        assert gm.add_commit("m1") is True
+        tree = gm._run(["ls-tree", "-r", "--name-only", "HEAD"]).stdout
+        assert ".chat/cp-repo" not in tree
+        assert "a.txt" in tree
 
     def test_add_commit_json_corrupt(self, tmp_path: Path):
         """existing json 损坏:特有告警 + 返回 False,不崩"""

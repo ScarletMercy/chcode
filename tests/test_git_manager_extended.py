@@ -143,10 +143,12 @@ class TestRollback:
             raise RuntimeError("Test error")
 
         # msg1 is before, msg2 is after, so will try to reset
-        with patch.object(gm, "_run", side_effect=raise_exception):
-            result = gm.rollback(["msg1.5"], ["msg1", "msg1.5", "msg2"])
-            # Exception in reset, returns False
-            assert result is False
+        with patch("chcode.utils.git_manager.render_warning") as rw:
+            with patch.object(gm, "_run", side_effect=raise_exception):
+                result = gm.rollback(["msg1.5"], ["msg1", "msg1.5", "msg2"])
+                # Exception in reset, returns False
+                assert result is False
+        rw.assert_called_once()
 
 
 class TestRunErrorCases:
@@ -253,6 +255,26 @@ class TestAddCommit:
         with patch.object(gm, "_run", side_effect=mock_run):
             result = gm.add_commit("msg1")
             assert result is False
+
+    def test_add_commit_run_raises_warns(self, tmp_path: Path):
+        """_run 抛 RuntimeError(超时/杀软锁/权限)-> 降级返回 False 并告警"""
+        gm = GitManager(str(tmp_path))
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
+
+        def mock_run(args, **kwargs):
+            if args[0] == "add":
+                return _mock_run(0)
+            elif args[0] == "diff":
+                return _mock_run(1)
+            elif args[0] == "commit":
+                raise RuntimeError("杀软锁定 index")
+            return _mock_run(0)
+
+        with patch("chcode.utils.git_manager.render_warning") as rw:
+            with patch.object(gm, "_run", side_effect=mock_run):
+                result = gm.add_commit("msg1")
+        assert result is False
+        rw.assert_called_once()
 
 
 class TestRollbackClassifyCheckpoints:
@@ -542,9 +564,11 @@ class TestRollbackExactMatchException:
         def raise_error(*args, **kwargs):
             raise RuntimeError("git reset failed")
 
-        with patch.object(gm, "_run", side_effect=raise_error):
-            result = gm.rollback(["msg1", "msg2"], ["msg1", "msg2"])
-            assert result is False
+        with patch("chcode.utils.git_manager.render_warning") as rw:
+            with patch.object(gm, "_run", side_effect=raise_error):
+                result = gm.rollback(["msg1", "msg2"], ["msg1", "msg2"])
+                assert result is False
+        rw.assert_called_once()
 
 
 # ============================================================================

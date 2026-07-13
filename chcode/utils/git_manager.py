@@ -62,30 +62,35 @@ class GitManager:
         git-dir 在非 .git 路径下 init 默认是 bare；翻 core.bare=false 后以 cwd 为
         工作树（_run 的 cwd 即 repo_path），不写 core.worktree，fork 后天然正确。
         """
-        valid = (
-            self.cp_repo_dir.exists()
-            and self._run(["rev-parse", "--verify", "HEAD"]).returncode == 0
-        )
-        if not valid:
-            # 目录在但 HEAD 无效（如 fork 复制中断）视为半残，删除重建
-            if self.cp_repo_dir.exists():
-                shutil.rmtree(self.cp_repo_dir, ignore_errors=True)
-            self.cp_repo_dir.parent.mkdir(parents=True, exist_ok=True)
-            if self._run(["init"]).returncode != 0:
-                return False
-            # 非 bare 才能用 cwd 当工作树；不继承用户 git 配置
-            self._run(["config", "--local", "core.bare", "false"])
-            self._run(["config", "--local", "user.name", "chcode"])
-            self._run(["config", "--local", "user.email", "chcode@local"])
-            self._run(["config", "--local", "core.autocrlf", "false"])
-            exclude_file = self.cp_repo_dir / "info" / "exclude"
-            exclude_file.parent.mkdir(parents=True, exist_ok=True)
-            exclude_file.write_text(self.SHADOW_EXCLUDE, encoding="utf-8")
-            # add 后 commit：有文件则 init 含项目初始文件，空目录则 --allow-empty 兜底空提交
-            self._run(["add", "."])
-            self._run(["commit", "-m", "init", "--allow-empty"])
-        self._ensure_init_checkpoint()
-        return self._run(["rev-parse", "--verify", "HEAD"]).returncode == 0
+        try:
+            valid = (
+                self.cp_repo_dir.exists()
+                and self._run(["rev-parse", "--verify", "HEAD"]).returncode == 0
+            )
+            if not valid:
+                # 目录在但 HEAD 无效（如 fork 复制中断）视为半残，删除重建
+                if self.cp_repo_dir.exists():
+                    shutil.rmtree(self.cp_repo_dir, ignore_errors=True)
+                self.cp_repo_dir.parent.mkdir(parents=True, exist_ok=True)
+                if self._run(["init"]).returncode != 0:
+                    return False
+                # 非 bare 才能用 cwd 当工作树；不继承用户 git 配置
+                self._run(["config", "--local", "core.bare", "false"])
+                self._run(["config", "--local", "user.name", "chcode"])
+                self._run(["config", "--local", "user.email", "chcode@local"])
+                self._run(["config", "--local", "core.autocrlf", "false"])
+                self._ensure_exclude()
+                # add 后 commit：有文件则 init 含项目初始文件，空目录则 --allow-empty 兜底空提交
+                self._run(["add", "."])
+                self._run(["commit", "-m", "init", "--allow-empty"])
+            self._ensure_init_checkpoint()
+            return self._run(["rev-parse", "--verify", "HEAD"]).returncode == 0
+        except RuntimeError as e:
+            render_warning(t("chat.git.shadow_init_exception", error=e))
+            return False
+        except OSError as e:
+            render_warning(t("chat.git.shadow_init_exception", error=e))
+            return False
 
     def _write_checkpoints(self, data: dict) -> None:
         tmp = self.checkpoints_file.with_suffix(".tmp")
@@ -118,6 +123,13 @@ class GitManager:
             data["init"] = hash_result.stdout.strip().split("\n")[-1]
             self._write_checkpoints(data)
 
+    def _ensure_exclude(self) -> None:
+        """add 前补写 info/exclude：丢失则 git 会把 cp-repo 自身暂存进历史，rollback 时 reset --hard 删 git-dir。失败抛 OSError 由调用方 except 兜底（不在此静默，否则 add 裸奔）"""
+        exclude_file = self.cp_repo_dir / "info" / "exclude"
+        if not exclude_file.exists() or exclude_file.read_text(encoding="utf-8") != self.SHADOW_EXCLUDE:
+            exclude_file.parent.mkdir(parents=True, exist_ok=True)
+            exclude_file.write_text(self.SHADOW_EXCLUDE, encoding="utf-8")
+
     def _undo_commit(self, pre_head: str) -> None:
         """撤回刚生成的 commit，尽力回退 HEAD 到 pre_head，不抛异常。"""
         # mixed 失败(rc≠0 或异常)退 --soft：soft 只移 HEAD、不写 index，比 mixed 快得多，
@@ -138,6 +150,7 @@ class GitManager:
         if files is None:
             files = ["."]
         try:
+            self._ensure_exclude()
             if self._run(["add"] + files).returncode != 0:
                 return False
             # diff --cached --quiet: 0=无差异, 1=有差异, 其他=git 出错
@@ -165,7 +178,8 @@ class GitManager:
                 self._undo_commit(pre_head)
                 return False
             commit_id = hash_result.stdout.strip()
-        except RuntimeError:
+        except (RuntimeError, OSError) as e:
+            render_warning(t("chat.git.checkpoint_failed", error=e))
             return False
         try:
             # existing = 此前各轮写入的检查点。message_ids 由本轮 human 消息 ID 拼成，每轮唯一、
@@ -243,7 +257,11 @@ class GitManager:
                     return True
                 else:
                     return False
-            except Exception:
+            except RuntimeError as e:
+                render_warning(t("chat.git.rollback_failed", error=e))
+                return False
+            except OSError as e:
+                render_warning(t("chat.git.rollback_failed", error=e))
                 return False
 
         # -- 第二步：模糊匹配 --
@@ -282,5 +300,9 @@ class GitManager:
                 return True
             else:
                 return False
-        except Exception:
+        except RuntimeError as e:
+            render_warning(t("chat.git.rollback_failed", error=e))
+            return False
+        except OSError as e:
+            render_warning(t("chat.git.rollback_failed", error=e))
             return False

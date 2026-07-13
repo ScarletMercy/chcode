@@ -384,6 +384,8 @@ class ChatREPL:
             self.git_manager = GitManager(str(self.workplace_path))
             shadow_ready = await asyncio.to_thread(self.git_manager.init_shadow)
             self.git = bool(shadow_ready)
+            if not self.git:
+                render_warning(t("chat.git.shadow_init_failed"))
 
     # ─── 主循环 ────────────────────────────────────────
 
@@ -1587,11 +1589,14 @@ class ChatREPL:
                 try:
                     new_msgs = find_and_slice_from_end(messages, "human")
                     ids = [m.id for m in new_msgs]
-                    ok = await asyncio.to_thread(
-                        self.git_manager.add_commit, "&".join(ids)
-                    )
-                    if not ok:
-                        render_warning(t("chat.git.checkpoint_returned_false"))
+                    # 无 human（如首轮出错 _cleanup_last_turn 已删整组）时跳过：
+                    # 空消息提交会被 git 拒、误报 checkpoint_returned_false
+                    if ids:
+                        ok = await asyncio.to_thread(
+                            self.git_manager.add_commit, "&".join(ids)
+                        )
+                        if not ok:
+                            render_warning(t("chat.git.checkpoint_returned_false"))
                 except Exception as e:
                     render_warning(t("chat.git.checkpoint_failed", error=e))
         except Exception as e:

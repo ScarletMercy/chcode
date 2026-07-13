@@ -710,6 +710,14 @@ MESSAGES = {
         "zh": "检查点提交或写入未完成",
         "en": "Checkpoint commit or write did not complete",
     },
+    "chat.git.shadow_init_failed": {
+        "zh": "影子 git 初始化失败，检查点功能已禁用",
+        "en": "Shadow git init failed; checkpoint feature disabled",
+    },
+    "chat.git.shadow_init_exception": {
+        "zh": "影子 git 初始化异常: {error}",
+        "en": "Shadow git init exception: {error}",
+    },
     "chat.git.checkpoint_json_corrupt": {
         "zh": "checkpoints.json 损坏",
         "en": "checkpoints.json corrupted",
