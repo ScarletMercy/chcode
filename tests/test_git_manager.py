@@ -266,6 +266,26 @@ class TestGitManager:
         # fail-fast:读失败不写,文件保持损坏原样(对齐 add_commit)
         assert gm.checkpoints_file.read_text(encoding="utf-8") == "{ broken json"
 
+    def test_rollback_case2_init_missing_returns_false(self, tmp_path: Path):
+        """init 缺失(启动时 rev-list 失败)时 Case 2 不再 KeyError，返回 False 保持原状"""
+        gm = GitManager(str(tmp_path))
+        real_run = gm._run
+
+        def mock_init(args, **kwargs):
+            if args[0] == "rev-list":
+                return _mock_run(1)  # 失败 -> 不回填 init
+            return real_run(args, **kwargs)
+
+        with patch.object(gm, "_run", side_effect=mock_init):
+            assert gm.init_shadow() is True
+        assert "init" not in json.loads(gm.checkpoints_file.read_text(encoding="utf-8"))
+
+        (tmp_path / "b.txt").write_text("v1", encoding="utf-8")
+        assert gm.add_commit("msg3&msg4") is True
+
+        # rollback 更早的 message_ids -> 无 before、有 after -> Case 2，init 缺失返回 False
+        assert gm.rollback(["msg1"], ["msg1", "msg2", "msg3", "msg4"]) is False
+
     def test_init_shadow_json_corrupt(self, tmp_path: Path):
         """checkpoints.json 损坏:init 告警 + return,不崩,文件不动,不被覆写成 {init}"""
         gm = GitManager(str(tmp_path))
@@ -289,6 +309,30 @@ class TestGitManager:
         assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "v1"
         data = json.loads(gm.checkpoints_file.read_text(encoding="utf-8"))
         assert "m1" not in data
+
+    def test_add_commit_rev_parse_after_commit_raises_undoes(self, tmp_path: Path):
+        """commit 成功后取 id 的 rev-parse 抛异常 -> 撤 commit，不留孤儿"""
+        gm = GitManager(str(tmp_path))
+        assert gm.init_shadow() is True
+        (tmp_path / "a.txt").write_text("v1", encoding="utf-8")
+        pre_head = gm._run(["rev-parse", "HEAD"]).stdout.strip()
+
+        real_run = gm._run
+        state = {"rev": 0}
+
+        def mock_run(args, **kwargs):
+            if args[0] == "rev-parse" and len(args) > 1 and args[1] == "HEAD":
+                state["rev"] += 1
+                if state["rev"] == 2:  # commit 后取 id 那次抛异常
+                    raise RuntimeError("rev-parse 超时")
+                return real_run(args, **kwargs)
+            return real_run(args, **kwargs)
+
+        with patch("chcode.utils.git_manager.render_warning"):
+            with patch.object(gm, "_run", side_effect=mock_run):
+                assert gm.add_commit("m1") is False
+        assert gm._run(["rev-parse", "HEAD"]).stdout.strip() == pre_head  # commit 被撤
+        assert "m1" not in gm._run(["log", "--format=%s"]).stdout
 
     def test_undo_commit_mixed_nonzero_falls_back_to_soft(self, tmp_path: Path):
         """mixed rc≠0(如盘满)时落 soft：锁定 A 修复"""

@@ -31,22 +31,18 @@
 
 ### 模型管理
 
-- 兼容**所有 OpenAI 兼容 API**（OpenAI、DeepSeek、Qwen、GLM、Claude 代理等）
-- 内置 **ModelScope** 等主流平台快捷配置
-- **ModelScope**：每天 2000 次免费模型调用
-- 首次运行向导，**自动检测环境变量**（扫描 `OPENAI_API_KEY`、`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`、`ModelScopeToken` 等）
+- 兼容**所有支持 OpenAI 接口的模型**（OpenAI、DeepSeek、Qwen、GLM、Claude 代理等）
+- 内置**魔搭**快捷配置（每天 2000 次免费模型调用）
 - 原生支持 **reasoning/thinking 模型** — 实时显示思考过程
 - 运行时创建 / 编辑 / 切换模型
-- 每个模型独立调参（temperature、top_p、top_k、max_completion_tokens、stop_sequences 等）
+- 每个模型独立调参（temperature、top_p、top_k、max_completion_tokens 等）
 - **指数退避自动重试**（3/10/30/60s），持续失败时自动切换备用模型
 
 ### 视觉与多模态
 
 - 通过 `/vision` 命令独立配置视觉模型（与主模型分离）
-- 图片分析，支持**自动媒体编码**和 base64 嵌入
-- **视频支持** — 直接将视频发送给视觉模型进行分析（MP4、MOV、AVI、MKV、WebM）
-- 大尺寸图片自动缩放
-- 支持的图片格式：PNG、JPG、JPEG、GIF、BMP、WebP、TIFF
+- 视觉理解，支持**自动媒体编码**和 base64 嵌入
+- 主模型为多模态模型时会禁用 vision 工具，自动嵌入媒体文件；主模型为文本模型时则通过调用 vision 工具理解媒体文件
 
 ### 会话与历史
 
@@ -55,15 +51,17 @@
 - **上下文压缩** — 接近 token 上限时自动摘要
 - 状态栏实时显示**上下文使用量**
 
-### Git 集成
+### 消息管理与影子仓库（Git 感知）
 
-- 编辑消息时工作目录**自动回滚**
-- 从任意消息**创建分支**（fork）
-- 通过 `/messages` 编辑 / fork / 删除历史消息
+- **影子仓库隔离** - 历史的编辑、分支引发的工作目录回溯均在独立影子仓库中完成，与用户工作仓库完全隔离，不会污染实际代码
+- **编辑** - 修改历史消息时，工作目录自动回滚到该消息对应的状态
+- **创建分支** - 从任意消息 fork 出新会话分支和新目录分支，然后对工作目录进行和edit效果相同的回溯
+- **删除** - 删除不再需要的历史消息，不会影响工作目录
+- 以上操作均通过 `/messages` 命令完成
 
-### 人工审核
+### 人在闭环
 
-- **Common 模式** — 每次工具调用需要确认，编辑操作显示 diff 预览。仅可使用 Explore 和 Plan 子代理
+- **Common 模式** — 每次风险工具调用需要确认，编辑操作显示 diff 预览。仅可使用 Explore 和 Plan 子代理
 - **YOLO 模式** — 自动批准所有操作。所有子代理可用，包括 General-purpose
 - 通过 `Tab` 键或 `/mode` 命令切换
 - 切换模式时自动更新可用子代理列表
@@ -80,7 +78,7 @@
 - **Linux / Mac** — 原生 bash/zsh
 - 持久化 Shell 会话，**自动追踪 CWD**
 
-### 终端 UI
+### Rich 终端 UI
 
 - 实时**状态栏** — 上下文使用率、Git 状态指示、ModelScope API 配额
 - **流式输出**，逐 token 渲染

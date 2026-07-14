@@ -31,22 +31,18 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 
 ### Model Management
 
-- Compatible with **all OpenAI-compatible APIs** (OpenAI, DeepSeek, Qwen, GLM, Claude via proxy, etc.)
-- Built-in quick setup for **ModelScope** and major providers
-- **ModelScope**: 2000 free model calls/day
-- First-run wizard with **env auto-detection** (scans `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `ModelScopeToken`, etc.)
+- Compatible with **all models supporting the OpenAI API** (OpenAI, DeepSeek, Qwen, GLM, Claude via proxy, etc.)
+- Built-in quick setup for **ModelScope** (2000 free model calls/day)
 - Native **reasoning/thinking model** support — thinking tokens displayed in real time
 - Create / edit / switch models at runtime
-- Per-model hyperparameter tuning (temperature, top_p, top_k, max_completion_tokens, stop_sequences, etc.)
+- Per-model hyperparameter tuning (temperature, top_p, top_k, max_completion_tokens, etc.)
 - Automatic **retry with exponential backoff** (3/10/30/60s) and fallback model switching on persistent failure
 
 ### Vision & Multimodal
 
 - Dedicated vision model configuration via `/vision` command (independent from main model)
-- Image analysis with **automatic media encoding** and base64 embedding
-- **Video support** — send videos directly to vision models for analysis (MP4, MOV, AVI, MKV, WebM)
-- Automatic image resizing for oversized inputs
-- Supported image formats: PNG, JPG, JPEG, GIF, BMP, WebP, TIFF
+- Vision understanding with **automatic media encoding** and base64 embedding
+- Multimodal main models disable the vision tool and embed media files automatically; text main models understand media via the vision tool
 
 ### Session & History
 
@@ -55,15 +51,17 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 - **Context compression** — auto-summarize when approaching token limit
 - Real-time **context usage display** in status bar
 
-### Git Integration
+### Message Management & Shadow Repo (Git-aware)
 
-- Working directory **rolls back with message edits**
-- Create **branches from any message** (fork)
-- Edit / fork / delete history messages via `/messages`
+- **Shadow repo isolation** — working-directory rollbacks caused by history edits and branches are performed in an isolated shadow repo, fully separated from your working repo and never polluting real code
+- **Edit** — editing a history message automatically rolls the working directory back to that message's state
+- **Branch** — fork a new session branch and a new directory branch from any message, then roll back the working directory the same way editing does
+- **Delete** — delete history messages you no longer need; the working directory is unaffected
+- All of the above via the `/messages` command
 
 ### Human-in-the-Loop
 
-- **Common mode** — every tool call requires approval, with diff preview for edits. Only Explore and Plan sub-agents available.
+- **Common mode** — every risky tool call requires approval, with diff preview for edits. Only Explore and Plan sub-agents available.
 - **YOLO mode** — auto-approve everything. All sub-agents available including General-purpose.
 - Toggle with `Tab` key or `/mode` command
 - Available sub-agents update dynamically when switching modes
@@ -129,7 +127,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 | `ask_user` | Single-select, multi-select, batch questions for user interaction |
 | `agent` | Launch sub-agents (Explore, Plan, General-purpose in YOLO mode, custom), supports parallel execution |
 | `todo_write` | Structured task tracking for complex multi-step work |
-| `vision` | Analyze images and videos via ModelScope vision models |
+| `vision` | Analyze images and videos via vision models |
 
 ## Quick Start
 
@@ -204,7 +202,7 @@ On first launch, ChCode will:
 
 ## Why No MCP?
 
-ChCode intentionally does not integrate MCP (Model Context Protocol). The combination of **Skills + CLI tools** covers 95%+ of real-world coding agent scenarios. Skills provide structured, reusable instructions injected via middleware — simpler, faster, and more portable than MCP servers.
+ChCode intentionally does not integrate MCP (Model Context Protocol). The combination of **Skills + CLI tools** covers 95%+ of real-world coding agent scenarios. Skills provide structured, reusable instructions injected via middleware — simpler, faster, and more lightweight than MCP servers.
 
 ## Architecture
 

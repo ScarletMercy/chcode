@@ -702,6 +702,14 @@ MESSAGES = {
         "zh": "Git 回滚未完成",
         "en": "Git rollback did not complete",
     },
+    "chat.git.rollback_no_checkpoints": {
+        "zh": "无检查点数据,无法回滚",
+        "en": "No checkpoint data, cannot rollback",
+    },
+    "chat.git.rollback_no_init": {
+        "zh": "init 检查点缺失,无法回溯到初始状态",
+        "en": "init checkpoint missing, cannot rollback to initial state",
+    },
     "chat.git.checkpoint_failed": {
         "zh": "检查点提交失败: {error}",
         "en": "Checkpoint commit failed: {error}",

@@ -149,15 +149,20 @@ class GitManager:
         """True=已提交或无改动；False=失败（调用方告警）。"""
         if files is None:
             files = ["."]
+        pre_head = ""
+        committed = False
         try:
             self._ensure_exclude()
-            if self._run(["add"] + files).returncode != 0:
+            add_result = self._run(["add"] + files)
+            if add_result.returncode != 0:
+                render_warning(t("chat.git.checkpoint_failed", error=add_result.stderr.strip()))
                 return False
             # diff --cached --quiet: 0=无差异, 1=有差异, 其他=git 出错
-            diff_rc = self._run(["diff", "--cached", "--quiet"]).returncode
-            if diff_rc == 0:
+            diff_result = self._run(["diff", "--cached", "--quiet"])
+            if diff_result.returncode == 0:
                 return True
-            if diff_rc != 1:
+            if diff_result.returncode != 1:
+                render_warning(t("chat.git.checkpoint_failed", error=diff_result.stderr.strip()))
                 return False
             # HEAD 必存在（init_shadow 已建立），故不校验 returncode
             pre_head = self._run(["rev-parse", "HEAD"]).stdout.strip()
@@ -171,22 +176,29 @@ class GitManager:
                 except OSError as e:
                     render_warning(t("chat.git.checkpoint_read_failed", error=e))
                     return False
-            if self._run(["commit", "-m", message_ids]).returncode != 0:
+            commit_result = self._run(["commit", "-m", message_ids])
+            if commit_result.returncode != 0:
+                render_warning(t("chat.git.checkpoint_failed", error=commit_result.stderr.strip()))
                 return False
+            committed = True
             hash_result = self._run(["rev-parse", "HEAD"])
             if hash_result.returncode != 0:
+                render_warning(t("chat.git.checkpoint_failed", error=hash_result.stderr.strip()))
                 self._undo_commit(pre_head)
                 return False
             commit_id = hash_result.stdout.strip()
         except (RuntimeError, OSError) as e:
+            if committed:
+                self._undo_commit(pre_head)
             render_warning(t("chat.git.checkpoint_failed", error=e))
             return False
         try:
             # existing = 此前各轮写入的检查点。message_ids 由本轮 human 消息 ID 拼成，每轮唯一、
             # 不会已在 existing 中，故 {message_ids: ..., **existing} 不存在旧值覆盖新值的问题。
             self._write_checkpoints({message_ids: commit_id, **existing})
-        except OSError:
+        except OSError as e:
             # 撤 commit 以保 json 与 commit 一致；只捕 OSError（data 均为 str，json.dumps 不抛其它）
+            render_warning(t("chat.git.checkpoint_failed", error=e))
             self._undo_commit(pre_head)
             return False
         return True
@@ -200,6 +212,7 @@ class GitManager:
         前有提交后无提交：不回溯
         """
         if not self.checkpoints_file.exists():
+            render_warning(t("chat.git.rollback_no_checkpoints"))
             return False
 
         try:
@@ -256,6 +269,9 @@ class GitManager:
                     self._write_checkpoints(checkpointer_dict)
                     return True
                 else:
+                    render_warning(
+                        t("chat.git.rollback_failed", error=reset_result.stderr.strip())
+                    )
                     return False
             except RuntimeError as e:
                 render_warning(t("chat.git.rollback_failed", error=e))
@@ -279,11 +295,11 @@ class GitManager:
                 checkpointer_dict.pop(k)
 
         elif not has_before and has_after:
-            # Case 2：前无提交后有提交 -> 回溯到初始提交
-            # "init" 必存在：init_shadow 启动时经 _ensure_init_checkpoint 幂等回填；
-            # orphan 跳过后无合法 before 的回退都落本分支，此保证更吃重，勿破坏
-            aim_id = checkpointer_dict["init"]
-
+            # Case 2：前无提交后有提交 -> 回溯到初始提交（orphan 跳过后无合法 before 也落此分支）
+            aim_id = checkpointer_dict.get("init")
+            if aim_id is None:
+                render_warning(t("chat.git.rollback_no_init"))
+                return False  # init 缺失（启动时 rev-list 失败未回填）-> 无法回溯，保持原状
             for k in at_or_after_keys:
                 checkpointer_dict.pop(k)
 
@@ -299,6 +315,9 @@ class GitManager:
                 self._write_checkpoints(checkpointer_dict)
                 return True
             else:
+                render_warning(
+                    t("chat.git.rollback_failed", error=reset_result.stderr.strip())
+                )
                 return False
         except RuntimeError as e:
             render_warning(t("chat.git.rollback_failed", error=e))

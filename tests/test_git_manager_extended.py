@@ -42,6 +42,18 @@ class TestRollback:
             assert result is True
             assert _cp_keys(gm) == {"init"}  # Only "init" remains
 
+    def test_rollback_reset_fail_preserves_json(self, tmp_path: Path):
+        """reset --hard rc≠0 时不写 json--json 与仓库一致性守恒"""
+        gm = GitManager(str(tmp_path))
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
+        original = {"init": "abc123", "msg1&msg2": "def456"}
+        gm.checkpoints_file.write_text(json.dumps(original))
+
+        with patch.object(gm, "_run", return_value=_mock_run(1, stderr="reset fail")):
+            result = gm.rollback(["msg1", "msg2"], ["msg1", "msg2"])
+        assert result is False
+        assert json.loads(gm.checkpoints_file.read_text()) == original
+
     def test_rollback_fuzzy_has_before_has_after(self, tmp_path: Path):
         """Fuzzy match: has_before + has_after -> rollback to before"""
         gm = GitManager(str(tmp_path))
@@ -255,6 +267,26 @@ class TestAddCommit:
         with patch.object(gm, "_run", side_effect=mock_run):
             result = gm.add_commit("msg1")
             assert result is False
+
+    def test_add_commit_commit_fail_skips_undo(self, tmp_path: Path):
+        """commit 失败(committed=False)不触发 undo--committed 标志守恒"""
+        gm = GitManager(str(tmp_path))
+        gm.checkpoints_file.parent.mkdir(parents=True, exist_ok=True)
+
+        def mock_run(args, **kwargs):
+            if args[0] == "add":
+                return _mock_run(0)
+            elif args[0] == "diff":
+                return _mock_run(1)
+            elif args[0] == "commit":
+                return _mock_run(1)
+            return _mock_run(0)
+
+        with patch.object(gm, "_undo_commit") as undo:
+            with patch.object(gm, "_run", side_effect=mock_run):
+                result = gm.add_commit("msg1")
+        assert result is False
+        undo.assert_not_called()
 
     def test_add_commit_run_raises_warns(self, tmp_path: Path):
         """_run 抛 RuntimeError(超时/杀软锁/权限)-> 降级返回 False 并告警"""
