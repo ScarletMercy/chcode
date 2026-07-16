@@ -738,6 +738,11 @@ MESSAGES = {
         "zh": "撤回检查点提交失败，git 与 checkpoints.json 可能不一致",
         "en": "Failed to undo checkpoint commit; git may diverge from checkpoints.json",
     },
+    # 【旧版检查点迁移】失败时的告警（成功静默）
+    "chat.git.migrate_copy_failed": {
+        "zh": "旧版检查点迁移到影子仓库失败，已改用全新仓库: {error}",
+        "en": "Failed to migrate legacy checkpoints to shadow repo; started fresh instead: {error}",
+    },
     "chat.git.post_process_ctx_failed": {
         "zh": "上下文用量更新失败: {error}",
         "en": "Context usage update failed: {error}",

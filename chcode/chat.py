@@ -382,6 +382,8 @@ class ChatREPL:
         is_available, status, version = await asyncio.to_thread(check_git_availability)
         if is_available:
             self.git_manager = GitManager(str(self.workplace_path))
+            # 【旧版检查点迁移】把旧 .git 的检查点数据搬到影子仓库（老用户一次性，幂等）
+            await asyncio.to_thread(self.git_manager.migrate_legacy_git)
             shadow_ready = await asyncio.to_thread(self.git_manager.init_shadow)
             self.git = bool(shadow_ready)
             if not self.git:
@@ -1304,6 +1306,7 @@ class ChatREPL:
                     await self.agent.aupdate_state(
                         self.session_mgr.config,
                         {"messages": need_messages},
+                        as_node="model",  # create_agent 的 graph 有 model/tools 多 writer，缺省时老会话状态触发 "Ambiguous update"
                     )
 
                 # 先初始化 git
@@ -1384,6 +1387,7 @@ class ChatREPL:
         await self.agent.aupdate_state(
             self.session_mgr.config,
             {"messages": remove_messages},
+            as_node="model",  # create_agent 的 graph 有 model/tools 多 writer，缺省时老会话状态触发 "Ambiguous update"
         )
 
     def _copy_dir(self, src: Path, dst: Path):

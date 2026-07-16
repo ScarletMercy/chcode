@@ -92,6 +92,45 @@ class GitManager:
             render_warning(t("chat.git.shadow_init_exception", error=e))
             return False
 
+    def migrate_legacy_git(self) -> None:
+        """【旧版检查点迁移】旧版把检查点提交进用户真实 .git（污染用户仓库），新版
+        改用独立影子仓库 .chat/cp-repo。检测到 .git/checkpoints.json 且无 cp-repo 时，
+        复制 .git -> cp-repo 并规范化 config/exclude/hooks。仅在 init_shadow 前调用一次；
+        失败则清理半残 cp-repo，由随后的 init_shadow 全新建仓兜底。"""
+        if self.cp_repo_dir.exists():
+            return
+        legacy_git = self.repo_path / ".git"
+        if not legacy_git.is_dir() or not (legacy_git / "checkpoints.json").exists():
+            return
+        try:
+            self.cp_repo_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(legacy_git, self.cp_repo_dir)
+            # 副本沿用用户原 config：无 chcode 身份（全局无 user 时 commit 失败），
+            # 且可能含 core.worktree 导致 --git-dir 指错工作树，故统一覆写/清理
+            self._run(["config", "--local", "core.bare", "false"])
+            self._run(["config", "--local", "user.name", "chcode"])
+            self._run(["config", "--local", "user.email", "chcode@local"])
+            self._run(["config", "--local", "core.autocrlf", "false"])
+            self._run(["config", "--local", "--unset", "core.worktree"])  # 键不存在 rc=5，silent 吞掉
+            self._ensure_exclude()
+            self._clean_hooks()
+        except (OSError, RuntimeError) as e:
+            # 半残 cp-repo 会让后续 init_shadow 误判有效而跳过补全，清理后由下方全新建仓兜底
+            shutil.rmtree(self.cp_repo_dir, ignore_errors=True)
+            render_warning(t("chat.git.migrate_copy_failed", error=e))
+
+    def _clean_hooks(self) -> None:
+        """【迁移】删复制带过来的用户活动 hook（.sample 除外），防 chcode commit 误触发。"""
+        hooks_dir = self.cp_repo_dir / "hooks"
+        if not hooks_dir.is_dir():
+            return
+        for hook in hooks_dir.iterdir():
+            if hook.is_file() and not hook.name.endswith(".sample"):
+                try:
+                    hook.unlink()
+                except OSError:
+                    pass
+
     def _write_checkpoints(self, data: dict) -> None:
         tmp = self.checkpoints_file.with_suffix(".tmp")
         try:

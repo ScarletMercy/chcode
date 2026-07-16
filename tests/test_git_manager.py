@@ -366,3 +366,97 @@ class TestGitManager:
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("git", 30)):
             with pytest.raises(RuntimeError, match="超时"):
                 gm._run(["status"])
+
+    def test_migrate_then_init_shadow_real(self, tmp_path: Path):
+        """真实 git：migrate_legacy_git 复制 .git 为 cp-repo 并规范化，随后 init_shadow
+        走 valid 分支就绪，老 checkpoint 仍可 rollback（对应 _init_git 的编排）"""
+        import subprocess
+
+        def git(*args):
+            return subprocess.run(
+                ["git", *args], cwd=str(tmp_path),
+                capture_output=True, text=True, encoding="utf-8",
+            )
+
+        # 模拟旧版：检查点直接写进用户真实 .git
+        git("init")
+        git("config", "user.email", "user@x")
+        git("config", "user.name", "user")
+        (tmp_path / "a.txt").write_text("v1", encoding="utf-8")
+        git("add", ".")
+        git("commit", "-m", "init")
+        init_hash = git("rev-parse", "HEAD").stdout.strip()
+        (tmp_path / "a.txt").write_text("v2", encoding="utf-8")
+        git("add", ".")
+        git("commit", "-m", "m1")
+        m1_hash = git("rev-parse", "HEAD").stdout.strip()
+        # 旧版 checkpoints.json 在 .git/ 下；放一个活动 hook 验证会被清
+        (tmp_path / ".git" / "hooks" / "pre-commit").write_text(
+            "#!/bin/sh\nexit 1", encoding="utf-8"
+        )
+        (tmp_path / ".git" / "checkpoints.json").write_text(
+            json.dumps({"init": init_hash, "m1": m1_hash}, indent=4), encoding="utf-8"
+        )
+
+        gm = GitManager(str(tmp_path))
+        gm.migrate_legacy_git()  # 对应 _init_git：先迁移
+        assert gm.init_shadow() is True  # 再建仓：cp-repo 已存在，走 valid 分支
+
+        # 复制到 cp-repo，老 checkpoints.json 路径天然对上
+        data = json.loads(gm.checkpoints_file.read_text(encoding="utf-8"))
+        assert data["init"] == init_hash and data["m1"] == m1_hash
+        # config 规范化为 chcode 身份
+        assert (
+            git("--git-dir", str(gm.cp_repo_dir), "config", "user.name").stdout.strip()
+            == "chcode"
+        )
+        # exclude 补上
+        assert (
+            gm.cp_repo_dir / "info" / "exclude"
+        ).read_text(encoding="utf-8") == gm.SHADOW_EXCLUDE
+        # 活动 hook 被清
+        assert not (gm.cp_repo_dir / "hooks" / "pre-commit").exists()
+        # 老 rollback 仍可用：回滚 m1 -> 工作树回到 init(a.txt=v1)
+        assert gm.rollback(["m1"], ["m1"]) is True
+        assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "v1"
+
+    def test_migrate_skipped_when_cp_repo_exists(self, tmp_path: Path):
+        """cp-repo 已存在时不触发迁移（幂等），不复制 .git 内容"""
+        import subprocess
+
+        subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
+        (tmp_path / ".git" / "checkpoints.json").write_text(
+            json.dumps({"legacy": "x"}), encoding="utf-8"
+        )
+        gm = GitManager(str(tmp_path))
+        gm.cp_repo_dir.mkdir(parents=True)  # cp-repo 已存在
+        gm.migrate_legacy_git()
+        assert not gm.checkpoints_file.exists()  # .git 的 checkpoints.json 未被复制
+
+    def test_migrate_skipped_without_legacy_checkpoints(self, tmp_path: Path):
+        """无 .git/checkpoints.json -> 不迁移（即便有 .git 目录）"""
+        import subprocess
+
+        subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
+        gm = GitManager(str(tmp_path))
+        gm.migrate_legacy_git()
+        assert not gm.cp_repo_dir.exists()
+
+    def test_migrate_failure_cleans_partial(self, tmp_path: Path):
+        """迁移中途 config 异常 -> 清理半残 cp-repo，不留配置不全的残留"""
+        import subprocess
+
+        subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
+        (tmp_path / ".git" / "checkpoints.json").write_text("{}", encoding="utf-8")
+        gm = GitManager(str(tmp_path))
+
+        def mock_run(args, **kwargs):
+            # copytree 已成功复制，第一个 config 命令抛 RuntimeError（_run 的异常类型）
+            if args[:2] == ["config", "--local"]:
+                raise RuntimeError("config 超时")
+            return _mock_run(0)
+
+        with patch("chcode.utils.git_manager.render_warning"):
+            with patch.object(gm, "_run", side_effect=mock_run):
+                gm.migrate_legacy_git()
+        assert not gm.cp_repo_dir.exists()

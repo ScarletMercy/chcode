@@ -267,19 +267,30 @@ class TestChatREPLInitGit:
         repl.workplace_path = tmp_path
 
         with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-            mock_thread.side_effect = [(True, "ok", "2.0.0"), None]
+            mock_thread.side_effect = [(True, "ok", "2.0.0"), None, None]
             with patch("chcode.chat.GitManager") as mock_gm:
                 mock_repo = Mock()
+                mock_repo.migrate_legacy_git = Mock()
                 mock_repo.init_shadow = Mock()
                 mock_gm.return_value = mock_repo
 
                 await repl._init_git()
 
-                # init_shadow is passed to to_thread, not called directly
-                assert mock_thread.call_count == 2
-                # Second to_thread call should be for git_manager.init_shadow
-                second_call_args = mock_thread.call_args_list[1]
-                assert second_call_args[0][0] is mock_repo.init_shadow
+                # to_thread 编排：check_git_availability -> migrate_legacy_git -> init_shadow
+                assert mock_thread.call_count == 3
+                calls = mock_thread.call_args_list
+                assert calls[1][0][0] is mock_repo.migrate_legacy_git
+                assert calls[2][0][0] is mock_repo.init_shadow
+
+    async def test_delete_messages_specifies_as_node(self):
+        """aupdate_state 必须传 as_node='model'：create_agent 的 graph 有 model/tools
+        多 writer，缺省时老会话状态触发 LangGraph 'Ambiguous update'"""
+        repl = ChatREPL()
+        repl.agent = AsyncMock()
+        repl.session_mgr = Mock(config={"configurable": {"thread_id": "t"}})
+        await repl._delete_messages(["m1", "m2"])
+        repl.agent.aupdate_state.assert_awaited_once()
+        assert repl.agent.aupdate_state.call_args.kwargs["as_node"] == "model"
 
 
 # ============================================================================
