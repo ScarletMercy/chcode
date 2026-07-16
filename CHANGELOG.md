@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.4] - 2026-07-16
+
+### Features
+- **Shadow Repo Isolation**: Moved git checkpoint system from real `.git` to independent `.chat/cp-repo`, completely avoiding user repo pollution
+- **Legacy Checkpoint Migration**: Added `migrate_legacy_git` method to auto-detect and migrate `.git/checkpoints.json` to new location (idempotent execution)
+- **Fork Question Backfill**: When forking from any message, that message's human prompt is automatically filled into the input box for regeneration
+- **No-Changes Detection Optimization**: Uses `diff --cached --quiet` instead of post-commit change detection for better accuracy
+
+### Fixes
+- **Rollback KeyError**: Changed to use `.get()` for `init` checkpoint to avoid KeyError when init is missing
+- **Idempotent Context Update**: `_init_git` checks `cp_repo_dir` existence before calling `migrate_legacy_git` for idempotent behavior
+- **Skip Commit When No Human**: `_post_process` now checks if human messages exist before calling git commit to prevent false positives
+- **Shadow Init Warning**: Added explicit warning (`chat.git.shadow_init_exception`) when `init_shadow` fails
+- **Init Commit with Initial Files**: `init_shadow` now `git add .` to include initial project files in init commit, preserving original content on rollback
+
+### Refactored
+- **Simplified State Tracking**: Removed `_git_cp_count` tracking mechanism; status bar now shows static Git indicator
+- **Enhanced Error Feedback**: All git operation failure paths now include detailed stderr alerts
+- **Idempotent Exclude File Management**: Added `_ensure_exclude()` method to automatically detect and fix info/exclude file content
+- **Hook Cleanup**: Added `_clean_hooks` to delete user's active git hooks (except .sample) during migration to prevent accidental triggers
+
+### Documentation
+- Updated README.md and README_en.md, rewriting Git Integration section to 'Message Management & Shadow Repo (Git-aware)'
+- Adjusted feature descriptions to highlight shadow repo isolation advantages
+
 ## [0.1.3] - 2026-07-03
 
 ### Features
