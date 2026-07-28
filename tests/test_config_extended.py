@@ -72,9 +72,10 @@ class TestFirstRunConfigure:
             assert result["base_url"] == "https://api.openai.com/v1"
 
     @pytest.mark.asyncio
-    async def test_with_detected_env_key_connection_fails(self, mock_config_dir, monkeypatch):
-        """Test first run with detected env key but connection fails"""
+    async def test_with_detected_env_key_connection_fails_user_aborts(self, mock_config_dir, monkeypatch):
+        """Test first run with detected env key but connection fails, user aborts."""
         import chcode.config as mod
+        from chcode.i18n import t
 
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test123")
 
@@ -82,8 +83,9 @@ class TestFirstRunConfigure:
             "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
         ) as mock_model:
             mock_select.side_effect = [
-                "OpenAI (检测到 OPENAI_API_KEY)",
-                "gpt-4o",
+                t("firstrun.env_detected", name="OpenAI", env_var="OPENAI_API_KEY"),  # Config choice
+                "gpt-4o",                                                              # Model choice
+                t("connection.abort"),                                                 # retry menu -> abort
             ]
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -92,6 +94,63 @@ class TestFirstRunConfigure:
             result = await mod.first_run_configure()
 
             assert result is None
+
+    @pytest.mark.asyncio
+    async def test_with_detected_env_key_fails_then_retry_succeeds(self, mock_config_dir, monkeypatch):
+        """Connection fails once, user retries, second attempt succeeds."""
+        import chcode.config as mod
+        from chcode.i18n import t
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test123")
+
+        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock), patch(
+            "chcode.config.configure_langsmith", new_callable=AsyncMock
+        ):
+            mock_select.side_effect = [
+                t("firstrun.env_detected", name="OpenAI", env_var="OPENAI_API_KEY"),  # Config choice
+                "gpt-4o",                                                              # Model choice
+                t("connection.retry"),                                                 # retry menu -> retry
+            ]
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.side_effect = [Exception("boom"), MagicMock()]
+
+            result = await mod.first_run_configure()
+
+            assert result is not None
+            assert result["model"] == "gpt-4o"
+
+    @pytest.mark.asyncio
+    async def test_with_detected_env_key_fails_then_reinput_to_manual(self, mock_config_dir, monkeypatch):
+        """Connection fails, user picks Re-enter -> hands off to manual configure."""
+        import chcode.config as mod
+        from chcode.i18n import t
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test123")
+
+        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_model, patch(
+            "chcode.config.configure_new_model", new_callable=AsyncMock
+        ) as mock_manual:
+            mock_select.side_effect = [
+                t("firstrun.env_detected", name="OpenAI", env_var="OPENAI_API_KEY"),  # Config choice
+                "gpt-4o",                                                              # Model choice
+                t("connection.reinput"),                                               # retry menu -> reinput (handoff)
+            ]
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.side_effect = Exception("boom")
+            mock_manual.return_value = {"model": "manual-model", "api_key": "k"}
+
+            result = await mod.first_run_configure()
+
+            assert result is not None
+            assert result["model"] == "manual-model"
+            mock_manual.assert_called_once()
+            assert mock_manual.call_args.kwargs.get("skip_method_select") is True
 
     @pytest.mark.asyncio
     async def test_no_detected_keys_choose_exit(self, mock_config_dir, monkeypatch):
@@ -258,9 +317,10 @@ class TestConfigureNewModel:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_connection_test_fails(self, mock_config_dir):
-        """Test configuration fails when connection test fails"""
+    async def test_connection_test_fails_user_aborts(self, mock_config_dir):
+        """Connection fails, user chooses Abort -> returns None."""
         import chcode.config as mod
+        from chcode.i18n import t
 
         config = {
             "model": "test-model",
@@ -272,8 +332,12 @@ class TestConfigureNewModel:
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
             "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
         ) as mock_model, \
-            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."):
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
             mock_form.return_value = config
+            mock_select.side_effect = [
+                t("firstrun.manual"),        # method select
+                t("connection.abort"),       # retry menu -> abort
+            ]
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
             mock_model_inst.invoke.side_effect = Exception("Connection failed")
@@ -281,6 +345,80 @@ class TestConfigureNewModel:
             result = await mod.configure_new_model()
 
             assert result is None
+
+    @pytest.mark.asyncio
+    async def test_connection_fails_then_retry_succeeds(self, mock_config_dir):
+        """Connection fails once, user picks Retry, second attempt succeeds."""
+        import chcode.config as mod
+        from chcode.i18n import t
+
+        config = {
+            "model": "test-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-test",
+            "stream_usage": True,
+        }
+
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_model, \
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select, \
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+            mock_form.return_value = config
+            mock_select.side_effect = [
+                t("firstrun.manual"),        # method select
+                t("connection.retry"),       # retry menu -> retry
+            ]
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.side_effect = [Exception("boom"), MagicMock()]
+
+            result = await mod.configure_new_model()
+
+            assert result is not None
+            assert result["model"] == "test-model"
+
+    @pytest.mark.asyncio
+    async def test_connection_fails_then_reinput(self, mock_config_dir):
+        """Connection fails, user picks Re-enter, new config succeeds."""
+        import chcode.config as mod
+        from chcode.i18n import t
+
+        bad_config = {
+            "model": "bad-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-bad",
+            "stream_usage": True,
+        }
+        good_config = {
+            "model": "good-model",
+            "base_url": "https://api.test.com/v1",
+            "api_key": "sk-good",
+            "stream_usage": True,
+        }
+
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_model, \
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select, \
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+            mock_form.side_effect = [bad_config, good_config]
+            mock_select.side_effect = [
+                t("firstrun.manual"),        # method select
+                t("connection.reinput"),     # retry menu -> reinput
+            ]
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.side_effect = [Exception("boom"), MagicMock()]
+
+            result = await mod.configure_new_model()
+
+            assert result is not None
+            assert result["model"] == "good-model"
 
 
 class TestConfigureNewModelMultimodal:
@@ -1053,9 +1191,10 @@ class TestEditCurrentModelConnectionErrors:
             assert result["model"] == "new-model"
 
     @pytest.mark.asyncio
-    async def test_edit_connection_error_returns_none(self, mock_config_dir):
-        """Lines 248-251: other error in edit connection test."""
+    async def test_edit_connection_error_user_aborts(self, mock_config_dir):
+        """Other error in edit connection test, user aborts -> returns None."""
         import chcode.config as mod
+        from chcode.i18n import t
 
         existing = {
             "model": "old-model",
@@ -1074,8 +1213,10 @@ class TestEditCurrentModelConnectionErrors:
 
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
              patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.select", new_callable=AsyncMock) as mock_select, \
              patch("chcode.config.console") as mock_console:
             mock_form.return_value = updated
+            mock_select.return_value = t("connection.abort")  # retry menu -> abort
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
             mock_model_inst.invoke.side_effect = Exception("Connection refused")
@@ -1083,6 +1224,40 @@ class TestEditCurrentModelConnectionErrors:
             result = await mod.edit_current_model()
             assert result is None
             assert mock_console.print.called
+
+    @pytest.mark.asyncio
+    async def test_edit_connection_fails_then_retry_succeeds(self, mock_config_dir):
+        """Edit connection fails, user retries, second attempt succeeds."""
+        import chcode.config as mod
+        from chcode.i18n import t
+
+        existing = {
+            "model": "old-model",
+            "base_url": "https://api.old.com/v1",
+            "api_key": "sk-old",
+            "stream_usage": True,
+        }
+        mod.save_model_json({"default": existing, "fallback": {}})
+
+        updated = {
+            "model": "new-model",
+            "base_url": "https://api.new.com/v1",
+            "api_key": "sk-new",
+            "stream_usage": True,
+        }
+
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+            mock_form.return_value = updated
+            mock_select.return_value = t("connection.retry")  # retry menu -> retry
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.side_effect = [Exception("boom"), MagicMock()]
+
+            result = await mod.edit_current_model()
+            assert result is not None
+            assert result["model"] == "new-model"
 
 
 class TestLoadWorkplaceException:
@@ -1248,18 +1423,20 @@ class TestConfigureModelscope:
             assert "existing-fb" in data["fallback"]
 
     @pytest.mark.asyncio
-    async def test_modelscope_connection_fails(self, mock_config_dir):
-        """Connection test fails -> returns None without saving."""
+    async def test_modelscope_connection_fails_user_aborts(self, mock_config_dir):
+        """All models fail, user aborts -> returns None without saving."""
         import chcode.config as mod
+        from chcode.i18n import t
         from chcode.prompts import MODELSCOPE_PRESETS
 
         with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
              patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.console") as mock_console:
+             patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
             mock_ms.return_value = {
                 "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
                 "fallback": {m["model"]: {**m, "api_key": "ms-key"} for m in MODELSCOPE_PRESETS[1:]},
             }
+            mock_select.return_value = t("connection.abort")  # retry menu -> abort
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
             mock_model_inst.invoke.side_effect = Exception("Connection refused")
@@ -1268,6 +1445,71 @@ class TestConfigureModelscope:
 
             assert result is None
             assert not mod.load_model_json().get("default")
+
+    @pytest.mark.asyncio
+    async def test_modelscope_fails_then_retry_succeeds(self, mock_config_dir):
+        """All models fail once, user retries, second loop succeeds."""
+        import chcode.config as mod
+        from chcode.i18n import t
+        from chcode.prompts import MODELSCOPE_PRESETS
+
+        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
+             patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+            mock_ms.return_value = {
+                "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
+                "fallback": {m["model"]: {**m, "api_key": "ms-key"} for m in MODELSCOPE_PRESETS[1:]},
+            }
+            mock_select.return_value = t("connection.retry")  # retry menu -> retry
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            # First full loop (3 models) all fail, then retry succeeds on first
+            mock_model_inst.invoke.side_effect = [
+                Exception("boom"), Exception("boom"), Exception("boom"),  # first loop
+                MagicMock(),                                                # retry loop
+            ]
+
+            result = await mod._configure_modelscope_with_test()
+
+            assert result is not None
+            assert result["model"] == "Qwen/Qwen3.5-397B-A17B"
+
+    @pytest.mark.asyncio
+    async def test_modelscope_fails_then_reinput_key(self, mock_config_dir):
+        """All models fail, user picks Re-enter -> new API key collected, succeeds."""
+        import chcode.config as mod
+        from chcode.i18n import t
+        from chcode.prompts import MODELSCOPE_PRESETS
+
+        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
+             patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+            first_ms = {
+                "default": {**MODELSCOPE_PRESETS[0], "api_key": "bad-key"},
+                "fallback": {m["model"]: {**m, "api_key": "bad-key"} for m in MODELSCOPE_PRESETS[1:]},
+            }
+            second_ms = {
+                "default": {**MODELSCOPE_PRESETS[0], "api_key": "good-key"},
+                "fallback": {m["model"]: {**m, "api_key": "good-key"} for m in MODELSCOPE_PRESETS[1:]},
+            }
+            mock_ms.side_effect = [first_ms, second_ms]
+            mock_select.return_value = t("connection.reinput")  # retry menu -> reinput key
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            # First loop (3 models) all fail, then after re-input succeeds on first
+            mock_model_inst.invoke.side_effect = [
+                Exception("boom"), Exception("boom"), Exception("boom"),  # first loop
+                MagicMock(),                                                # second loop
+            ]
+
+            result = await mod._configure_modelscope_with_test()
+
+            assert result is not None
+            assert result["api_key"] == "good-key"
 
     @pytest.mark.asyncio
     async def test_configure_modelscope_manual_key(self):
@@ -1376,3 +1618,36 @@ class TestConfigureModelscope:
             result = await mod.configure_new_model()
 
         assert result is None
+
+
+class TestAskConnRetryAction:
+    """Tests for the _ask_conn_retry_action menu helper."""
+
+    @pytest.mark.parametrize("key", ["connection.retry", "connection.reinput", "connection.abort"])
+    @pytest.mark.asyncio
+    async def test_passes_through_menu_choice(self, key):
+        """Helper transparently returns whatever select returns for each menu option."""
+        import chcode.config as mod
+        from chcode.i18n import t
+        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+            mock_select.return_value = t(key)
+            result = await mod._ask_conn_retry_action("Connection error.")
+            assert result == t(key)
+
+    @pytest.mark.asyncio
+    async def test_cancelled_menu_returns_none(self):
+        import chcode.config as mod
+        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+            mock_select.return_value = None
+            result = await mod._ask_conn_retry_action("Connection error.")
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_prints_red_summary_no_traceback(self):
+        import chcode.config as mod
+        with patch("chcode.config.select", new_callable=AsyncMock, return_value="放弃"), \
+             patch("chcode.config.console") as mock_console:
+            await mod._ask_conn_retry_action("Connection error.")
+            printed = "".join(str(c) for c in mock_console.print.call_args_list)
+            assert "Connection error." in printed
+            assert "Traceback" not in printed

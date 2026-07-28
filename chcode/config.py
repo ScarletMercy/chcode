@@ -9,7 +9,6 @@ import json
 import os
 import subprocess
 import sys
-import traceback
 from pathlib import Path
 from typing import Any
 
@@ -70,13 +69,14 @@ def save_model_json(data: dict) -> None:
 
 
 async def _test_connection(
-    config: dict, *, quiet: bool = False, brief: bool = False, return_error: bool = False
+    config: dict, *, quiet: bool = False, return_error: bool = False
 ) -> bool | str:
     """测试模型连接，成功返回 True。
 
-    quiet=True 时不打印任何输出（用于重试循环）。
-    brief=True 时只打印简短错误（不输出 traceback）。
-    return_error=True 时，失败返回错误信息字符串而非 False。
+    quiet=True 时不打印"测试连接中..."（用于重试循环）。
+    return_error=True 时，失败返回错误摘要字符串（不含 traceback）而非 False。
+    失败时本函数不再自行打印错误——错误展示由调用方
+    （_ask_conn_retry_action 等）统一负责。
     """
     if not quiet:
         console.print(f"[yellow]{t('connection.testing')}[/yellow]")
@@ -89,14 +89,21 @@ async def _test_connection(
         err_msg = str(e)
         if "null value" in err_msg and "choices" in err_msg:
             return True
-        if not quiet:
-            console.print(f"[red]{t('connection.failed', error=err_msg)}[/red]")
-            if not brief:
-                console.print(f"[dim]{traceback.format_exc()}[/dim]")
         if return_error:
-            return f"{err_msg}\n{traceback.format_exc()}"
+            return err_msg
         return False
     return True
+
+
+async def _ask_conn_retry_action(err_summary: str) -> str | None:
+    """连接测试失败后弹出"重试 / 重新输入配置 / 放弃"菜单。
+
+    打印红色错误摘要（不含 traceback），然后让用户选择。
+    返回用户选中的菜单标签（t('connection.retry') 等）；用户取消（select 返回 None）则返回 None。
+    """
+    console.print(f"[red]{t('connection.failed', error=err_summary)}[/red]")
+    choices = [t("connection.retry"), t("connection.reinput"), t("connection.abort")]
+    return await select(t("connection.choose_action"), choices)
 
 
 def _merge_and_save_config(
@@ -248,8 +255,18 @@ async def first_run_configure() -> dict | None:
             "stream_usage": True,
         }
 
-        if not await _test_connection(config, brief=True):
-            return None
+        while True:
+            result = await _test_connection(config, return_error=True)
+            if result is True:
+                break
+            err_summary = str(result).split("\n", 1)[0]
+            action = await _ask_conn_retry_action(err_summary)
+            if action == t("connection.retry"):
+                continue
+            if action == t("connection.reinput"):
+                # 转入手动表单（手动入口自带重试菜单）
+                return await configure_new_model(skip_method_select=True)
+            return None  # 放弃 或 用户取消菜单
 
         _merge_and_save_config(config)
         console.print(f"[green]{t('firstrun.config_done', model=model)}[/green]")
@@ -301,8 +318,20 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
     if config is None:
         return None
 
-    if not await _test_connection(config):
-        return None
+    while True:
+        result = await _test_connection(config, return_error=True)
+        if result is True:
+            break
+        err_summary = str(result).split("\n", 1)[0]
+        action = await _ask_conn_retry_action(err_summary)
+        if action == t("connection.retry"):
+            continue
+        if action == t("connection.reinput"):
+            config = await model_config_form()
+            if config is None:
+                return None
+            continue
+        return None  # 放弃 或 用户取消菜单
 
     # 上下文长度（默认 1M）—— 多模态询问之前；存入 metadata（ChatOpenAI 合法字段，
     # 不会透传到 API 请求），随 config 一起落盘到 model.json。
@@ -340,38 +369,52 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
 
 
 async def _configure_modelscope_with_test() -> dict | None:
-    """魔搭快捷配置：收集 API Key → 测试连接 → 保存预定义模型。"""
+    """魔搭快捷配置：收集 API Key → 测试连接 → 保存预定义模型。
+
+    测试失败时弹出"重试/重新输入配置/放弃"菜单：
+    - 重试：重跑整个（default + 2 备用）测试循环
+    - 重新输入配置：重新收集 API Key（configure_modelscope）
+    - 放弃：返回 None
+    """
     from chcode.prompts import configure_modelscope
 
     ms_config = await configure_modelscope()
     if ms_config is None:
         return None
 
-    default = ms_config["default"]
+    while True:
+        default = ms_config["default"]
 
-    # 测试连接（依次尝试 default + 2 个备用模型，应对速率限制）
-    console.print(f"[yellow]{t('modelscope.testing')}[/yellow]")
-    test_configs = [default]
-    for i, (_, cfg) in enumerate(ms_config["fallback"].items()):
-        if i >= 2:
+        # 测试连接（依次尝试 default + 2 个备用模型，应对速率限制）
+        console.print(f"[yellow]{t('modelscope.testing')}[/yellow]")
+        test_configs = [default]
+        for i, (_, cfg) in enumerate(ms_config["fallback"].items()):
+            if i >= 2:
+                break
+            test_configs.append(cfg)
+
+        connected = False
+        last_err_summary = ""
+        for tc in test_configs:
+            result = await _test_connection(tc, quiet=True, return_error=True)
+            if result is True:
+                connected = True
+                break
+            last_err_summary = str(result).split("\n", 1)[0]
+
+        if connected:
             break
-        test_configs.append(cfg)
 
-    connected = False
-    last_err_detail = None
-    for tc in test_configs:
-        result = await _test_connection(tc, quiet=True, return_error=True)
-        if result is True:
-            connected = True
-            break
-        last_err_detail = result
-
-    if not connected:
-        console.print(f"[red]{t('modelscope.connect_failed', detail=last_err_detail.split(chr(10))[0] if last_err_detail else '')}[/red]")
-        if last_err_detail:
-            _, *tb_lines = last_err_detail.split("\n")
-            console.print(f"[dim]{chr(10).join(tb_lines)}[/dim]")
-        return None
+        # 所有模型都失败 -> 弹菜单
+        action = await _ask_conn_retry_action(last_err_summary)
+        if action == t("connection.retry"):
+            continue
+        if action == t("connection.reinput"):
+            ms_config = await configure_modelscope()
+            if ms_config is None:
+                return None
+            continue
+        return None  # 放弃 或 用户取消菜单
 
     _merge_and_save_config(default, fallback_updates=ms_config["fallback"])
     fallback_names = ", ".join(ms_config["fallback"].keys())
@@ -402,11 +445,29 @@ async def edit_current_model() -> dict | None:
         return None
 
     # 保留非表单字段(如自定义 context_length),避免编辑后回退默认值
-    if isinstance(current.get("metadata"), dict):
-        config["metadata"] = {**current["metadata"], **(config.get("metadata") or {})}
+    # （每次"重新输入配置"后都要重新合并，故抽成局部函数）
+    def _merge_metadata(cfg: dict) -> dict:
+        if isinstance(current.get("metadata"), dict):
+            cfg["metadata"] = {**current["metadata"], **(cfg.get("metadata") or {})}
+        return cfg
 
-    if not await _test_connection(config):
-        return None
+    config = _merge_metadata(config)
+
+    while True:
+        result = await _test_connection(config, return_error=True)
+        if result is True:
+            break
+        err_summary = str(result).split("\n", 1)[0]
+        action = await _ask_conn_retry_action(err_summary)
+        if action == t("connection.retry"):
+            continue
+        if action == t("connection.reinput"):
+            config = await model_config_form(existing_config=current)
+            if config is None:
+                return None
+            config = _merge_metadata(config)
+            continue
+        return None  # 放弃 或 用户取消菜单
 
     data["default"] = config
     save_model_json(data)

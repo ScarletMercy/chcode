@@ -141,10 +141,6 @@ MESSAGES = {
         "zh": "测试连接中...",
         "en": "Testing connection...",
     },
-    "modelscope.connect_failed": {
-        "zh": "连接测试失败: {detail}",
-        "en": "Connection test failed: {detail}",
-    },
     "modelscope.config_done": {
         "zh": "配置完成: {model} (默认)",
         "en": "Configuration complete: {model} (default)",
@@ -169,6 +165,22 @@ MESSAGES = {
     "connection.failed": {
         "zh": "连接测试失败: {error}",
         "en": "Connection test failed: {error}",
+    },
+    "connection.choose_action": {
+        "zh": "请选择:",
+        "en": "Choose an action:",
+    },
+    "connection.retry": {
+        "zh": "重试",
+        "en": "Retry",
+    },
+    "connection.reinput": {
+        "zh": "重新输入配置",
+        "en": "Re-enter configuration",
+    },
+    "connection.abort": {
+        "zh": "放弃",
+        "en": "Abort",
     },
     "config.load_failed": {
         "zh": "Warning: 加载 {path} 失败: {e}",
