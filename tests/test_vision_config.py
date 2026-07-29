@@ -756,6 +756,7 @@ class TestConfigureVisionModelscope:
 
         with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             await mod._configure_vision_modelscope()
 
@@ -788,6 +789,7 @@ class TestConfigureVisionModelscope:
 
         with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             await mod._configure_vision_modelscope()
 
@@ -817,6 +819,7 @@ class TestConfigureVisionModelscope:
 
         with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             await mod._configure_vision_modelscope()
 
@@ -832,6 +835,104 @@ class TestConfigureVisionModelscope:
             assert data["fallback"][preset["model"]]["api_key"] == "ms-key"
         # 总数 = 旧 1 + 预设 8
         assert len(data["fallback"]) == 1 + len(mod.VISION_MODEL_PRESETS)
+
+    @pytest.mark.asyncio
+    async def test_modelscope_test_fails_then_retry_then_success(self, mock_config_dir):
+        """连接测试全失败 -> 选重试 -> 第二次测试通过 -> 落盘。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
+                 "connection refused", "connection refused", "connection refused",  # 首轮 3 个全失败
+                 True,  # 重试后通过
+             ]), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.retry")), \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.config.console"):
+            result = await mod._configure_vision_modelscope()
+
+        # 测试通过后才落盘
+        data = mod.load_vision_json()
+        assert len(data["fallback"]) == len(mod.VISION_MODEL_PRESETS)
+        # default 未被改动
+        assert data["default"] == {"model": "m", "api_key": "k"}
+
+    @pytest.mark.asyncio
+    async def test_modelscope_test_fails_then_reinput_then_success(self, mock_config_dir):
+        """连接测试全失败 -> 选重新输入配置 -> 重填 Key -> 测试通过。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+
+        # vision_config.select: 两次 _collect_key 各消耗一次（都选 manual_key）
+        # password: 首次 bad-key, 重输后 good-key
+        # _test_vision_connection: 首轮 3 个预设全失败, 重输后第一个就通过
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=[
+            t("vision.manual_key"),     # 首次收集 Key 来源
+            t("vision.manual_key"),     # 重新输入后的 Key 来源
+        ]), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, side_effect=[
+            "bad-key", "good-key",
+        ]), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
+            "auth failed", "auth failed", "auth failed",  # 首轮 3 个代表预设全失败
+            True,                                           # 重输 good-key 后通过
+        ]), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.reinput")), \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.config.console"):
+            await mod._configure_vision_modelscope()
+
+        data = mod.load_vision_json()
+        # 落盘用的是重输后的 good-key
+        for preset in mod.VISION_MODEL_PRESETS:
+            assert data["fallback"][preset["model"]]["api_key"] == "good-key"
+
+    @pytest.mark.asyncio
+    async def test_modelscope_test_fails_user_aborts(self, mock_config_dir):
+        """连接测试全失败 -> 选放弃 -> 返回 None，不落盘。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value="boom"), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.abort")), \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.config.console"):
+            result = await mod._configure_vision_modelscope()
+
+        assert result is None
+        # 未落盘：fallback 仍为空
+        data = mod.load_vision_json()
+        assert data["fallback"] == {}
+
+    @pytest.mark.asyncio
+    async def test_modelscope_tests_first_passing_preset(self, mock_config_dir):
+        """任一代表模型通过即成功：第一个失败、第二个通过，不再测第三个。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
+            "err",  # 第一个预设失败
+            True,   # 第二个预设通过 -> break
+        ]) as mock_test, \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_modelscope()
+
+        # 只测了 2 个（第三个因第二个通过而不再测）
+        assert mock_test.call_count == 2
 
 
 class TestConfigureVisionWizard:

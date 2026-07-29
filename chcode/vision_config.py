@@ -536,34 +536,75 @@ async def _configure_vision_modelscope() -> dict | None:
     """魔搭快捷配置（视觉）：只需 API Key，把预设视觉模型补进 fallback。
 
     只追加、不改现有 default（跳过与 default 同名的预设，避免被预设值覆盖）；
-    不测试、不同步 model.json。
+    不同步 model.json。
+
+    连接测试照搬文本侧 _configure_modelscope_with_test 的策略：测前 3 个预设
+    （代表模型），任一通过即认为 Key 有效，全失败弹"重试/重新输入/放弃"菜单。
+    测试通过后才批量落盘，避免写入无法使用的配置。
 
     前提：调用方应保证已有 default（菜单仅在 has_config=True 时提供本入口）。
     无 default 直接调用时，所有预设进 fallback、default 保持为空，函数返回空 dict；
     不会自行设置 default--是否设默认由调用方决定。
     """
-    # 收集 API Key（环境变量 ModelScopeToken / 手填）
-    env_key = os.getenv("ModelScopeToken", "")
-    manual_label = t("vision.manual_key")
-    choices = []
-    if env_key:
-        choices.append(t("vision.use_env_token", masked=mask_api_key(env_key)))
-    choices.append(manual_label)
+    from chcode.config import _ask_conn_retry_action
 
-    result = await select(t("vision.select_key_source"), choices)
-    if result is None:
+    async def _collect_key() -> str | None:
+        """收集 API Key（环境变量 ModelScopeToken / 手填），取消返回 None。"""
+        env_key = os.getenv("ModelScopeToken", "")
+        manual_label = t("vision.manual_key")
+        choices = []
+        if env_key:
+            choices.append(t("vision.use_env_token", masked=mask_api_key(env_key)))
+        choices.append(manual_label)
+
+        result = await select(t("vision.select_key_source"), choices)
+        if result is None:
+            return None
+
+        if result == manual_label:
+            api_key = await password(t("vision.input_key"))
+            if not api_key or not api_key.strip():
+                return None
+            return api_key.strip()
+        return env_key
+
+    api_key = await _collect_key()
+    if api_key is None:
         return None
 
-    if result == manual_label:
-        api_key = await password(t("vision.input_key"))
-        if not api_key or not api_key.strip():
-            return None
-        api_key = api_key.strip()
-    else:
-        api_key = env_key
+    # 测试连接（依次尝试前 3 个预设，应对速率限制/单模型下线），与文本侧
+    # _configure_modelscope_with_test 的"default + 2 备用"策略对齐。
+    # 视觉侧无用户 default，故取预设列表前 3 个作代表。
+    while True:
+        console.print(f"[yellow]{t('vision.testing')}[/yellow]")
+        test_presets = VISION_MODEL_PRESETS[:3]
+        connected = False
+        last_err_summary = ""
+        for preset in test_presets:
+            result = await _test_vision_connection(
+                {**preset, "api_key": api_key}, quiet=True, return_error=True
+            )
+            if result is True:
+                connected = True
+                break
+            last_err_summary = str(result).split("\n", 1)[0]
 
-    # 批量把预设补进 fallback：一次性 load + 内存合并 + 单次 save（避免逐个
-    # add_vision_model 触发 N 次磁盘读写，且保证写入原子性）。
+        if connected:
+            break
+
+        # 全部代表模型都失败 -> 弹菜单
+        action = await _ask_conn_retry_action(last_err_summary)
+        if action == t("connection.retry"):
+            continue
+        if action == t("connection.reinput"):
+            api_key = await _collect_key()
+            if api_key is None:
+                return None
+            continue
+        return None  # 放弃 或 用户取消菜单
+
+    # 测试通过 -> 批量把预设补进 fallback：一次性 load + 内存合并 + 单次 save
+    # （避免逐个 add_vision_model 触发 N 次磁盘读写，且保证写入原子性）。
     # 只追加、不改现有 default；跳过与 default 同名的预设，避免被预设值覆盖。
     data = copy.deepcopy(load_vision_json())
     default = data.get("default") or {}
