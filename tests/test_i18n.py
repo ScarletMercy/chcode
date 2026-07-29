@@ -226,7 +226,7 @@ def mock_config_dir(tmp_path: Path, monkeypatch):
     import chcode.config as mod
 
     config_dir = tmp_path / ".chat"
-    config_dir.mkdir()
+    config_dir.mkdir(exist_ok=True)
     monkeypatch.setattr(mod, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(mod, "MODEL_JSON", config_dir / "model.json")
     monkeypatch.setattr(mod, "SETTING_JSON", config_dir / "chagent.json")

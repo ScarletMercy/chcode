@@ -7,14 +7,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import copy
+import io
 import json
 import os
 
 from chcode.config import CONFIG_DIR, ensure_config_dir
 from chcode.display import console
 from chcode.i18n import t
-from chcode.prompts import select, confirm, password
+from chcode.prompts import select, confirm, password, text
 from chcode.utils.json_utils import CachedJsonFile, build_default_fallback_config
 from chcode.utils.text_utils import mask_api_key
 
@@ -242,12 +245,12 @@ async def configure_vision_interactive() -> dict | None:
     if has_config:
         action = await select(
             t("vision.menu"),
-            [t("vision.view"), t("vision.reconfigure"), t("vision.switch"), back_label],
+            [t("vision.view"), t("vision.new_model"), t("vision.modelscope_quick"), t("vision.switch"), back_label],
         )
     else:
         action = await select(
             t("vision.unconfigured_ask"),
-            [t("vision.configure"), back_label],
+            [t("vision.configure"), t("vision.new_model"), back_label],
         )
 
     if action is None or action == back_label:
@@ -260,7 +263,13 @@ async def configure_vision_interactive() -> dict | None:
     if action == t("vision.switch"):
         return await _switch_vision_model()
 
-    # 配置
+    if action == t("vision.new_model"):
+        return await _configure_vision_custom()
+
+    if action == t("vision.modelscope_quick"):
+        return await _configure_vision_modelscope()
+
+    # 预设快捷配置
     return await _configure_vision_wizard()
 
 
@@ -374,3 +383,205 @@ def _display_vision_config(config: dict) -> None:
         console.print(table)
     else:
         console.print(f"[dim]{t('vision.no_fallback_dim')}[/dim]")
+
+
+async def _test_vision_connection(
+    config: dict, *, quiet: bool = False, return_error: bool = False
+) -> bool | str:
+    """用一张 Pillow 生成的纯色小图 + "这是什么颜色"测试视觉模型连接。
+
+    不报错即视为通过（不强制答对颜色，不检查响应内容）。
+    return_error=True 时失败返回错误摘要字符串。
+    """
+    if not quiet:
+        console.print(f"[yellow]{t('vision.testing')}[/yellow]")
+    try:
+        from PIL import Image
+        from langchain_core.messages import HumanMessage
+
+        from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
+        # 生成 8x8 纯红色 PNG
+        buf = io.BytesIO()
+        Image.new("RGB", (8, 8), (255, 0, 0)).save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        media_url = f"data:image/png;base64,{b64}"
+
+        messages = [
+            HumanMessage(
+                content=[
+                    {"type": "image_url", "image_url": {"url": media_url}},
+                    {"type": "text", "text": "这是什么颜色"},
+                ]
+            )
+        ]
+
+        llm = EnhancedChatOpenAI(
+            model=config["model"],
+            base_url=config["base_url"],
+            api_key=config["api_key"],
+            max_tokens=64,
+            max_retries=0,
+            timeout=60,
+        )
+        await asyncio.to_thread(llm.invoke, messages)
+        return True
+    except Exception as e:
+        # 与文本侧 _test_connection 一致：某些供应商连接成功但返回 null choices，
+        # SDK 解析抛异常--视为连接通过（与请求是文本还是视觉无关，发生在响应解析阶段）
+        err_msg = str(e)
+        if "null value" in err_msg and "choices" in err_msg:
+            return True
+        if return_error:
+            return err_msg
+        return False
+
+
+async def _configure_vision_custom() -> dict | None:
+    """新建自定义视觉模型：收集 model/base_url/api_key -> 图片连接测试 -> add_vision_model。"""
+    from chcode.config import _ask_conn_retry_action, _ask_context_length, _add_to_model_fallback
+    from chcode.prompts import _ask_hyperparam, _SKIP, TEMPERATURE_PRESETS, TOP_P_PRESETS
+
+    async def _collect() -> dict | None:
+        """收集表单（model/base_url/api_key/可选超参），取消返回 None。"""
+        model_name = await text(t("vision.custom_form_model"))
+        if not model_name or not model_name.strip():
+            return None
+        model_name = model_name.strip()
+
+        base_url = await text(t("vision.custom_form_url"))
+        if not base_url or not base_url.strip():
+            return None
+        base_url = base_url.strip()
+
+        api_key = await password(t("vision.custom_form_key"))
+        if not api_key or not api_key.strip():
+            return None
+        api_key = api_key.strip()
+
+        # 可选超参：默认与预设视觉模型对齐（1.0 / 0.95）。用户选择配置时用
+        # 文本侧同一套 _ask_hyperparam 交互（预设列表 + 自定义输入 + 跳过）。
+        temperature = 1.0
+        top_p = 0.95
+        if await confirm(t("form.configure_hyperparams"), default=False):
+            result = await _ask_hyperparam(
+                "Temperature:",
+                TEMPERATURE_PRESETS,
+                custom_prompt=t("form.input_temperature"),
+            )
+            if result is None:
+                return None
+            if result is not _SKIP:
+                temperature = float(result)
+
+            result = await _ask_hyperparam(
+                "Top P:",
+                TOP_P_PRESETS,
+                custom_prompt=t("form.input_top_p"),
+            )
+            if result is None:
+                return None
+            if result is not _SKIP:
+                top_p = float(result)
+
+        return {
+            "model": model_name,
+            "base_url": base_url,
+            "api_key": api_key,
+            "temperature": temperature,
+            "top_p": top_p,
+            "stream_usage": True,
+        }
+
+    config = await _collect()
+    if config is None:
+        return None
+
+    # 测试连接：失败弹"重试/重新输入配置/放弃"。
+    # retry 只重测；reinput 重新收集；与文本侧 configure_new_model 结构对齐（#6）。
+    while True:
+        result = await _test_vision_connection(config, return_error=True)
+        if result is True:
+            break
+        err_summary = str(result).split("\n", 1)[0]
+        # 复用文本侧的重试菜单（_ask_conn_retry_action 内部打印红字摘要 + 弹三选项）
+        action = await _ask_conn_retry_action(err_summary)
+        if action == t("connection.retry"):
+            continue
+        if action == t("connection.reinput"):
+            config = await _collect()
+            if config is None:
+                return None
+            continue
+        return None  # 放弃 或 用户取消菜单
+
+
+    role = add_vision_model(config)
+    model_name = config["model"]
+    if role == "default":
+        console.print(f"[green]{t('vision.custom_added_default', model=model_name)}[/green]")
+    elif role == "fallback":
+        console.print(f"[green]{t('vision.custom_added_fallback', model=model_name)}[/green]")
+    else:
+        console.print(f"[yellow]{t('model.vision_duplicate')}[/yellow]")
+
+    # 多模态模型同步到主模型备用列表（补问上下文长度，不替换当前默认）
+    await _ask_context_length(config)
+    _add_to_model_fallback(config)
+    console.print(f"[dim]{t('vision.synced_to_main', model=model_name)}[/dim]")
+    return config
+
+
+async def _configure_vision_modelscope() -> dict | None:
+    """魔搭快捷配置（视觉）：只需 API Key，把预设视觉模型补进 fallback。
+
+    只追加、不改现有 default（跳过与 default 同名的预设，避免被预设值覆盖）；
+    不测试、不同步 model.json。
+
+    前提：调用方应保证已有 default（菜单仅在 has_config=True 时提供本入口）。
+    无 default 直接调用时，所有预设进 fallback、default 保持为空，函数返回空 dict；
+    不会自行设置 default--是否设默认由调用方决定。
+    """
+    # 收集 API Key（环境变量 ModelScopeToken / 手填）
+    env_key = os.getenv("ModelScopeToken", "")
+    manual_label = t("vision.manual_key")
+    choices = []
+    if env_key:
+        choices.append(t("vision.use_env_token", masked=mask_api_key(env_key)))
+    choices.append(manual_label)
+
+    result = await select(t("vision.select_key_source"), choices)
+    if result is None:
+        return None
+
+    if result == manual_label:
+        api_key = await password(t("vision.input_key"))
+        if not api_key or not api_key.strip():
+            return None
+        api_key = api_key.strip()
+    else:
+        api_key = env_key
+
+    # 批量把预设补进 fallback：一次性 load + 内存合并 + 单次 save（避免逐个
+    # add_vision_model 触发 N 次磁盘读写，且保证写入原子性）。
+    # 只追加、不改现有 default；跳过与 default 同名的预设，避免被预设值覆盖。
+    data = copy.deepcopy(load_vision_json())
+    default = data.get("default") or {}
+    fallback = dict(data.get("fallback") or {})
+    default_model = default.get("model", "")
+    for preset in VISION_MODEL_PRESETS:
+        if preset["model"] == default_model:
+            continue
+        # 与 add_vision_model 一致：只保留视觉白名单字段 + 注入 api_key
+        cfg = {k: preset[k] for k in _VISION_FIELDS if k in preset}
+        cfg["api_key"] = api_key
+        fallback[preset["model"]] = cfg
+
+    data["default"] = default
+    data["fallback"] = fallback
+    save_vision_json(data)
+
+    # 仅报告 fallback（config_done 是"设默认"语义，本流程不动 default，不适用）
+    fallback_names = ", ".join(fallback.keys())
+    console.print(f"[dim]{t('vision.fallback_count', count=len(fallback), names=fallback_names)}[/dim]")
+    return default

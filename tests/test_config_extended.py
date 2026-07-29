@@ -25,7 +25,7 @@ def mock_config_dir(tmp_path: Path, monkeypatch):
     import chcode.config as mod
 
     config_dir = tmp_path / ".chat"
-    config_dir.mkdir()
+    config_dir.mkdir(exist_ok=True)
     monkeypatch.setattr(mod, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(mod, "MODEL_JSON", config_dir / "model.json")
     monkeypatch.setattr(mod, "SETTING_JSON", config_dir / "chagent.json")
@@ -717,7 +717,9 @@ class TestEditCurrentModel:
 
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
             "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model:
+        ) as mock_model, \
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
             mock_form.return_value = updated
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -752,7 +754,9 @@ class TestEditCurrentModel:
 
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
             "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model:
+        ) as mock_model, \
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
             mock_form.return_value = updated
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -763,6 +767,80 @@ class TestEditCurrentModel:
         saved = mod.load_model_json()["default"]
         assert saved["model"] == "new-model"
         assert saved["metadata"]["context_length"] == 1048576
+
+    @pytest.mark.asyncio
+    async def test_edit_user_changes_context_length(self, mock_config_dir):
+        """编辑时用户在弹框里输入新的上下文长度，覆盖旧值。"""
+        import chcode.config as mod
+
+        existing = {
+            "model": "old-model",
+            "base_url": "https://api.old.com/v1",
+            "api_key": "sk-old",
+            "stream_usage": True,
+            "metadata": {"context_length": 1048576},
+        }
+        mod.save_model_json({"default": existing, "fallback": {}})
+
+        updated = {
+            "model": "new-model",
+            "base_url": "https://api.new.com/v1",
+            "api_key": "sk-new",
+            "stream_usage": True,
+        }
+
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_model, \
+            patch("chcode.config.text", new_callable=AsyncMock, return_value="200000"), \
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+            mock_form.return_value = updated
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.return_value = MagicMock()
+
+            await mod.edit_current_model()
+
+        saved = mod.load_model_json()["default"]
+        # 用户输入的新值覆盖了旧值 1048576
+        assert saved["metadata"]["context_length"] == 200000
+
+    @pytest.mark.asyncio
+    async def test_edit_user_confirms_multimodal(self, mock_config_dir):
+        """编辑时用户确认多模态 -> add_vision_model 被调用。"""
+        import chcode.config as mod
+
+        existing = {
+            "model": "old-model",
+            "base_url": "https://api.old.com/v1",
+            "api_key": "sk-old",
+            "stream_usage": True,
+        }
+        mod.save_model_json({"default": existing, "fallback": {}})
+
+        updated = {
+            "model": "new-model",
+            "base_url": "https://api.new.com/v1",
+            "api_key": "sk-new",
+            "stream_usage": True,
+        }
+
+        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_model, \
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=True), \
+            patch("chcode.vision_config.add_vision_model") as mock_add:
+            mock_form.return_value = updated
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.return_value = MagicMock()
+
+            await mod.edit_current_model()
+
+            mock_add.assert_called_once()
+            assert mock_add.call_args.args[0]["model"] == "new-model"
+            assert mock_add.call_args.args[0]["api_key"] == "sk-new"
 
     @pytest.mark.asyncio
     async def test_no_current_model_creates_new(self, mock_config_dir):
@@ -1180,7 +1258,9 @@ class TestEditCurrentModelConnectionErrors:
         }
 
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model:
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
             mock_form.return_value = updated
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -1248,7 +1328,9 @@ class TestEditCurrentModelConnectionErrors:
 
         with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
              patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+             patch("chcode.config.select", new_callable=AsyncMock) as mock_select, \
+             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
             mock_form.return_value = updated
             mock_select.return_value = t("connection.retry")  # retry menu -> retry
             mock_model_inst = MagicMock()

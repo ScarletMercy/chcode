@@ -262,9 +262,13 @@ MESSAGES = {
         "zh": "查看当前配置",
         "en": "View current config",
     },
-    "vision.reconfigure": {
-        "zh": "重新配置",
-        "en": "Reconfigure",
+    "vision.new_model": {
+        "zh": "新建视觉模型",
+        "en": "New vision model",
+    },
+    "vision.modelscope_quick": {
+        "zh": "魔搭快捷配置",
+        "en": "ModelScope quick setup",
     },
     "vision.switch": {
         "zh": "切换模型",
@@ -353,6 +357,34 @@ MESSAGES = {
     "vision.unknown": {
         "zh": "未知",
         "en": "unknown",
+    },
+    "vision.custom_form_model": {
+        "zh": "输入视觉模型名称:",
+        "en": "Enter vision model name:",
+    },
+    "vision.custom_form_url": {
+        "zh": "输入 API Base URL:",
+        "en": "Enter API Base URL:",
+    },
+    "vision.custom_form_key": {
+        "zh": "输入 API Key:",
+        "en": "Enter API Key:",
+    },
+    "vision.testing": {
+        "zh": "测试连接中（发送色块图片）...",
+        "en": "Testing connection (sending color block image)...",
+    },
+    "vision.custom_added_default": {
+        "zh": "已加入视觉模型清单(默认): {model}",
+        "en": "Added to vision model list (default): {model}",
+    },
+    "vision.custom_added_fallback": {
+        "zh": "已加入视觉模型清单(备用): {model}",
+        "en": "Added to vision model list (fallback): {model}",
+    },
+    "vision.synced_to_main": {
+        "zh": "已同步到主模型备用列表: {model}",
+        "en": "Synced to main model fallback list: {model}",
     },
     # ─── 技能管理 ───
     "skill.menu": {

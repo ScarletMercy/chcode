@@ -12,12 +12,20 @@ import pytest
 def mock_config_dir(tmp_path: Path, monkeypatch):
     """Setup mock config directory for vision config tests."""
     import chcode.vision_config as mod
+    import chcode.config as cfgmod
 
     config_dir = tmp_path / ".chat"
-    config_dir.mkdir()
+    config_dir.mkdir(exist_ok=True)
+    # 隔离视觉配置文件
     monkeypatch.setattr(mod, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(mod, "VISION_JSON", config_dir / "vision_model.json")
     mod._vision_json.invalidate()
+    # 同时隔离主模型配置文件（_add_to_model_fallback 等会写 model.json，
+    # 不隔离会污染真实的 ~/.chat/model.json）
+    monkeypatch.setattr(cfgmod, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(cfgmod, "MODEL_JSON", config_dir / "model.json")
+    monkeypatch.setattr(cfgmod, "SETTING_JSON", config_dir / "chagent.json")
+    cfgmod._model_json.invalidate()
     return config_dir
 
 
@@ -420,6 +428,410 @@ class TestConfigureVisionInteractive:
             assert result is not None
             assert result["model"] == "moonshotai/Kimi-K2.5"
             assert result["api_key"] == "wizard-key"
+
+
+class TestConfigureVisionCustom:
+    """Tests for _configure_vision_custom() and _test_vision_connection()."""
+
+    @pytest.mark.asyncio
+    async def test_test_vision_connection_success(self, mock_config_dir):
+        """_test_vision_connection returns True when model returns non-empty content."""
+        import chcode.vision_config as mod
+
+        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm_cls.return_value = mock_llm
+            mock_result = MagicMock()
+            mock_result.content = "红色"
+            mock_llm.invoke.return_value = mock_result
+
+            result = await mod._test_vision_connection(
+                {"model": "vl", "base_url": "http://x", "api_key": "k"}, quiet=True
+            )
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_test_vision_connection_empty_content_still_passes(self, mock_config_dir):
+        """不报错即通过：即使响应 content 为空也算成功（不检查响应内容）。"""
+        import chcode.vision_config as mod
+
+        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm_cls.return_value = mock_llm
+            mock_result = MagicMock()
+            mock_result.content = ""
+            mock_llm.invoke.return_value = mock_result
+
+            result = await mod._test_vision_connection(
+                {"model": "vl", "base_url": "http://x", "api_key": "k"}, quiet=True
+            )
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_test_vision_connection_exception_returns_error(self, mock_config_dir):
+        """_test_vision_connection returns error string on exception."""
+        import chcode.vision_config as mod
+
+        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm_cls.return_value = mock_llm
+            mock_llm.invoke.side_effect = Exception("boom")
+
+            result = await mod._test_vision_connection(
+                {"model": "vl", "base_url": "http://x", "api_key": "k"}, quiet=True, return_error=True
+            )
+            assert result == "boom"
+
+    @pytest.mark.asyncio
+    async def test_test_vision_connection_null_choices_is_success(self, mock_config_dir):
+        """null value for 'choices' 视为连接通过（与文本侧 _test_connection 对齐，#5）。"""
+        import chcode.vision_config as mod
+
+        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm_cls.return_value = mock_llm
+            mock_llm.invoke.side_effect = Exception("null value for 'choices'")
+
+            result = await mod._test_vision_connection(
+                {"model": "vl", "base_url": "http://x", "api_key": "k"}, quiet=True
+            )
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_test_vision_connection_null_other_is_failure(self, mock_config_dir):
+        """null value 但不含 'choices'（如 'model'）仍判失败（#5）。"""
+        import chcode.vision_config as mod
+
+        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+            mock_llm = MagicMock()
+            mock_llm_cls.return_value = mock_llm
+            mock_llm.invoke.side_effect = Exception("null value for 'model'")
+
+            result = await mod._test_vision_connection(
+                {"model": "vl", "base_url": "http://x", "api_key": "k"}, quiet=True
+            )
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_custom_success_saves_as_default(self, mock_config_dir):
+        """Filled form + passing test -> add_vision_model called, returns config."""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
+            "my-vl", "http://api.x/v1",
+        ]), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.vision_config.add_vision_model", return_value="default") as mock_add, \
+             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+             patch("chcode.config._add_to_model_fallback") as mock_sync, \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+            result = await mod._configure_vision_custom()
+
+            assert result is not None
+            assert result["model"] == "my-vl"
+            assert result["api_key"] == "key123"
+            mock_add.assert_called_once()
+            # 同步到主模型 fallback
+            mock_sync.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_custom_config_carries_temperature_top_p(self, mock_config_dir):
+        """自定义视觉条目带 temperature/top_p，与预设视觉模型结构一致（#7）。"""
+        import chcode.vision_config as mod
+
+        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
+            "my-vl", "http://api.x/v1",
+        ]), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.vision_config.add_vision_model", return_value="default") as mock_add, \
+             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+             patch("chcode.config._add_to_model_fallback"), \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+            await mod._configure_vision_custom()
+
+            passed_config = mock_add.call_args.args[0]
+            assert passed_config["temperature"] == 1.0
+            assert passed_config["top_p"] == 0.95
+
+    @pytest.mark.asyncio
+    async def test_custom_user_configures_custom_hyperparams(self, mock_config_dir):
+        """用户选"配超参"并填自定义值 → temperature/top_p 用用户输入（#7 配置入口）。"""
+        import chcode.vision_config as mod
+
+        # _ask_hyperparam 在函数内 from prompts import，故 patch prompts 模块
+        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
+            "my-vl", "http://api.x/v1",
+        ]), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
+             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.vision_config.add_vision_model", return_value="default") as mock_add, \
+             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+             patch("chcode.config._add_to_model_fallback"), \
+             patch("chcode.prompts._ask_hyperparam", new_callable=AsyncMock, side_effect=["0.3", "0.8"]), \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_custom()
+
+            passed_config = mock_add.call_args.args[0]
+            assert passed_config["temperature"] == 0.3
+            assert passed_config["top_p"] == 0.8
+
+    @pytest.mark.asyncio
+    async def test_custom_user_cancels_at_model_name(self, mock_config_dir):
+        """Empty model name -> returns None without testing."""
+        import chcode.vision_config as mod
+
+        with patch("chcode.vision_config.text", new_callable=AsyncMock, return_value=""), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock) as mock_test:
+            result = await mod._configure_vision_custom()
+            assert result is None
+            mock_test.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_custom_test_fails_then_retry_then_success(self, mock_config_dir):
+        """Test fails once, user retries, second attempt succeeds."""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
+            "my-vl", "http://api.x/v1",
+        ]), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
+                 "connection refused",  # first test fails
+                 True,                  # retry succeeds
+             ]), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.retry")), \
+             patch("chcode.vision_config.add_vision_model", return_value="default"), \
+             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+             patch("chcode.config._add_to_model_fallback"), \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.config.console"), \
+             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+            result = await mod._configure_vision_custom()
+            assert result is not None
+            assert result["model"] == "my-vl"
+
+    @pytest.mark.asyncio
+    async def test_custom_test_fails_then_reinput_then_success(self, mock_config_dir):
+        """测试失败 -> 用户选"重新输入配置" -> 重填 -> 第二次测试成功（#6 循环 reinput 路径）。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
+            "bad-vl", "http://bad/v1",      # 第一次收集
+            "good-vl", "http://good/v1",    # 重新输入后的收集
+        ]), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
+                 "connection refused",  # 第一次测试失败
+                 True,                  # 重新输入后测试成功
+             ]), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.reinput")), \
+             patch("chcode.vision_config.add_vision_model", return_value="default") as mock_add, \
+             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
+             patch("chcode.config._add_to_model_fallback"), \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.config.console"), \
+             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+            result = await mod._configure_vision_custom()
+            assert result is not None
+            # 最终保存的是重新输入后的模型
+            assert result["model"] == "good-vl"
+            assert result["base_url"] == "http://good/v1"
+            mock_add.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_custom_test_fails_user_aborts(self, mock_config_dir):
+        """Test fails, user chooses abort -> returns None, nothing saved."""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
+            "my-vl", "http://api.x/v1",
+        ]), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value="boom"), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.abort")), \
+             patch("chcode.vision_config.add_vision_model") as mock_add, \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.config.console"), \
+             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+            result = await mod._configure_vision_custom()
+            assert result is None
+            mock_add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_custom_syncs_to_main_model_fallback(self, mock_config_dir):
+        """通过测试后，模型被加入 model.json 的 fallback，且不动 default；补问 context_length。"""
+        import chcode.vision_config as mod
+        import chcode.config as cfgmod
+
+        # 预置一个主模型默认
+        cfgmod.save_model_json({
+            "default": {"model": "text-main", "api_key": "tk", "base_url": "http://t/v1"},
+            "fallback": {},
+        })
+
+        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
+            "vl-model", "http://vl/v1",
+        ]), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="vk"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.vision_config.add_vision_model", return_value="fallback"), \
+             patch("chcode.config.text", new_callable=AsyncMock, return_value="200000"), \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+            await mod._configure_vision_custom()
+
+        # 验证 model.json：default 不变，fallback 含新模型且带 context_length
+        data = cfgmod.load_model_json()
+        assert data["default"]["model"] == "text-main"
+        assert "vl-model" in data["fallback"]
+        assert data["fallback"]["vl-model"]["metadata"]["context_length"] == 200000
+
+    @pytest.mark.asyncio
+    async def test_menu_new_model_routes_to_custom(self, mock_config_dir):
+        """Configured menu: selecting 新建自定义模型 routes to _configure_vision_custom."""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.new_model")), \
+             patch("chcode.vision_config._configure_vision_custom", new_callable=AsyncMock, return_value={"model": "custom"}) as mock_custom:
+            result = await mod.configure_vision_interactive()
+            assert result is not None
+            assert result["model"] == "custom"
+            mock_custom.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_menu_unconfigured_new_model_routes_to_custom(self, mock_config_dir):
+        """Unconfigured menu: 新建自定义模型 also routes to _configure_vision_custom."""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.new_model")), \
+             patch("chcode.vision_config._configure_vision_custom", new_callable=AsyncMock, return_value={"model": "custom"}) as mock_custom:
+            result = await mod.configure_vision_interactive()
+            assert result is not None
+            mock_custom.assert_called_once()
+
+
+class TestConfigureVisionModelscope:
+    """Tests for _configure_vision_modelscope() and its menu routing."""
+
+    @pytest.mark.asyncio
+    async def test_menu_modelscope_quick_routes_to_modelscope(self, mock_config_dir):
+        """Configured menu: selecting 魔搭快捷配置 routes to _configure_vision_modelscope."""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.modelscope_quick")), \
+             patch("chcode.vision_config._configure_vision_modelscope", new_callable=AsyncMock, return_value={"model": "ms"}) as mock_ms:
+            result = await mod.configure_vision_interactive()
+            assert result is not None
+            assert result["model"] == "ms"
+            mock_ms.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_modelscope_appends_presets_without_changing_default(self, mock_config_dir):
+        """给 API Key → 8 个预设补进 fallback，default 完全不变，model.json 不被写入。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        hand_filled_default = {
+            "model": "my-handfilled-vl",
+            "base_url": "http://custom/v1",
+            "api_key": "orig-key",
+        }
+        mod.save_vision_json({"default": hand_filled_default, "fallback": {}})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_modelscope()
+
+        data = mod.load_vision_json()
+        # default 完全不变（手填值原样保留）
+        assert data["default"] == hand_filled_default
+        # 8 个预设全部进了 fallback（default 模型名不与任何预设重名）
+        assert len(data["fallback"]) == len(mod.VISION_MODEL_PRESETS)
+        for preset in mod.VISION_MODEL_PRESETS:
+            assert preset["model"] in data["fallback"]
+            assert data["fallback"][preset["model"]]["api_key"] == "ms-key"
+        # model.json 不应被写入（不同步到文本侧）
+        from chcode.config import MODEL_JSON
+        assert not MODEL_JSON.exists()
+
+    @pytest.mark.asyncio
+    async def test_modelscope_skips_preset_same_as_default(self, mock_config_dir):
+        """B2 回归：default 模型名与某预设相同时，跳过它——default 不被预设覆盖，该模型不进 fallback。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        # default 用一个预设模型名，但手填值（无 temperature/top_p）与预设不一致
+        preset_model = mod.VISION_MODEL_PRESETS[0]["model"]
+        hand_filled_default = {
+            "model": preset_model,
+            "base_url": "http://custom/v1",
+            "api_key": "orig-key",
+        }
+        mod.save_vision_json({"default": hand_filled_default, "fallback": {}})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_modelscope()
+
+        data = mod.load_vision_json()
+        # default 未被预设覆盖（仍是手填值，没有 temperature/top_p）
+        assert data["default"] == hand_filled_default
+        assert "temperature" not in data["default"]
+        # 同名预设未进 fallback（其余 7 个进了）
+        assert preset_model not in data["fallback"]
+        assert len(data["fallback"]) == len(mod.VISION_MODEL_PRESETS) - 1
+
+    @pytest.mark.asyncio
+    async def test_modelscope_preserves_existing_fallback(self, mock_config_dir):
+        """已有 fallback 时跑快捷配置：旧的手填 fallback 保留，预设补充进来，default 不变。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        hand_filled_default = {
+            "model": "my-handfilled-vl",
+            "base_url": "http://custom/v1",
+            "api_key": "orig-key",
+        }
+        existing_fallback = {
+            "someone-else-vl": {"model": "someone-else-vl", "api_key": "old", "base_url": "http://x/v1"},
+        }
+        mod.save_vision_json({"default": hand_filled_default, "fallback": existing_fallback})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_modelscope()
+
+        data = mod.load_vision_json()
+        # default 不变
+        assert data["default"] == hand_filled_default
+        # 旧的 fallback 模型保留（键还在，值未被覆盖）
+        assert "someone-else-vl" in data["fallback"]
+        assert data["fallback"]["someone-else-vl"]["api_key"] == "old"
+        # 8 个预设全部补充进来
+        for preset in mod.VISION_MODEL_PRESETS:
+            assert preset["model"] in data["fallback"]
+            assert data["fallback"][preset["model"]]["api_key"] == "ms-key"
+        # 总数 = 旧 1 + 预设 8
+        assert len(data["fallback"]) == 1 + len(mod.VISION_MODEL_PRESETS)
 
 
 class TestConfigureVisionWizard:

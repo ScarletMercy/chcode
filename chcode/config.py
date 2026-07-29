@@ -106,6 +106,37 @@ async def _ask_conn_retry_action(err_summary: str) -> str | None:
     return await select(t("connection.choose_action"), choices)
 
 
+async def _ask_context_length(config: dict, *, current_ctx: int | None = None) -> None:
+    """询问上下文长度，就地写入 config['metadata']['context_length']（current_ctx 预填，缺省 1M）。"""
+    fallback = current_ctx if current_ctx else 1048576
+    default_ctx = str(fallback)
+    raw_ctx = await text(t("model.context_length"), default=default_ctx) or default_ctx
+    try:
+        ctx_len = int(raw_ctx.strip().replace(",", ""))
+    except ValueError:
+        ctx_len = fallback
+    if ctx_len <= 0:
+        ctx_len = fallback
+    config["metadata"] = {**(config.get("metadata") or {}), "context_length": ctx_len}
+
+
+async def _ask_multimodal(config: dict) -> None:
+    """询问是否多模态，是则加入视觉模型清单（add_vision_model 幂等，失败仅提示不阻断）。"""
+    if await confirm(t("model.multimodal_ask"), default=False):
+        from chcode.vision_config import add_vision_model
+
+        try:
+            role = add_vision_model(config)
+            if role == "default":
+                console.print(f"[green]{t('model.vision_added_default', model=config['model'])}[/green]")
+            elif role == "fallback":
+                console.print(f"[green]{t('model.vision_added_fallback', model=config['model'])}[/green]")
+            else:
+                console.print(f"[yellow]{t('model.vision_duplicate')}[/yellow]")
+        except Exception as e:
+            console.print(f"[yellow]{t('model.vision_failed', error=e)}[/yellow]")
+
+
 def _merge_and_save_config(
     new_config: dict, fallback_updates: dict | None = None
 ) -> None:
@@ -122,6 +153,18 @@ def _merge_and_save_config(
         fallback.update(fallback_updates)
 
     data["default"] = new_config
+    data["fallback"] = fallback
+    save_model_json(data)
+
+
+def _add_to_model_fallback(config: dict) -> None:
+    """把一个模型配置加入 model.json 的 fallback（以 model 名为 key，同名覆盖；不动 default）。"""
+    name = config.get("model", "")
+    if not name:
+        return
+    data = load_model_json()
+    fallback = data.get("fallback", {})
+    fallback[name] = config
     data["fallback"] = fallback
     save_model_json(data)
 
@@ -333,35 +376,13 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
             continue
         return None  # 放弃 或 用户取消菜单
 
-    # 上下文长度（默认 1M）—— 多模态询问之前；存入 metadata（ChatOpenAI 合法字段，
-    # 不会透传到 API 请求），随 config 一起落盘到 model.json。
-    raw_ctx = await text(t("model.context_length"), default="1048576") or "1048576"
-    try:
-        ctx_len = int(raw_ctx.strip().replace(",", ""))
-    except ValueError:
-        ctx_len = 1048576
-    if ctx_len <= 0:
-        ctx_len = 1048576
-    config["metadata"] = {**(config.get("metadata") or {}), "context_length": ctx_len}
+    await _ask_context_length(config)
+
+    # 仅手动配置入口触发；魔搭快捷配置已处理视觉
+    await _ask_multimodal(config)
 
     _merge_and_save_config(config)
     console.print(f"[green]{t('model.saved', model=config['model'])}[/green]")
-
-    # 多模态询问（仅手动配置入口触发；魔搭快捷配置已处理视觉）
-    if await confirm(t("model.multimodal_ask"), default=False):
-        from chcode.vision_config import add_vision_model
-
-        try:
-            role = add_vision_model(config)
-            if role == "default":
-                console.print(f"[green]{t('model.vision_added_default', model=config['model'])}[/green]")
-            elif role == "fallback":
-                console.print(f"[green]{t('model.vision_added_fallback', model=config['model'])}[/green]")
-            else:
-                console.print(f"[yellow]{t('model.vision_duplicate')}[/yellow]")
-        except Exception as e:
-            # 视觉配置失败不阻断主流程（模型本身已保存）
-            console.print(f"[yellow]{t('model.vision_failed', error=e)}[/yellow]")
 
     await configure_tavily()
     await configure_langsmith()
@@ -468,6 +489,11 @@ async def edit_current_model() -> dict | None:
             config = _merge_metadata(config)
             continue
         return None  # 放弃 或 用户取消菜单
+
+    await _ask_context_length(config, current_ctx=(current.get("metadata") or {}).get("context_length"))
+
+    # 与新建流程对齐
+    await _ask_multimodal(config)
 
     data["default"] = config
     save_model_json(data)
