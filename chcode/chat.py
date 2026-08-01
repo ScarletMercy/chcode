@@ -1482,12 +1482,24 @@ class ChatREPL:
                                 continue
 
                             if isinstance(i[0], AIMessageChunk):
+                                # 模型发起 tool_call 的信号（首个带 tool_call_chunks 的 chunk）。
+                                # 工具执行（含 ask_user 的 questionary 等交互界面）发生在
+                                # ToolMessage 到达之前，此时 Live 可能仍开着，导致工具输出
+                                # 与 Live 残留帧重复。检测到即先落版并关 Live。
+                                if getattr(i[0], "tool_call_chunks", None) and ai_started:
+                                    render_ai_end()
+                                    ai_started = False
                                 reasoning = additional_kwargs.get("reasoning")
                                 if reasoning:
                                     if (
                                             not _display._subagent_parallel
                                             and _display._subagent_count == 0
                                     ):
+                                        # reasoning 用裸 console.print 输出；若 Live 正在
+                                        # 渲染 unstable 块，先固定该块，避免 reasoning
+                                        # 夹在 Live 重绘区域中间造成错位。
+                                        if ai_started:
+                                            _display._flush_unstable()
                                         console.print(reasoning, end="", style="dim")
                                 if not ai_started:
                                     if not content:
@@ -1498,9 +1510,17 @@ class ChatREPL:
                                 accumulated_content += content or ""
 
                             elif isinstance(i[0], ToolMessage):
+                                if ai_started:
+                                    render_ai_end()  # tool 打断正文：落版 unstable 块并关 Live，再让 tool 输出
                                 ai_started = False
 
                         elif m == "updates" and "__interrupt__" in i:
+                            # HITL 拦截发生在 ToolMessage 之前，Live 可能仍开着。
+                            # 必须先落版 unstable 块并关 Live，否则后台刷新干扰审批渲染，
+                            # 且被 tool_call 打断的正文会丢失。
+                            if ai_started:
+                                render_ai_end()
+                                ai_started = False
                             interrupt_chunk = i
 
                 except asyncio.CancelledError:
