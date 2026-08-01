@@ -16,6 +16,10 @@ class GitManager:
     SHADOW_EXCLUDE = (
         ".chat/\n.git/\n.venv/\n__pycache__/\n*.pyc\nnode_modules/\n"
         "dist/\nbuild/\n.pytest_cache/\n.coverage\n*.egg-info/\n"
+        # Windows 设备保留名（nul/con/aux/prn/com1-9/lpt1-9 及带扩展名形式）：
+        # 这类文件在 Windows 上无法被 git 读写，一旦 add 进来会让提交失败，故排除
+        "nul\nnul.*\ncon\ncon.*\naux\naux.*\nprn\nprn.*\n"
+        "com[1-9]\ncom[1-9].*\nlpt[1-9]\nlpt[1-9].*\n"
     )
 
     def __init__(self, repo_path: str = "."):

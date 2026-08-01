@@ -245,6 +245,18 @@ class TestGitManager:
         assert ".chat/cp-repo" not in tree
         assert "a.txt" in tree
 
+    def test_shadow_exclude_skips_windows_reserved_names(self, tmp_path: Path):
+        """工作树含 nul 等设备保留名时影子提交不失败：exclude 已排除它们"""
+        gm = GitManager(str(tmp_path))
+        assert gm.init_shadow() is True
+        assert "nul" in gm.SHADOW_EXCLUDE
+        assert "com[1-9]" in gm.SHADOW_EXCLUDE
+        # 正常文件仍正常进提交
+        (tmp_path / "a.txt").write_text("v1", encoding="utf-8")
+        assert gm.add_commit("m1") is True
+        tree = gm._run(["ls-tree", "-r", "--name-only", "HEAD"]).stdout
+        assert "a.txt" in tree
+
     def test_add_commit_json_corrupt(self, tmp_path: Path):
         """existing json 损坏:特有告警 + 返回 False,不崩"""
         gm = GitManager(str(tmp_path))
