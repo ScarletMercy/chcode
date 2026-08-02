@@ -177,9 +177,19 @@ class TestDetectModelscopeApiKey:
 
         monkeypatch.setenv("ModelScopeToken", "env-ms-key")
 
-        result = mod._detect_modelscope_api_key()
+        result = mod._detect_modelscope_api_key(mod.MODELSCOPE_BASE_URL)
 
         assert result == "env-ms-key"
+
+    def test_env_var_does_not_apply_to_intl_family(self, mock_config_dir, monkeypatch):
+        """Env var is scoped to the cn family; intl family needs model.json .ai config."""
+        import chcode.vision_config as mod
+
+        monkeypatch.setenv("ModelScopeToken", "env-ms-key")
+
+        result = mod._detect_modelscope_api_key(mod.MODELSCOPE_INTL_BASE_URL)
+
+        assert result is None
 
     def test_falls_back_to_model_json_default(self, mock_config_dir, monkeypatch):
         """Should check model.json default if no env var."""
@@ -195,9 +205,26 @@ class TestDetectModelscopeApiKey:
             }
         }), encoding="utf-8")
 
-        result = mod._detect_modelscope_api_key()
+        result = mod._detect_modelscope_api_key(mod.MODELSCOPE_BASE_URL)
 
         assert result == "json-key"
+
+    def test_matches_intl_family_from_model_json(self, mock_config_dir, monkeypatch):
+        """Should detect key from model.json .ai base_url for the intl family."""
+        import chcode.vision_config as mod
+
+        monkeypatch.delenv("ModelScopeToken", raising=False)
+        model_json = mock_config_dir / "model.json"
+        model_json.write_text(json.dumps({
+            "default": {
+                "model": "test",
+                "api_key": "intl-key",
+                "base_url": "https://api-inference.modelscope.ai/v1"
+            }
+        }), encoding="utf-8")
+
+        assert mod._detect_modelscope_api_key(mod.MODELSCOPE_INTL_BASE_URL) == "intl-key"
+        assert mod._detect_modelscope_api_key(mod.MODELSCOPE_BASE_URL) is None
 
     def test_checks_model_json_fallback(self, mock_config_dir, monkeypatch):
         """Should check model.json fallback models."""
@@ -220,7 +247,7 @@ class TestDetectModelscopeApiKey:
             }
         }), encoding="utf-8")
 
-        result = mod._detect_modelscope_api_key()
+        result = mod._detect_modelscope_api_key(mod.MODELSCOPE_BASE_URL)
 
         assert result == "fb-key"
 
@@ -230,7 +257,7 @@ class TestDetectModelscopeApiKey:
 
         monkeypatch.delenv("ModelScopeToken", raising=False)
 
-        result = mod._detect_modelscope_api_key()
+        result = mod._detect_modelscope_api_key(mod.MODELSCOPE_BASE_URL)
 
         assert result is None
 
@@ -244,9 +271,10 @@ class TestBuildVisionConfig:
 
         result = mod._build_vision_config("test-key")
 
-        assert result["default"]["model"] == "moonshotai/Kimi-K2.5"
+        first = mod.VISION_MODEL_PRESETS[0]["model"]
+        assert result["default"]["model"] == first
         assert result["default"]["api_key"] == "test-key"
-        assert "moonshotai/Kimi-K2.5" not in result["fallback"]
+        assert first not in result["fallback"]
 
     def test_remaining_presets_as_fallback(self, mock_config_dir):
         """Remaining presets should become fallback models."""
@@ -254,10 +282,11 @@ class TestBuildVisionConfig:
 
         result = mod._build_vision_config("test-key")
 
+        first = mod.VISION_MODEL_PRESETS[0]["model"]
         assert len(result["fallback"]) == len(mod.VISION_MODEL_PRESETS) - 1
         for cfg in result["fallback"].values():
             assert cfg["api_key"] == "test-key"
-            assert cfg["model"] != "moonshotai/Kimi-K2.5"
+            assert cfg["model"] != first
 
 
 class TestAutoConfigureVision:
@@ -318,7 +347,7 @@ class TestAutoConfigureVision:
         assert result["model"] == "old-model"
         # ModelScope 预设模型应加入 fallback
         data = mod.load_vision_json()
-        assert "moonshotai/Kimi-K2.5" in data["fallback"]
+        assert mod.VISION_MODEL_PRESETS[0]["model"] in data["fallback"]
 
 
 class TestConfigureVisionInteractive:
@@ -426,7 +455,7 @@ class TestConfigureVisionInteractive:
             result = await mod.configure_vision_interactive()
 
             assert result is not None
-            assert result["model"] == "moonshotai/Kimi-K2.5"
+            assert result["model"] == mod.VISION_MODEL_PRESETS[0]["model"]
             assert result["api_key"] == "wizard-key"
 
 
@@ -742,6 +771,34 @@ class TestConfigureVisionModelscope:
             mock_ms.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_menu_modelscope_quick_intl_routes_with_intl_flag(self, mock_config_dir):
+        """Configured menu: selecting 魔搭快捷配置（国际版）routes to _configure_vision_modelscope(intl=True)."""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.modelscope_quick_intl")), \
+             patch("chcode.vision_config._configure_vision_modelscope", new_callable=AsyncMock, return_value={"model": "ms-intl"}) as mock_ms:
+            result = await mod.configure_vision_interactive()
+            assert result is not None
+            assert result["model"] == "ms-intl"
+            mock_ms.assert_called_once_with(intl=True)
+
+    @pytest.mark.asyncio
+    async def test_menu_unconfigured_configure_intl_routes_to_wizard(self, mock_config_dir):
+        """Unconfigured menu: 配置视觉模型（国际版）routes to _configure_vision_wizard(intl=True)."""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.configure_intl")), \
+             patch("chcode.vision_config._configure_vision_wizard", new_callable=AsyncMock, return_value={"model": "w-intl"}) as mock_wizard:
+            result = await mod.configure_vision_interactive()
+            assert result is not None
+            assert result["model"] == "w-intl"
+            mock_wizard.assert_called_once_with(intl=True)
+
+    @pytest.mark.asyncio
     async def test_modelscope_appends_presets_without_changing_default(self, mock_config_dir):
         """给 API Key → 8 个预设补进 fallback，default 完全不变，model.json 不被写入。"""
         import chcode.vision_config as mod
@@ -771,6 +828,32 @@ class TestConfigureVisionModelscope:
         # model.json 不应被写入（不同步到文本侧）
         from chcode.config import MODEL_JSON
         assert not MODEL_JSON.exists()
+
+    @pytest.mark.asyncio
+    async def test_modelscope_intl_writes_ai_base_url(self, mock_config_dir):
+        """国际版快捷配置：fallback 预设全部使用 .ai base_url，模型与参数同国内版。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        hand_filled_default = {
+            "model": "my-handfilled-vl",
+            "base_url": "http://custom/v1",
+            "api_key": "orig-key",
+        }
+        mod.save_vision_json({"default": hand_filled_default, "fallback": {}})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_modelscope(intl=True)
+
+        data = mod.load_vision_json()
+        assert data["default"] == hand_filled_default
+        assert len(data["fallback"]) == len(mod.VISION_MODEL_INTL_PRESETS)
+        for preset in mod.VISION_MODEL_INTL_PRESETS:
+            assert data["fallback"][preset["model"]]["base_url"] == mod.MODELSCOPE_INTL_BASE_URL
+            assert data["fallback"][preset["model"]]["api_key"] == "ms-key"
 
     @pytest.mark.asyncio
     async def test_modelscope_skips_preset_same_as_default(self, mock_config_dir):
@@ -1007,6 +1090,31 @@ class TestConfigureVisionWizard:
 
             assert result is not None
             assert result["api_key"] == "manual-key"
+
+    @pytest.mark.asyncio
+    async def test_intl_wizard_uses_ai_base_url(self, mock_config_dir):
+        """国际版向导：default/fallback 全部使用 .ai base_url，模型与参数同国内版。"""
+        import chcode.vision_config as mod
+
+        async def select_route(msg, choices, **kw):
+            if "API Key" in msg:
+                return "手动输入 API Key"
+            if "默认视觉模型" in msg:
+                return mod.VISION_MODEL_INTL_PRESETS[0]["model"]
+            return choices[0]
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="intl-key"), \
+             patch("chcode.vision_config.console"):
+            result = await mod._configure_vision_wizard(intl=True)
+
+        assert result is not None
+        assert result["model"] == mod.VISION_MODEL_INTL_PRESETS[0]["model"]
+        assert result["base_url"] == mod.MODELSCOPE_INTL_BASE_URL
+        assert result["api_key"] == "intl-key"
+        assert len(mod.load_vision_json()["fallback"]) == len(mod.VISION_MODEL_INTL_PRESETS) - 1
+        for cfg in mod.load_vision_json()["fallback"].values():
+            assert cfg["base_url"] == mod.MODELSCOPE_INTL_BASE_URL
 
     @pytest.mark.asyncio
     async def test_wizard_cancel_model_selection(self, mock_config_dir):

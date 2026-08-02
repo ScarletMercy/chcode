@@ -35,6 +35,10 @@ MESSAGES = {
         "zh": "魔搭快捷配置...",
         "en": "ModelScope quick setup...",
     },
+    "firstrun.modelscope_quick_intl": {
+        "zh": "魔搭快捷配置（国际版）...",
+        "en": "ModelScope quick setup (International)...",
+    },
     "firstrun.manual": {
         "zh": "手动配置...",
         "en": "Manual setup...",
@@ -270,6 +274,10 @@ MESSAGES = {
         "zh": "魔搭快捷配置",
         "en": "ModelScope quick setup",
     },
+    "vision.modelscope_quick_intl": {
+        "zh": "魔搭快捷配置（国际版）",
+        "en": "ModelScope quick setup (International)",
+    },
     "vision.switch": {
         "zh": "切换模型",
         "en": "Switch model",
@@ -277,6 +285,10 @@ MESSAGES = {
     "vision.configure": {
         "zh": "配置视觉模型",
         "en": "Configure vision model",
+    },
+    "vision.configure_intl": {
+        "zh": "配置视觉模型（国际版）",
+        "en": "Configure vision model (International)",
     },
     "vision.unconfigured_ask": {
         "zh": "视觉模型未配置，是否现在配置？",

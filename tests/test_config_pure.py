@@ -48,6 +48,19 @@ class TestPredefinedContextLength:
         for p in MODELSCOPE_PRESETS:
             assert p["metadata"]["context_length"] > 0, p["model"]
 
+    def test_modelscope_intl_presets_reuse_models_and_params(self):
+        """国际版预设：模型与参数与国内版完全一致，仅 base_url 的 cn → ai。"""
+        from chcode.prompts import MODELSCOPE_BASE_URL, MODELSCOPE_INTL_BASE_URL, MODELSCOPE_INTL_PRESETS, MODELSCOPE_PRESETS
+
+        assert len(MODELSCOPE_INTL_PRESETS) == len(MODELSCOPE_PRESETS)
+        for cn, intl in zip(MODELSCOPE_PRESETS, MODELSCOPE_INTL_PRESETS):
+            assert intl["base_url"] == "https://api-inference.modelscope.ai/v1"
+            assert intl["model"] == cn["model"]
+            assert intl["temperature"] == cn["temperature"]
+            assert intl["top_p"] == cn["top_p"]
+            assert intl["metadata"] == cn["metadata"]
+        assert MODELSCOPE_INTL_BASE_URL != MODELSCOPE_BASE_URL
+
     def test_inner_model_config_carries_context_length(self):
         from chcode.agent_setup import INNER_MODEL_CONFIG
 

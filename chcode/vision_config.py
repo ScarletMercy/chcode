@@ -25,10 +25,10 @@ VISION_JSON = CONFIG_DIR / "vision_model.json"
 _vision_json = CachedJsonFile(VISION_JSON, ensure_dir=True)
 
 MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1"
+MODELSCOPE_INTL_BASE_URL = "https://api-inference.modelscope.ai/v1"
 
 # 视觉模型预设 — 参数全部相同，只需列出模型名
 _VISION_MODEL_NAMES = [
-    "moonshotai/Kimi-K2.5",
     "Qwen/Qwen3-VL-235B-A22B-Instruct",
     "Qwen/Qwen3-VL-30B-A3B-Instruct",
     "Qwen/Qwen3-VL-8B-Instruct",
@@ -41,6 +41,12 @@ _VISION_MODEL_NAMES = [
 VISION_MODEL_PRESETS = [
     {"model": name, "base_url": MODELSCOPE_BASE_URL, "temperature": 1.0, "top_p": 0.95, "stream_usage": True}
     for name in _VISION_MODEL_NAMES
+]
+
+# 国际版：预置模型与参数完全复用，仅 base_url 不同
+VISION_MODEL_INTL_PRESETS = [
+    {**preset, "base_url": MODELSCOPE_INTL_BASE_URL}
+    for preset in VISION_MODEL_PRESETS
 ]
 
 
@@ -71,24 +77,25 @@ def get_vision_fallback_models() -> list[dict]:
     return [v for k, v in fallback.items() if v.get("api_key")]
 
 
-def _detect_modelscope_api_key() -> str | None:
-    """检测 ModelScope API Key（环境变量 → model.json）"""
-    # 优先从环境变量
+def _detect_modelscope_api_key(base_url: str) -> str | None:
+    """检测指定 base_url 家族的 ModelScope API Key（环境变量 → model.json）"""
+    # 优先从环境变量（与历史行为一致：env 键归国内版家族，避免双家族同名
+    # 模型互相覆盖；国际版家族仅通过 model.json 中的 .ai 配置检出）
     key = os.getenv("ModelScopeToken", "")
-    if key:
+    if key and base_url == MODELSCOPE_BASE_URL:
         return key
 
-    # 从已配置的 model.json 中找 ModelScope 的 key
+    # 从已配置的 model.json 中找该家族 ModelScope 的 key
     model_json_path = CONFIG_DIR / "model.json"
     if model_json_path.exists():
         try:
             data = json.loads(model_json_path.read_text(encoding="utf-8"))
             default = data.get("default", {})
-            if default.get("base_url") == MODELSCOPE_BASE_URL and default.get("api_key"):
+            if default.get("base_url") == base_url and default.get("api_key"):
                 return default["api_key"]
             # 检查 fallback
             for cfg in data.get("fallback", {}).values():
-                if cfg.get("base_url") == MODELSCOPE_BASE_URL and cfg.get("api_key"):
+                if cfg.get("base_url") == base_url and cfg.get("api_key"):
                     return cfg["api_key"]
         except Exception:  # pragma: no cover
             pass  # pragma: no cover
@@ -102,15 +109,15 @@ def _build_vision_config(api_key: str) -> dict:
 def _detect_api_keys() -> list[tuple[str, list[dict]]]:
     """检测所有可用 API Key，返回 [(api_key, matching_presets), ...]。
 
-    每个元素对应一个提供商，api_key 只会匹配同 base_url 的预设。
+    每个元素对应一个提供商家族（国内版 cn / 国际版 ai），
+    api_key 只会匹配同 base_url 家族的预设。
     """
     results: list[tuple[str, list[dict]]] = []
 
-    ms_key = _detect_modelscope_api_key()
-    if ms_key:
-        ms_presets = [p for p in VISION_MODEL_PRESETS if p["base_url"] == MODELSCOPE_BASE_URL]
-        if ms_presets:
-            results.append((ms_key, ms_presets))
+    for presets in (VISION_MODEL_PRESETS, VISION_MODEL_INTL_PRESETS):
+        key = _detect_modelscope_api_key(presets[0]["base_url"])
+        if key:
+            results.append((key, presets))
 
     return results
 
@@ -245,12 +252,12 @@ async def configure_vision_interactive() -> dict | None:
     if has_config:
         action = await select(
             t("vision.menu"),
-            [t("vision.view"), t("vision.new_model"), t("vision.modelscope_quick"), t("vision.switch"), back_label],
+            [t("vision.view"), t("vision.new_model"), t("vision.modelscope_quick"), t("vision.modelscope_quick_intl"), t("vision.switch"), back_label],
         )
     else:
         action = await select(
             t("vision.unconfigured_ask"),
-            [t("vision.configure"), t("vision.new_model"), back_label],
+            [t("vision.configure"), t("vision.configure_intl"), t("vision.new_model"), back_label],
         )
 
     if action is None or action == back_label:
@@ -269,12 +276,20 @@ async def configure_vision_interactive() -> dict | None:
     if action == t("vision.modelscope_quick"):
         return await _configure_vision_modelscope()
 
+    if action == t("vision.modelscope_quick_intl"):
+        return await _configure_vision_modelscope(intl=True)
+
+    if action == t("vision.configure_intl"):
+        return await _configure_vision_wizard(intl=True)
+
     # 预设快捷配置
     return await _configure_vision_wizard()
 
 
-async def _configure_vision_wizard() -> dict | None:
-    """配置向导"""
+async def _configure_vision_wizard(*, intl: bool = False) -> dict | None:
+    """配置向导（intl=True 时走国际版端点 .ai，模型/参数与国内版一致）"""
+    presets = VISION_MODEL_INTL_PRESETS if intl else VISION_MODEL_PRESETS
+
     # 选择 API Key 来源
     env_key = os.getenv("ModelScopeToken", "")
     manual_label = t("vision.manual_key")
@@ -296,13 +311,13 @@ async def _configure_vision_wizard() -> dict | None:
         api_key = env_key
 
     # 选择默认模型
-    preset_names = [p["model"] for p in VISION_MODEL_PRESETS]
+    preset_names = [p["model"] for p in presets]
     default_choice = await select(t("vision.select_default"), preset_names, default=preset_names[0])
     if default_choice is None:
         return None
 
     default_idx = preset_names.index(default_choice)
-    config = build_default_fallback_config(VISION_MODEL_PRESETS, api_key, default_index=default_idx)
+    config = build_default_fallback_config(presets, api_key, default_index=default_idx)
 
     existing_data = load_vision_json()
     existing_fallback = existing_data.get("fallback", {})
@@ -532,8 +547,11 @@ async def _configure_vision_custom() -> dict | None:
     return config
 
 
-async def _configure_vision_modelscope() -> dict | None:
+async def _configure_vision_modelscope(*, intl: bool = False) -> dict | None:
     """魔搭快捷配置（视觉）：只需 API Key，把预设视觉模型补进 fallback。
+
+    intl=True 时走国际版端点（https://api-inference.modelscope.ai/v1），
+    预置模型与参数与国内版完全一致，仅 base_url 不同。
 
     只追加、不改现有 default（跳过与 default 同名的预设，避免被预设值覆盖）；
     不同步 model.json。
@@ -547,6 +565,8 @@ async def _configure_vision_modelscope() -> dict | None:
     不会自行设置 default--是否设默认由调用方决定。
     """
     from chcode.config import _ask_conn_retry_action
+
+    presets = VISION_MODEL_INTL_PRESETS if intl else VISION_MODEL_PRESETS
 
     async def _collect_key() -> str | None:
         """收集 API Key（环境变量 ModelScopeToken / 手填），取消返回 None。"""
@@ -577,7 +597,7 @@ async def _configure_vision_modelscope() -> dict | None:
     # 视觉侧无用户 default，故取预设列表前 3 个作代表。
     while True:
         console.print(f"[yellow]{t('vision.testing')}[/yellow]")
-        test_presets = VISION_MODEL_PRESETS[:3]
+        test_presets = presets[:3]
         connected = False
         last_err_summary = ""
         for preset in test_presets:
@@ -610,7 +630,7 @@ async def _configure_vision_modelscope() -> dict | None:
     default = data.get("default") or {}
     fallback = dict(data.get("fallback") or {})
     default_model = default.get("model", "")
-    for preset in VISION_MODEL_PRESETS:
+    for preset in presets:
         if preset["model"] == default_model:
             continue
         # 与 add_vision_model 一致：只保留视觉白名单字段 + 注入 api_key

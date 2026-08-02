@@ -1468,7 +1468,7 @@ class TestConfigureModelscope:
 
             data = mod.load_model_json()
             assert data["default"]["model"] == "Qwen/Qwen3.5-397B-A17B"
-            assert len(data["fallback"]) == 8
+            assert len(data["fallback"]) == 7
 
     @pytest.mark.asyncio
     async def test_modelscope_merge_existing(self, mock_config_dir):
@@ -1605,7 +1605,7 @@ class TestConfigureModelscope:
         assert result is not None
         assert result["default"]["api_key"] == "ms-test-key"
         assert result["default"]["model"] == "Qwen/Qwen3.5-397B-A17B"
-        assert len(result["fallback"]) == 8
+        assert len(result["fallback"]) == 7
 
     @pytest.mark.asyncio
     async def test_configure_modelscope_cancel(self):
@@ -1689,6 +1689,80 @@ class TestConfigureModelscope:
             result = await mod.configure_new_model()
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_configure_new_model_selects_modelscope_intl(self, mock_config_dir):
+        """configure_new_model user selects 魔搭快捷配置（国际版）→ intl=True."""
+        import chcode.config as mod
+
+        with patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置（国际版）..."), \
+             patch("chcode.config._configure_modelscope_with_test", new_callable=AsyncMock, return_value={"model": "ms-intl"}) as mock_ms:
+            result = await mod.configure_new_model()
+
+        assert result is not None
+        assert result["model"] == "ms-intl"
+        mock_ms.assert_called_once_with(intl=True)
+
+    @pytest.mark.asyncio
+    async def test_first_run_detected_modelscope_intl(self, mock_config_dir):
+        """first_run_configure with detected key chooses 魔搭快捷配置（国际版）→ intl=True."""
+        import chcode.config as mod
+
+        with patch("chcode.config.detect_env_api_keys", return_value=[
+            {"name": "TestProvider", "env_var": "TEST_KEY", "base_url": "https://x.com", "models": ["m1"], "api_key": "k"}
+        ]), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置（国际版）..."), \
+             patch("chcode.config._configure_modelscope_with_test", new_callable=AsyncMock, return_value={"model": "ms-intl"}) as mock_ms:
+            result = await mod.first_run_configure()
+
+        assert result is not None
+        assert result["model"] == "ms-intl"
+        mock_ms.assert_called_once_with(intl=True)
+
+    @pytest.mark.asyncio
+    async def test_first_run_no_env_modelscope_intl(self, mock_config_dir):
+        """first_run_configure no env vars, user picks 魔搭快捷配置（国际版）→ intl=True."""
+        import chcode.config as mod
+
+        with patch("chcode.config.detect_env_api_keys", return_value=[]), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置（国际版）..."), \
+             patch("chcode.config._configure_modelscope_with_test", new_callable=AsyncMock, return_value={"model": "ms-intl"}) as mock_ms:
+            result = await mod.first_run_configure()
+
+        assert result is not None
+        assert result["model"] == "ms-intl"
+        mock_ms.assert_called_once_with(intl=True)
+
+    @pytest.mark.asyncio
+    async def test_modelscope_with_test_passes_intl_flag(self, mock_config_dir):
+        """_configure_modelscope_with_test(intl=True) → configure_modelscope 收到 intl=True，落盘 .ai base_url."""
+        import chcode.config as mod
+        from chcode.prompts import MODELSCOPE_INTL_PRESETS
+
+        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
+             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
+             patch("chcode.config.configure_langsmith", new_callable=AsyncMock):
+            ms_result = {
+                "default": {**MODELSCOPE_INTL_PRESETS[0], "api_key": "ms-key"},
+                "fallback": {
+                    m["model"]: {**m, "api_key": "ms-key"}
+                    for m in MODELSCOPE_INTL_PRESETS[1:]
+                },
+            }
+            mock_ms.return_value = ms_result
+            mock_model_inst = MagicMock()
+            mock_model.return_value = mock_model_inst
+            mock_model_inst.invoke.return_value = MagicMock()
+
+            result = await mod._configure_modelscope_with_test(intl=True)
+
+            assert result is not None
+            assert result["base_url"] == "https://api-inference.modelscope.ai/v1"
+            mock_ms.assert_called_once_with(intl=True)
+
+            data = mod.load_model_json()
+            assert data["default"]["base_url"] == "https://api-inference.modelscope.ai/v1"
 
     @pytest.mark.asyncio
     async def test_configure_new_model_form_returns_none(self, mock_config_dir):

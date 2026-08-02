@@ -263,7 +263,9 @@ async def first_run_configure() -> dict | None:
             )
             choice_ids.append(("env", d))
         choices.append(t("firstrun.modelscope_quick"))
-        choice_ids.append("modelscope")
+        choice_ids.append(("modelscope", False))
+        choices.append(t("firstrun.modelscope_quick_intl"))
+        choice_ids.append(("modelscope", True))
         choices.append(t("firstrun.manual"))
         choice_ids.append("manual")
         choices.append(t("firstrun.exit"))
@@ -280,8 +282,8 @@ async def first_run_configure() -> dict | None:
             return None
         if action == "manual":
             return await configure_new_model(skip_method_select=True)
-        if action == "modelscope":
-            return await _configure_modelscope_with_test()
+        if isinstance(action, tuple) and action[0] == "modelscope":
+            return await _configure_modelscope_with_test(intl=action[1])
 
         # env provider
         chosen = action[1]
@@ -321,10 +323,11 @@ async def first_run_configure() -> dict | None:
         console.print(f"[yellow]{t('firstrun.no_env_key')}[/yellow]")
         choices = [
             t("firstrun.modelscope_quick"),
+            t("firstrun.modelscope_quick_intl"),
             t("firstrun.manual"),
             t("firstrun.exit"),
         ]
-        choice_ids = ["modelscope", "manual", "exit"]
+        choice_ids = ["modelscope", "modelscope_intl", "manual", "exit"]
         result = await select(t("firstrun.select"), choices)
         if result is None:
             console.print(f"[dim]{t('firstrun.env_hint')}[/dim]")
@@ -340,6 +343,8 @@ async def first_run_configure() -> dict | None:
             return None
         if action == "modelscope":
             return await _configure_modelscope_with_test()
+        if action == "modelscope_intl":
+            return await _configure_modelscope_with_test(intl=True)
         return await configure_new_model(skip_method_select=True)
 
 
@@ -351,12 +356,19 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
     """
     ensure_config_dir()
     if not skip_method_select:
-        choices = [t("firstrun.modelscope_quick"), t("firstrun.manual")]
+        choices = [
+            t("firstrun.modelscope_quick"),
+            t("firstrun.modelscope_quick_intl"),
+            t("firstrun.manual"),
+        ]
         result = await select(t("model.method_select"), choices)
         if result is None:
             return None
-        if choices.index(result) == 0:
+        idx = choices.index(result)
+        if idx == 0:
             return await _configure_modelscope_with_test()
+        if idx == 1:
+            return await _configure_modelscope_with_test(intl=True)
     config = await model_config_form()
     if config is None:
         return None
@@ -389,8 +401,10 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
     return config
 
 
-async def _configure_modelscope_with_test() -> dict | None:
+async def _configure_modelscope_with_test(*, intl: bool = False) -> dict | None:
     """魔搭快捷配置：收集 API Key → 测试连接 → 保存预定义模型。
+
+    intl=True 时走国际版端点（https://api-inference.modelscope.ai/v1）。
 
     测试失败时弹出"重试/重新输入配置/放弃"菜单：
     - 重试：重跑整个（default + 2 备用）测试循环
@@ -399,7 +413,7 @@ async def _configure_modelscope_with_test() -> dict | None:
     """
     from chcode.prompts import configure_modelscope
 
-    ms_config = await configure_modelscope()
+    ms_config = await configure_modelscope(intl=intl)
     if ms_config is None:
         return None
 
@@ -431,7 +445,7 @@ async def _configure_modelscope_with_test() -> dict | None:
         if action == t("connection.retry"):
             continue
         if action == t("connection.reinput"):
-            ms_config = await configure_modelscope()
+            ms_config = await configure_modelscope(intl=intl)
             if ms_config is None:
                 return None
             continue
