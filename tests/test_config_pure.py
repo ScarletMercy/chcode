@@ -49,13 +49,16 @@ class TestPredefinedContextLength:
             assert p["metadata"]["context_length"] > 0, p["model"]
 
     def test_modelscope_intl_presets_reuse_models_and_params(self):
-        """国际版预设：模型与参数与国内版完全一致，仅 base_url 的 cn → ai。"""
+        """国际版预设：参数与国内版完全一致，base_url 的 cn → ai；GLM 模型的 namespace 从
+        ZhipuAI（国内版）换成 zai-org（国际版），其余模型 id 不变。"""
         from chcode.prompts import MODELSCOPE_BASE_URL, MODELSCOPE_INTL_BASE_URL, MODELSCOPE_INTL_PRESETS, MODELSCOPE_PRESETS
 
         assert len(MODELSCOPE_INTL_PRESETS) == len(MODELSCOPE_PRESETS)
         for cn, intl in zip(MODELSCOPE_PRESETS, MODELSCOPE_INTL_PRESETS):
             assert intl["base_url"] == "https://api-inference.modelscope.ai/v1"
-            assert intl["model"] == cn["model"]
+            # GLM 在两版有不同 namespace（ZhipuAI/zai-org），其余模型 id 必须一致
+            expected_model = cn["model"].replace("ZhipuAI/", "zai-org/") if cn["model"].startswith("ZhipuAI/") else cn["model"]
+            assert intl["model"] == expected_model
             assert intl["temperature"] == cn["temperature"]
             assert intl["top_p"] == cn["top_p"]
             assert intl["metadata"] == cn["metadata"]

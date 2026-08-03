@@ -122,8 +122,15 @@ MODELSCOPE_PRESETS = [
     for spec in _MODELSCOPE_MODELS
 ]
 
+# 国际版预设：base_url 切到 .ai，且 GLM 模型 namespace 换为国际版 zai-org
+# （国内版 ZhipuAI 在国际版端点不识别，反之亦然）。与国内版一一对应、数量相同。
 MODELSCOPE_INTL_PRESETS = [
-    {"base_url": MODELSCOPE_INTL_BASE_URL, "stream_usage": True, **spec}
+    {
+        **{"base_url": MODELSCOPE_INTL_BASE_URL, "stream_usage": True, **spec},
+        "model": spec["model"].replace("ZhipuAI/", "zai-org/", 1)
+        if spec["model"].startswith("ZhipuAI/")
+        else spec["model"],
+    }
     for spec in _MODELSCOPE_MODELS
 ]
 
