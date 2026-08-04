@@ -61,8 +61,58 @@ class TestPredefinedContextLength:
             assert intl["model"] == expected_model
             assert intl["temperature"] == cn["temperature"]
             assert intl["top_p"] == cn["top_p"]
-            assert intl["metadata"] == cn["metadata"]
+            # 国际版 metadata 是国内版的超集：继承 context_length 等，并打 region="intl"
+            # 标记，用于在 fallback 列表中与同名国内版模型区分（显示 (国际版) 后缀）。
+            assert intl["metadata"] == {**cn["metadata"], "region": "intl"}
         assert MODELSCOPE_INTL_BASE_URL != MODELSCOPE_BASE_URL
+
+
+class TestRegionKey:
+    """region_key 决定 cfg 在 fallback 字典中的 key，区分国内版/国际版同名模型。"""
+
+    def test_cn_returns_plain_model_name(self):
+        from chcode.utils.json_utils import region_key
+
+        cn = {"model": "ZhipuAI/GLM-5.2", "metadata": {"context_length": 1048576}}
+        assert region_key(cn) == "ZhipuAI/GLM-5.2"
+
+    def test_intl_appends_suffix(self):
+        from chcode.utils.json_utils import region_key
+
+        intl = {"model": "zai-org/GLM-5.2", "metadata": {"context_length": 1048576, "region": "intl"}}
+        assert region_key(intl) == "zai-org/GLM-5.2 (国际版)"
+
+    def test_missing_metadata_returns_plain_name(self):
+        from chcode.utils.json_utils import region_key
+
+        assert region_key({"model": "X"}) == "X"
+
+    def test_empty_cfg_returns_empty(self):
+        from chcode.utils.json_utils import region_key
+
+        assert region_key({}) == ""
+
+    def test_non_intl_region_treated_as_cn(self):
+        """region 非 'intl'（含缺失）一律按国内版处理，不加后缀。"""
+        from chcode.utils.json_utils import region_key
+
+        assert region_key({"model": "M", "metadata": {"region": "cn"}}) == "M"
+        assert region_key({"model": "M", "metadata": {"region": ""}}) == "M"
+
+    def test_build_default_fallback_separates_same_name_regions(self):
+        """同名国内/国际预设共存时，fallback key 必须分离，互不覆盖。"""
+        from chcode.utils.json_utils import build_default_fallback_config
+
+        presets = [
+            {"model": "M", "metadata": {"context_length": 100}},
+            {"model": "M", "metadata": {"context_length": 200, "region": "intl"}},
+        ]
+        res = build_default_fallback_config(presets, "k", default_index=0)
+        assert set(res["fallback"].keys()) == {"M (国际版)"}
+        # 国际版条目完整保留
+        intl_cfg = res["fallback"]["M (国际版)"]
+        assert intl_cfg["model"] == "M"
+        assert intl_cfg["metadata"]["region"] == "intl"
 
     def test_inner_model_config_carries_context_length(self):
         from chcode.agent_setup import INNER_MODEL_CONFIG

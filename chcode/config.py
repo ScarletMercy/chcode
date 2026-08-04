@@ -17,7 +17,7 @@ from rich.panel import Panel
 from chcode.display import console
 from chcode.i18n import set_language, t
 from chcode.prompts import select, confirm, model_config_form, text
-from chcode.utils.json_utils import CachedJsonFile
+from chcode.utils.json_utils import CachedJsonFile, region_key
 from chcode.utils.text_utils import mask_api_key
 
 HOMEPAGE_URL = "https://github.com/ScarletMercy/chcode" # 项目github地址
@@ -146,9 +146,9 @@ def _merge_and_save_config(
     fallback = data.get("fallback", {})
 
     if old_default:
-        old_name = old_default.get("model", "")
-        if old_name and old_name not in fallback:
-            fallback[old_name] = old_default
+        old_key = region_key(old_default)
+        if old_key and old_key not in fallback:
+            fallback[old_key] = old_default
     if fallback_updates:
         fallback.update(fallback_updates)
 
@@ -158,13 +158,12 @@ def _merge_and_save_config(
 
 
 def _add_to_model_fallback(config: dict) -> None:
-    """把一个模型配置加入 model.json 的 fallback（以 model 名为 key，同名覆盖；不动 default）。"""
-    name = config.get("model", "")
-    if not name:
+    """把一个模型配置加入 model.json 的 fallback（以 region_key 为 key，同名覆盖；不动 default）。"""
+    if not config.get("model"):
         return
     data = load_model_json()
     fallback = data.get("fallback", {})
-    fallback[name] = config
+    fallback[region_key(config)] = config
     data["fallback"] = fallback
     save_model_json(data)
 
@@ -529,9 +528,9 @@ async def switch_model() -> dict | None:
         console.print(f"[yellow]{t('model.switch_no_fallback')}[/yellow]")
         return None
 
-    # 构建选项列表（带“当前默认”标记）；choice_names 平行保存干净模型名，
-    # 供语言无关地取回选中项（避免依赖翻译后的标记文本）
-    current_name = default.get("model", "")
+    # 构建选项列表（带“当前默认”标记）；choice_names 平行保存 fallback key，
+    # 供语言无关地取回选中项。国际版条目的 key 自带 (国际版) 后缀，直接显示。
+    current_name = region_key(default)
     choices = []
     choice_names = []
     for name in fallback:

@@ -70,6 +70,18 @@ class CachedJsonFile:
         self._cache = None
 
 
+def region_key(cfg: dict) -> str:
+    """计算 cfg 作为 fallback 条目时的 dict key。
+
+    国际版（metadata.region == "intl"）返回带 (国际版) 后缀的 key；
+    其余（国内版/无 region）返回纯 model 名。region 是 cfg 自身属性，
+    跟随 cfg 在 default/fallback 间移动，切换不丢。
+    """
+    name = cfg.get("model", "")
+    region = (cfg.get("metadata") or {}).get("region", "")
+    return f"{name} (国际版)" if region == "intl" else name
+
+
 def build_default_fallback_config(
     presets: list[dict], api_key: str, *, default_index: int = 0
 ) -> dict:
@@ -81,5 +93,5 @@ def build_default_fallback_config(
             continue
         cfg = dict(preset)
         cfg["api_key"] = api_key
-        fallback[cfg["model"]] = cfg
+        fallback[region_key(cfg)] = cfg
     return {"default": default_cfg, "fallback": fallback}

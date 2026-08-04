@@ -124,12 +124,15 @@ MODELSCOPE_PRESETS = [
 
 # 国际版预设：base_url 切到 .ai，且 GLM 模型 namespace 换为国际版 zai-org
 # （国内版 ZhipuAI 在国际版端点不识别，反之亦然）。与国内版一一对应、数量相同。
+# 国际版预设打 region="intl" 标记（存于 metadata，不透传 API），用于在 fallback
+# 列表中与同名国内版模型区分（国际版条目显示 (国际版) 后缀）。
 MODELSCOPE_INTL_PRESETS = [
     {
         **{"base_url": MODELSCOPE_INTL_BASE_URL, "stream_usage": True, **spec},
         "model": spec["model"].replace("ZhipuAI/", "zai-org/", 1)
         if spec["model"].startswith("ZhipuAI/")
         else spec["model"],
+        "metadata": {**(spec.get("metadata") or {}), "region": "intl"},
     }
     for spec in _MODELSCOPE_MODELS
 ]

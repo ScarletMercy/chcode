@@ -1537,12 +1537,12 @@ class ChatREPL:
                         advance_fallback()
                         # 持久化到 model.json，确保模型列表显示一致
                         import copy
-                        from chcode.config import load_model_json, save_model_json
+                        from chcode.config import load_model_json, save_model_json, region_key
                         _data = copy.deepcopy(load_model_json())
                         _old_default = _data.get("default", {})
-                        _old_model = _old_default.get("model", "")
-                        if _old_model and _old_model not in _data.get("fallback", {}):
-                            _data.setdefault("fallback", {})[_old_model] = _old_default
+                        _old_key = region_key(_old_default)
+                        if _old_key and _old_key not in _data.get("fallback", {}):
+                            _data.setdefault("fallback", {})[_old_key] = _old_default
                         _data["default"] = fallback
                         save_model_json(_data)
                         try:
