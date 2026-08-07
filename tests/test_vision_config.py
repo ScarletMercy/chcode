@@ -451,6 +451,7 @@ class TestConfigureVisionInteractive:
 
         with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="wizard-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             result = await mod.configure_vision_interactive()
 
@@ -1099,6 +1100,7 @@ class TestConfigureVisionWizard:
             return choices[0]
 
         with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             result = await mod._configure_vision_wizard()
 
@@ -1121,6 +1123,7 @@ class TestConfigureVisionWizard:
 
         with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="manual-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             result = await mod._configure_vision_wizard()
 
@@ -1141,6 +1144,7 @@ class TestConfigureVisionWizard:
 
         with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="intl-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             result = await mod._configure_vision_wizard(intl=True)
 
@@ -1168,6 +1172,92 @@ class TestConfigureVisionWizard:
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key"):
             result = await mod._configure_vision_wizard()
             assert result is None
+
+    @pytest.mark.asyncio
+    async def test_wizard_test_fails_then_retry_then_success(self, mock_config_dir):
+        """连接测试失败 -> 选重试 -> 第二次通过 -> 落盘。wizard 只测用户选的 default。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        async def select_route(msg, choices, **kw):
+            if "API Key" in msg:
+                return "手动输入 API Key"
+            if "默认视觉模型" in msg:
+                return mod.VISION_MODEL_PRESETS[0]["model"]
+            return choices[0]
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
+                 "auth failed",  # 首轮失败
+                 True,           # 重试通过
+             ]), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.retry")), \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.config.console"):
+            result = await mod._configure_vision_wizard()
+
+        assert result is not None
+        assert result["api_key"] == "ms-key"
+        # 测试通过后才落盘
+        data = mod.load_vision_json()
+        assert data["default"]["model"] == mod.VISION_MODEL_PRESETS[0]["model"]
+
+    @pytest.mark.asyncio
+    async def test_wizard_test_fails_then_reinput_then_success(self, mock_config_dir):
+        """连接测试失败 -> 选重新输入 -> 重填 Key（不重选模型）-> 测试通过。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        chosen = mod.VISION_MODEL_PRESETS[0]["model"]
+        # select 顺序: 首次 key 来源 → 选模型 → 重新输入时 key 来源（不重选模型）
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=[
+            "手动输入 API Key",   # 首次 key 来源
+            chosen,               # 选模型
+            "手动输入 API Key",   # 重新输入 key 来源
+        ]), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, side_effect=[
+                 "bad-key", "good-key",
+             ]), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
+                 "auth failed",  # bad-key 失败
+                 True,           # good-key 通过
+             ]), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.reinput")), \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.config.console"):
+            result = await mod._configure_vision_wizard()
+
+        assert result is not None
+        assert result["api_key"] == "good-key", "落盘的应是重新输入后的 good-key"
+
+    @pytest.mark.asyncio
+    async def test_wizard_test_fails_user_aborts(self, mock_config_dir):
+        """连接测试失败 -> 选放弃 -> 不落盘，返回 None。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        async def select_route(msg, choices, **kw):
+            if "API Key" in msg:
+                return "手动输入 API Key"
+            if "默认视觉模型" in msg:
+                return mod.VISION_MODEL_PRESETS[0]["model"]
+            return choices[0]
+
+        mod.save_vision_json({"default": {}, "fallback": {}})
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="bad-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock,
+                   return_value="auth failed"), \
+             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.abort")), \
+             patch("chcode.vision_config.console"), \
+             patch("chcode.config.console"):
+            result = await mod._configure_vision_wizard()
+
+        assert result is None
+        # 未落盘
+        data = mod.load_vision_json()
+        assert data.get("default") in (None, {})
 
 
 class TestDisplayVisionConfig:
@@ -1536,11 +1626,13 @@ class TestVisionWizardPreservesOldDefault:
         # 第一次：国内版向导
         with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="cn-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             await mod._configure_vision_wizard(intl=False)
         # 第二次：国际版向导，选同名 default
         with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="intl-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             await mod._configure_vision_wizard(intl=True)
 
@@ -1571,10 +1663,12 @@ class TestVisionWizardPreservesOldDefault:
         mod.save_vision_json({"default": {}, "fallback": {}})
         with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="intl-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             await mod._configure_vision_wizard(intl=True)
         with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
              patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="cn-key"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
              patch("chcode.vision_config.console"):
             await mod._configure_vision_wizard(intl=False)
 

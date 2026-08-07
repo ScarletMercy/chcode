@@ -316,34 +316,23 @@ async def configure_vision_interactive() -> dict | None:
 async def _configure_vision_wizard(*, intl: bool = False) -> dict | None:
     """配置向导（intl=True 时走国际版端点 .ai，模型/参数与国内版一致）"""
     presets = VISION_MODEL_INTL_PRESETS if intl else VISION_MODEL_PRESETS
+    preset_names = [p["model"] for p in presets]
 
-    # 选择 API Key 来源
-    env_key = os.getenv("ModelScopeToken", "")
-    manual_label = t("vision.manual_key")
-    choices = []
-    if env_key:
-        choices.append(t("vision.use_env_token", masked=mask_api_key(env_key)))
-    choices.append(manual_label)
-
-    result = await select(t("vision.select_key_source"), choices)
-    if result is None:
+    api_key = await _collect_vision_apikey()
+    if api_key is None:
         return None
 
-    if result == manual_label:
-        api_key = await password(t("vision.input_key"))
-        if not api_key or not api_key.strip():
-            return None
-        api_key = api_key.strip()
-    else:
-        api_key = env_key
-
-    # 选择默认模型
-    preset_names = [p["model"] for p in presets]
+    # 选 default + 测试连接（测用户选的 default，它将作为默认，必须可用），
+    # 失败可在 _test_vision_with_retry 内重试/重新输入/放弃。与文本侧对齐。
     default_choice = await select(t("vision.select_default"), preset_names, default=preset_names[0])
     if default_choice is None:
         return None
-
     default_idx = preset_names.index(default_choice)
+
+    api_key = await _test_vision_with_retry(api_key, [presets[default_idx]])
+    if api_key is None:
+        return None  # 用户放弃/取消
+
     config = build_default_fallback_config(presets, api_key, default_index=default_idx)
 
     existing_data = load_vision_json()
@@ -489,6 +478,68 @@ async def _test_vision_connection(
         return False
 
 
+async def _collect_vision_apikey() -> str | None:
+    """收集视觉模型 API Key（环境变量 ModelScopeToken / 手填），取消返回 None。
+
+    wizard 与 modelscope 快捷配置共用此逻辑。
+    """
+    env_key = os.getenv("ModelScopeToken", "")
+    manual_label = t("vision.manual_key")
+    choices = []
+    if env_key:
+        choices.append(t("vision.use_env_token", masked=mask_api_key(env_key)))
+    choices.append(manual_label)
+
+    result = await select(t("vision.select_key_source"), choices)
+    if result is None:
+        return None
+
+    if result == manual_label:
+        api_key = await password(t("vision.input_key"))
+        if not api_key or not api_key.strip():
+            return None
+        return api_key.strip()
+    return env_key
+
+
+async def _test_vision_with_retry(
+    api_key: str, test_presets: list[dict]
+) -> str | None:
+    """测试视觉连接，全失败弹"重试/重新输入/放弃"菜单。
+
+    依次用 api_key 测试 test_presets 中的预设（任一通过即成功）。全失败时弹菜单：
+    重试则重跑测试；重新输入则重新收集 Key 后重跑；放弃则返回 None。
+    成功返回最终使用的 api_key（可能在"重新输入"后变化），失败/放弃返回 None。
+    """
+    from chcode.config import _ask_conn_retry_action
+
+    while True:
+        console.print(f"[yellow]{t('vision.testing')}[/yellow]")
+        connected = False
+        last_err_summary = ""
+        for preset in test_presets:
+            result = await _test_vision_connection(
+                {**preset, "api_key": api_key}, quiet=True, return_error=True
+            )
+            if result is True:
+                connected = True
+                break
+            last_err_summary = str(result).split("\n", 1)[0]
+
+        if connected:
+            return api_key
+
+        action = await _ask_conn_retry_action(last_err_summary)
+        if action == t("connection.retry"):
+            continue
+        if action == t("connection.reinput"):
+            api_key = await _collect_vision_apikey()
+            if api_key is None:
+                return None
+            continue
+        return None  # 放弃 或 用户取消菜单
+
+
 async def _configure_vision_custom() -> dict | None:
     """新建自定义视觉模型：收集 model/base_url/api_key -> 图片连接测试 -> add_vision_model。"""
     from chcode.config import _ask_conn_retry_action, _ask_context_length, _add_to_model_fallback
@@ -601,64 +652,17 @@ async def _configure_vision_modelscope(*, intl: bool = False) -> dict | None:
     无 default 直接调用时，所有预设进 fallback、default 保持为空，函数返回空 dict；
     不会自行设置 default--是否设默认由调用方决定。
     """
-    from chcode.config import _ask_conn_retry_action
-
     presets = VISION_MODEL_INTL_PRESETS if intl else VISION_MODEL_PRESETS
 
-    async def _collect_key() -> str | None:
-        """收集 API Key（环境变量 ModelScopeToken / 手填），取消返回 None。"""
-        env_key = os.getenv("ModelScopeToken", "")
-        manual_label = t("vision.manual_key")
-        choices = []
-        if env_key:
-            choices.append(t("vision.use_env_token", masked=mask_api_key(env_key)))
-        choices.append(manual_label)
-
-        result = await select(t("vision.select_key_source"), choices)
-        if result is None:
-            return None
-
-        if result == manual_label:
-            api_key = await password(t("vision.input_key"))
-            if not api_key or not api_key.strip():
-                return None
-            return api_key.strip()
-        return env_key
-
-    api_key = await _collect_key()
+    api_key = await _collect_vision_apikey()
     if api_key is None:
         return None
 
-    # 测试连接（依次尝试前 3 个预设，应对速率限制/单模型下线），与文本侧
+    # 测试前 3 个预设（代表模型），任一通过即认为 Key 有效。与文本侧
     # _configure_modelscope_with_test 的"default + 2 备用"策略对齐。
-    # 视觉侧无用户 default，故取预设列表前 3 个作代表。
-    while True:
-        console.print(f"[yellow]{t('vision.testing')}[/yellow]")
-        test_presets = presets[:3]
-        connected = False
-        last_err_summary = ""
-        for preset in test_presets:
-            result = await _test_vision_connection(
-                {**preset, "api_key": api_key}, quiet=True, return_error=True
-            )
-            if result is True:
-                connected = True
-                break
-            last_err_summary = str(result).split("\n", 1)[0]
-
-        if connected:
-            break
-
-        # 全部代表模型都失败 -> 弹菜单
-        action = await _ask_conn_retry_action(last_err_summary)
-        if action == t("connection.retry"):
-            continue
-        if action == t("connection.reinput"):
-            api_key = await _collect_key()
-            if api_key is None:
-                return None
-            continue
-        return None  # 放弃 或 用户取消菜单
+    api_key = await _test_vision_with_retry(api_key, presets[:3])
+    if api_key is None:
+        return None
 
     # 测试通过 -> 批量把预设补进 fallback：一次性 load + 内存合并 + 单次 save
     # （避免逐个 add_vision_model 触发 N 次磁盘读写，且保证写入原子性）。
