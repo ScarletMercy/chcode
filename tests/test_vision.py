@@ -297,6 +297,48 @@ class TestVisionDeduplication:
             await vision.coroutine("test.png", runtime=mock_runtime)
             assert invoke_count == 3
 
+    @pytest.mark.asyncio
+    async def test_same_name_cn_and_intl_both_tried(self, mock_runtime, temp_image_file):
+        """同名国内/国际版视觉模型按 region_key 去重，两个都被尝试（不互相吞）。
+
+        对比纯 model 名去重：那会把同名国际版吞掉，只调用 1 次。
+        """
+        from chcode.utils.tools import vision
+
+        invoked_models: list[str] = []
+
+        def make_llm(**kwargs):
+            invoked_models.append(kwargs.get("model", ""))
+            mock_llm = MagicMock()
+            # 第一个（国内版 default）失败 → 触发 fallback 到国际版同名模型
+            if len(invoked_models) == 1:
+                mock_llm.ainvoke = AsyncMock(side_effect=Exception("cn failed"))
+            else:
+                mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
+            return mock_llm
+
+        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
+             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
+             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
+             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+
+            mock_resolve.return_value = temp_image_file
+            # default 用国内版同名模型；fallback 含国际版同名模型
+            mock_get_default.return_value = {
+                "model": "VL", "api_key": "cn-key",
+                "base_url": "https://api-inference.modelscope.cn/v1",
+            }
+            mock_get_fb.return_value = [
+                {"model": "VL", "api_key": "intl-key",
+                 "base_url": "https://api-inference.modelscope.ai/v1",
+                 "metadata": {"region": "intl"}},
+            ]
+            mock_llm_cls.side_effect = make_llm
+
+            await vision.coroutine("test.png", runtime=mock_runtime)
+            # 国内版和国际版同名模型都被调用（region_key 区分，未被去重吞掉）
+            assert invoked_models.count("VL") == 2
+
 
 class TestVisionCustomPrompt:
 

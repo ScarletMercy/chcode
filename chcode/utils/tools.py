@@ -1471,10 +1471,12 @@ async def vision(
 
     seen: set[str] = set()
     unique_models: list[dict] = []
+    # 按 region_key 去重，使同名国内/国际版视觉模型都能保留（均会被尝试）
+    from chcode.utils.json_utils import region_key
     for m in models_to_try:
-        name = m.get("model", "")
-        if name and name not in seen:
-            seen.add(name)
+        key = region_key(m)
+        if key and key not in seen:
+            seen.add(key)
             unique_models.append(m)
 
     if not unique_models:

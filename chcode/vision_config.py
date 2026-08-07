@@ -18,7 +18,7 @@ from chcode.config import CONFIG_DIR, ensure_config_dir
 from chcode.display import console
 from chcode.i18n import t
 from chcode.prompts import select, confirm, password, text
-from chcode.utils.json_utils import CachedJsonFile, build_default_fallback_config
+from chcode.utils.json_utils import CachedJsonFile, build_default_fallback_config, region_key
 from chcode.utils.text_utils import mask_api_key
 
 VISION_JSON = CONFIG_DIR / "vision_model.json"
@@ -43,9 +43,12 @@ VISION_MODEL_PRESETS = [
     for name in _VISION_MODEL_NAMES
 ]
 
-# 国际版：预置模型与参数完全复用，仅 base_url 不同
+# 国际版：预置模型与参数完全复用，仅 base_url 不同；打 region="intl" 标记
+# （存于 metadata，不透传 API），用于在 fallback 列表中与同名国内版模型区分
+# （国际版条目显示 (国际版) 后缀）。与文本侧 MODELSCOPE_INTL_PRESETS 对齐。
 VISION_MODEL_INTL_PRESETS = [
-    {**preset, "base_url": MODELSCOPE_INTL_BASE_URL}
+    {**preset, "base_url": MODELSCOPE_INTL_BASE_URL,
+     "metadata": {**(preset.get("metadata") or {}), "region": "intl"}}
     for preset in VISION_MODEL_PRESETS
 ]
 
@@ -126,12 +129,28 @@ def auto_configure_vision() -> dict | None:
     """自动配置视觉模型（静默模式，不需要用户交互）。
 
     从环境变量或已配置的 API Key 自动生成视觉配置。
+    只跟随主模型 model.json 当前 default 所属的家族（国内版 .cn 或国际版 .ai），
+    不把两个家族的视觉模型都塞进 fallback——避免与用户在视觉侧的家族选择冲突。
+    default 不是魔搭家族时，回退到检测到的第一个可用家族。
     与已有的视觉模型配置合并，不覆盖已有的默认模型。
     返回默认模型配置，失败返回 None。
     """
     key_groups = _detect_api_keys()
     if not key_groups:
         return None
+
+    # 只跟随主模型 default 所属家族；default 非魔搭时回退到首个可用家族
+    try:
+        from chcode.config import load_model_json
+        main_default_base = (load_model_json().get("default") or {}).get("base_url", "")
+    except Exception:
+        main_default_base = ""
+    if main_default_base:
+        matched = [g for g in key_groups if g[1][0]["base_url"] == main_default_base]
+        if matched:
+            key_groups = matched
+    if len(key_groups) > 1:
+        key_groups = key_groups[:1]
 
     data = copy.deepcopy(load_vision_json())
     existing_default = data.get("default", {})
@@ -149,13 +168,16 @@ def auto_configure_vision() -> dict | None:
         for preset in presets:
             cfg = dict(preset)
             cfg["api_key"] = api_key
-            model = cfg["model"]
+            # fallback key 用 region_key（区分同名国内/国际版）；与 default 的
+            # 匹配仍用纯 model 名（default 可能是手填的，不带 region 标记）
+            fb_key = region_key(cfg)
+            model_name = cfg["model"]
             # 已在 fallback 或是当前默认 → 跳过
-            if model in existing_fallback:
+            if fb_key in existing_fallback:
                 continue
-            if existing_default.get("model") == model and existing_default.get("api_key") == api_key:
+            if existing_default.get("model") == model_name and existing_default.get("api_key") == api_key:
                 continue
-            existing_fallback[model] = cfg
+            existing_fallback[fb_key] = cfg
             changed = True
 
         # 没有默认视觉模型 → 用当前提供商的第一个预设设为默认
@@ -173,8 +195,10 @@ def auto_configure_vision() -> dict | None:
     return data["default"]
 
 
-# 视觉相关字段白名单（与消费侧 tools.py 视觉请求所读字段对齐）
-_VISION_FIELDS = ("model", "base_url", "api_key", "temperature", "top_p", "stream_usage")
+# 视觉相关字段白名单（与消费侧 tools.py 视觉请求所读字段对齐）。
+# 含 metadata：携带 region 标记，使 region_key 能区分同名国内/国际版模型；
+# metadata 不会透传到视觉 API（tools.py 显式提取 model/base_url/api_key 等字段）。
+_VISION_FIELDS = ("model", "base_url", "api_key", "temperature", "top_p", "stream_usage", "metadata")
 
 
 def _vision_equal(existing: dict, vision_cfg: dict) -> bool:
@@ -201,13 +225,16 @@ def add_vision_model(config: dict) -> str | None:
 
     # 只保留视觉相关字段，丢弃 extra_body/stop_sequences 等文本侧字段
     vision_cfg = {k: config[k] for k in _VISION_FIELDS if k in config}
+    # fallback key 用 region_key（区分同名国内/国际版）；与 default 的匹配仍用纯 model 名
+    fb_key = region_key(vision_cfg)
 
     data = copy.deepcopy(load_vision_json())
     existing_default = data.get("default", {})
     existing_fallback: dict = dict(data.get("fallback", {}))
 
-    # 同名已在 default → 就地更新
-    if existing_default.get("model") == model:
+    # 同名且同 region 已在 default → 就地更新（用 region_key 比较，避免跨 region
+    # 同名误判：国际版 235B 不应覆盖国内版 235B default，而应进 fallback）
+    if region_key(existing_default) == fb_key:
         if _vision_equal(existing_default, vision_cfg):
             return None
         data["default"] = vision_cfg
@@ -215,11 +242,11 @@ def add_vision_model(config: dict) -> str | None:
         save_vision_json(data)
         return "default"
 
-    # 同名已在 fallback → 就地更新
-    if model in existing_fallback:
-        if _vision_equal(existing_fallback[model], vision_cfg):
+    # 同名已在 fallback → 就地更新（fallback 匹配用 region_key）
+    if fb_key in existing_fallback:
+        if _vision_equal(existing_fallback[fb_key], vision_cfg):
             return None
-        existing_fallback[model] = vision_cfg
+        existing_fallback[fb_key] = vision_cfg
         data["default"] = existing_default
         data["fallback"] = existing_fallback
         save_vision_json(data)
@@ -227,7 +254,7 @@ def add_vision_model(config: dict) -> str | None:
 
     # 新模型：有有效 default → 加入 fallback
     if existing_default and existing_default.get("api_key"):
-        existing_fallback[model] = vision_cfg
+        existing_fallback[fb_key] = vision_cfg
         data["default"] = existing_default
         data["fallback"] = existing_fallback
         save_vision_json(data)
@@ -322,6 +349,13 @@ async def _configure_vision_wizard(*, intl: bool = False) -> dict | None:
     existing_data = load_vision_json()
     existing_fallback = existing_data.get("fallback", {})
     merged_fallback = {**existing_fallback, **config["fallback"]}
+    # 旧 default 转入 fallback（按 region_key，避免被新 default 同名覆盖丢失），
+    # 与文本侧 _merge_and_save_config 对齐。重复配置同 region 同名时不重复插入。
+    old_default = existing_data.get("default") or {}
+    if old_default.get("api_key"):
+        old_key = region_key(old_default)
+        if old_key and old_key not in merged_fallback:
+            merged_fallback[old_key] = old_default
     config["fallback"] = merged_fallback
     save_vision_json(config)
 
@@ -347,26 +381,29 @@ async def _switch_vision_model() -> dict | None:
         console.print(f"[yellow]{t('vision.no_fallback')}[/yellow]")  # pragma: no cover
         return None  # pragma: no cover
 
-    current_name = default.get("model", "")
+    # 构建选项列表（带“当前默认”标记）；choice_names 平行保存 fallback key，
+    # 供语言无关地取回选中项。国际版条目的 key 自带 (国际版) 后缀，直接显示。
+    current_name = region_key(default)
     tag = t("model.current_default_tag")
     choices = []
+    choice_names = []
     for name in fallback:
         suffix = tag if name == current_name else ""
         choices.append(f"{name}{suffix}")
+        choice_names.append(name)
 
     result = await select(t("vision.select_to_use"), choices)
     if result is None:  # pragma: no cover
         return None  # pragma: no cover
 
-    # 提取模型名（去掉翻译后的“当前默认”标记）
-    selected_name = result.replace(tag, "")
+    selected_name = choice_names[choices.index(result)]
 
     ok = await confirm(t("vision.switch_confirm", model=selected_name))
     if not ok:
         return None
 
     selected_config = fallback.pop(selected_name)
-    if default:
+    if default and current_name not in fallback:
         fallback[current_name] = default
 
     data["default"] = selected_config
@@ -625,18 +662,19 @@ async def _configure_vision_modelscope(*, intl: bool = False) -> dict | None:
 
     # 测试通过 -> 批量把预设补进 fallback：一次性 load + 内存合并 + 单次 save
     # （避免逐个 add_vision_model 触发 N 次磁盘读写，且保证写入原子性）。
-    # 只追加、不改现有 default；跳过与 default 同名的预设，避免被预设值覆盖。
+    # 只追加、不改现有 default；跳过与 default 同名【且同 region】的预设——
+    # 仅按纯 model 名比较会误杀同名但不同家族（国内/国际版）的预设条目。
     data = copy.deepcopy(load_vision_json())
     default = data.get("default") or {}
     fallback = dict(data.get("fallback") or {})
-    default_model = default.get("model", "")
+    default_key = region_key(default)
     for preset in presets:
-        if preset["model"] == default_model:
+        if region_key(preset) == default_key:
             continue
         # 与 add_vision_model 一致：只保留视觉白名单字段 + 注入 api_key
         cfg = {k: preset[k] for k in _VISION_FIELDS if k in preset}
         cfg["api_key"] = api_key
-        fallback[preset["model"]] = cfg
+        fallback[region_key(cfg)] = cfg
 
     data["default"] = default
     data["fallback"] = fallback

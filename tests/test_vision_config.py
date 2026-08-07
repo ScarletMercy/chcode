@@ -851,9 +851,13 @@ class TestConfigureVisionModelscope:
         data = mod.load_vision_json()
         assert data["default"] == hand_filled_default
         assert len(data["fallback"]) == len(mod.VISION_MODEL_INTL_PRESETS)
+        from chcode.utils.json_utils import region_key
         for preset in mod.VISION_MODEL_INTL_PRESETS:
-            assert data["fallback"][preset["model"]]["base_url"] == mod.MODELSCOPE_INTL_BASE_URL
-            assert data["fallback"][preset["model"]]["api_key"] == "ms-key"
+            # 国际版预设打 region="intl" 标记，fallback key 带 (国际版) 后缀
+            expected_key = region_key(preset)
+            assert expected_key == f'{preset["model"]} (国际版)'
+            assert data["fallback"][expected_key]["base_url"] == mod.MODELSCOPE_INTL_BASE_URL
+            assert data["fallback"][expected_key]["api_key"] == "ms-key"
 
     @pytest.mark.asyncio
     async def test_modelscope_skips_preset_same_as_default(self, mock_config_dir):
@@ -883,6 +887,38 @@ class TestConfigureVisionModelscope:
         # 同名预设未进 fallback（其余 7 个进了）
         assert preset_model not in data["fallback"]
         assert len(data["fallback"]) == len(mod.VISION_MODEL_PRESETS) - 1
+
+    @pytest.mark.asyncio
+    async def test_modelscope_cross_region_same_name_not_skipped(self, mock_config_dir):
+        """跨 region 同名不误跳：default 是国际版 235B，走国内版预设时，国内版 235B
+        仍应进 fallback（region_key 区分，不再被纯名比较误杀）。"""
+        import chcode.vision_config as mod
+        from chcode.i18n import t
+
+        # default = 国际版 235B（与国内版预设同名，但 region 不同）
+        same_name = mod.VISION_MODEL_PRESETS[0]["model"]
+        intl_default = {
+            "model": same_name,
+            "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+            "api_key": "intl-key",
+            "metadata": {"region": "intl"},
+        }
+        mod.save_vision_json({"default": intl_default, "fallback": {}})
+
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-cn"), \
+             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_modelscope()  # 走国内版预设
+
+        data = mod.load_vision_json()
+        # 国内版 235B 进了 fallback（未被纯名比较误跳）
+        assert same_name in data["fallback"], "国内版 235B 应进 fallback，未被国际版 default 误杀"
+        assert data["fallback"][same_name]["base_url"] == mod.MODELSCOPE_BASE_URL
+        # default 仍是国际版，未被覆盖
+        assert (data["default"].get("metadata") or {}).get("region") == "intl"
+        # 国内版全部 7 个预设都进了 fallback
+        assert len(data["fallback"]) == len(mod.VISION_MODEL_PRESETS)
 
     @pytest.mark.asyncio
     async def test_modelscope_preserves_existing_fallback(self, mock_config_dir):
@@ -1309,3 +1345,243 @@ class TestAddVisionModel:
         mod.add_vision_model(config)
 
         assert config == snapshot
+
+
+class TestVisionRegionAwareFallback:
+    """视觉 fallback region 对齐文本侧：同名国内/国际版模型能共存、key 区分。"""
+
+    def test_add_vision_model_cross_region_same_name_not_overwrite_default(self, mock_config_dir):
+        """跨 region 同名不误覆盖 default：default 是国内版 235B，加入国际版 235B（同名
+        不同 region）时，应进 fallback 而非覆盖 default——否则旧国内版 default 丢失。"""
+        import chcode.vision_config as mod
+
+        same_name = "Qwen/Qwen3-VL-235B-A22B-Instruct"
+        mod.save_vision_json({
+            "default": {"model": same_name, "base_url": mod.MODELSCOPE_BASE_URL,
+                        "api_key": "cn-key", "temperature": 1.0, "top_p": 0.95, "stream_usage": True},
+            "fallback": {},
+        })
+        # 加入国际版同名模型
+        role = mod.add_vision_model({
+            "model": same_name, "base_url": mod.MODELSCOPE_INTL_BASE_URL, "api_key": "intl-key",
+            "metadata": {"region": "intl"}, "temperature": 1.0, "top_p": 0.95, "stream_usage": True,
+        })
+        data = mod.load_vision_json()
+        # 国际版进 fallback，default 保持国内版不被覆盖
+        assert role == "fallback", "跨 region 同名应进 fallback，而非覆盖 default"
+        assert data["default"]["base_url"] == mod.MODELSCOPE_BASE_URL, "default 应保持国内版"
+        assert f"{same_name} (国际版)" in data["fallback"], "国际版 235B 应进 fallback"
+
+    def test_intl_presets_carry_region_marker(self):
+        """国际版预设打 region=intl 标记，国内版预设不带。"""
+        import chcode.vision_config as mod
+
+        for p in mod.VISION_MODEL_INTL_PRESETS:
+            assert (p.get("metadata") or {}).get("region") == "intl", p["model"]
+        for p in mod.VISION_MODEL_PRESETS:
+            assert "region" not in (p.get("metadata") or {}), p["model"]
+
+    def test_whitelist_keeps_metadata(self, mock_config_dir):
+        """_VISION_FIELDS 含 metadata，add_vision_model 不再剥离 region 标记。"""
+        import chcode.vision_config as mod
+
+        assert "metadata" in mod._VISION_FIELDS
+        # 落盘的视觉条目保留 metadata.region
+        mod.save_vision_json({"default": {"model": "d", "api_key": "kd"}, "fallback": {}})
+        mod.add_vision_model({
+            "model": "Qwen/Qwen3-VL-8B-Instruct",
+            "api_key": "k",
+            "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+            "metadata": {"region": "intl"},
+        })
+        data = mod.load_vision_json()
+        # 国际版 key 带 (国际版) 后缀
+        key = "Qwen/Qwen3-VL-8B-Instruct (国际版)"
+        assert key in data["fallback"]
+        assert data["fallback"][key]["metadata"]["region"] == "intl"
+
+    def test_same_name_cn_and_intl_coexist_in_fallback(self, mock_config_dir):
+        """同名国内/国际版视觉模型经 add_vision_model 后在 fallback 共存，互不覆盖。"""
+        import chcode.vision_config as mod
+
+        mod.save_vision_json({"default": {"model": "d", "api_key": "kd"}, "fallback": {}})
+        # 国内版
+        mod.add_vision_model({"model": "VL", "api_key": "cn-key", "base_url": mod.MODELSCOPE_BASE_URL})
+        # 国际版同名
+        mod.add_vision_model({
+            "model": "VL", "api_key": "intl-key",
+            "base_url": mod.MODELSCOPE_INTL_BASE_URL, "metadata": {"region": "intl"},
+        })
+        data = mod.load_vision_json()
+        # 两个 key 都在，各自独立
+        assert "VL" in data["fallback"]
+        assert "VL (国际版)" in data["fallback"]
+        assert data["fallback"]["VL"]["api_key"] == "cn-key"
+        assert data["fallback"]["VL (国际版)"]["api_key"] == "intl-key"
+
+    def test_auto_configure_follows_main_default_family(self, mock_config_dir, monkeypatch):
+        """auto_configure 只跟随主模型 model.json default 所属家族，不把两家族都放入。
+
+        主模型 default 是国内版 → 只配国内版视觉；是国际版 → 只配国际版视觉。
+        回归：此前 auto_configure 会无差别地把检测到的两家族全塞进 fallback。
+        """
+        import chcode.vision_config as mod
+
+        # 两家族都检测到（model.json 里两个 key 都在）
+        cn_preset = {"model": "VL", "base_url": mod.MODELSCOPE_BASE_URL,
+                     "temperature": 1.0, "top_p": 0.95, "stream_usage": True}
+        intl_preset = {"model": "VL", "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+                       "temperature": 1.0, "top_p": 0.95, "stream_usage": True,
+                       "metadata": {"region": "intl"}}
+        monkeypatch.setattr(mod, "_detect_api_keys",
+                            lambda: [("cn-key", [cn_preset]), ("intl-key", [intl_preset])])
+
+        # 主模型 default = 国内版 → 视觉只配国内版
+        monkeypatch.setattr("chcode.config.load_model_json",
+                            lambda: {"default": {"base_url": mod.MODELSCOPE_BASE_URL}})
+        mod.save_vision_json({"default": {}, "fallback": {}})
+        mod.auto_configure_vision()
+        data = mod.load_vision_json()
+        assert "VL" in data["fallback"]
+        assert "VL (国际版)" not in data["fallback"], "国内版 default 不应配国际版视觉"
+        assert len(data["fallback"]) == 1
+
+        # 主模型 default = 国际版 → 视觉只配国际版
+        monkeypatch.setattr("chcode.config.load_model_json",
+                            lambda: {"default": {"base_url": mod.MODELSCOPE_INTL_BASE_URL}})
+        mod.save_vision_json({"default": {}, "fallback": {}})
+        mod.auto_configure_vision()
+        data = mod.load_vision_json()
+        assert "VL (国际版)" in data["fallback"]
+        assert "VL" not in data["fallback"], "国际版 default 不应配国内版视觉"
+        assert len(data["fallback"]) == 1
+
+    def test_auto_configure_non_modelscope_default_takes_one_family(self, mock_config_dir, monkeypatch):
+        """主模型 default 非魔搭家族（如 OpenAI）时，只取检测到的第一个家族，不全放入。"""
+        import chcode.vision_config as mod
+
+        cn_preset = {"model": "VL", "base_url": mod.MODELSCOPE_BASE_URL,
+                     "temperature": 1.0, "top_p": 0.95, "stream_usage": True}
+        intl_preset = {"model": "VL", "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+                       "temperature": 1.0, "top_p": 0.95, "stream_usage": True,
+                       "metadata": {"region": "intl"}}
+        monkeypatch.setattr(mod, "_detect_api_keys",
+                            lambda: [("cn-key", [cn_preset]), ("intl-key", [intl_preset])])
+        monkeypatch.setattr("chcode.config.load_model_json",
+                            lambda: {"default": {"base_url": "https://api.openai.com/v1"}})
+
+        mod.save_vision_json({"default": {}, "fallback": {}})
+        mod.auto_configure_vision()
+        data = mod.load_vision_json()
+        # 只有一个家族（首个），不是两个都进
+        assert len(data["fallback"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_switch_to_intl_model_across_region(self, mock_config_dir):
+        """切换到同名国际版模型：choice_names 平行列表正确取回带后缀的 key，
+        旧国内版 default 转入 fallback（纯名 key），国际版条目从 fallback 移除。"""
+        import chcode.vision_config as mod
+
+        same_name = "VL"
+        mod.save_vision_json({
+            "default": {"model": same_name, "api_key": "cn-key",
+                        "base_url": mod.MODELSCOPE_BASE_URL},
+            "fallback": {
+                # 同名国际版（key 带后缀）+ 另一个国内版模型
+                f"{same_name} (国际版)": {"model": same_name, "api_key": "intl-key",
+                                          "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+                                          "metadata": {"region": "intl"}},
+                "other": {"model": "other", "api_key": "k", "base_url": "http://x/v1"},
+            },
+        })
+
+        # select 返回国际版那项的显示文本（key 本身，无"当前默认"标记——因为
+        # 当前 default 是国内版同名，不在 fallback 列表里）
+        with patch("chcode.vision_config.select", new_callable=AsyncMock,
+                   return_value=f"{same_name} (国际版)"), \
+             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=True), \
+             patch("chcode.vision_config.console"):
+            result = await mod._switch_vision_model()
+
+        data = mod.load_vision_json()
+        # 新 default 是国际版
+        assert data["default"]["model"] == same_name
+        assert (data["default"].get("metadata") or {}).get("region") == "intl"
+        # 旧国内版 default 转入 fallback（纯名 key，无后缀）
+        assert same_name in data["fallback"]
+        assert data["fallback"][same_name]["base_url"] == mod.MODELSCOPE_BASE_URL
+        # 国际版条目已从 fallback 移除（成为 default）
+        assert f"{same_name} (国际版)" not in data["fallback"]
+
+
+class TestVisionWizardPreservesOldDefault:
+    """重新配置向导时，旧 default 必须转入 fallback（对齐文本侧 _merge_and_save_config），
+    不能被同名新 default 直接覆盖丢失——这是 cn/intl 同名互覆盖的根因。"""
+
+    @pytest.mark.asyncio
+    async def test_cn_default_preserved_when_reconfiguring_intl(self, mock_config_dir):
+        """先配国内版 default，再用国际版向导配同名 default → 旧国内版保留进 fallback。"""
+        import chcode.vision_config as mod
+
+        chosen = mod.VISION_MODEL_PRESETS[2]["model"]  # Qwen3-VL-8B（国内/国际同名）
+
+        async def select_route(msg, choices, **kw):
+            if "API Key" in msg:
+                return "手动输入 API Key"
+            if "默认视觉模型" in msg:
+                return chosen
+            return choices[0]
+
+        mod.save_vision_json({"default": {}, "fallback": {}})
+        # 第一次：国内版向导
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="cn-key"), \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_wizard(intl=False)
+        # 第二次：国际版向导，选同名 default
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="intl-key"), \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_wizard(intl=True)
+
+        data = mod.load_vision_json()
+        # 新 default 是国际版（同名）
+        assert data["default"]["model"] == chosen
+        assert (data["default"].get("metadata") or {}).get("region") == "intl"
+        # 旧国内版 default 保留进 fallback（未被覆盖丢失）
+        assert chosen in data["fallback"], "旧国内版 default 应转入 fallback"
+        assert data["fallback"][chosen]["api_key"] == "cn-key"
+        # 国际版其余预设也在 fallback（带后缀），数量 = 6 国内预设 + 6 国际预设 + 1 旧 default
+        assert len(data["fallback"]) == len(mod.VISION_MODEL_PRESETS) - 1 + len(mod.VISION_MODEL_INTL_PRESETS) - 1 + 1
+
+    @pytest.mark.asyncio
+    async def test_intl_default_preserved_when_reconfiguring_cn(self, mock_config_dir):
+        """反向：先配国际版 default，再配国内版同名 default → 旧国际版保留进 fallback。"""
+        import chcode.vision_config as mod
+
+        chosen = mod.VISION_MODEL_PRESETS[2]["model"]
+
+        async def select_route(msg, choices, **kw):
+            if "API Key" in msg:
+                return "手动输入 API Key"
+            if "默认视觉模型" in msg:
+                return chosen
+            return choices[0]
+
+        mod.save_vision_json({"default": {}, "fallback": {}})
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="intl-key"), \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_wizard(intl=True)
+        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
+             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="cn-key"), \
+             patch("chcode.vision_config.console"):
+            await mod._configure_vision_wizard(intl=False)
+
+        data = mod.load_vision_json()
+        assert data["default"]["model"] == chosen
+        assert (data["default"].get("metadata") or {}).get("region") != "intl"  # 新 default 是国内版
+        # 旧国际版 default 保留进 fallback（带国际版后缀）
+        intl_key = f"{chosen} (国际版)"
+        assert intl_key in data["fallback"], "旧国际版 default 应转入 fallback"
+        assert data["fallback"][intl_key]["api_key"] == "intl-key"
