@@ -17,15 +17,19 @@ import os
 from chcode.config import CONFIG_DIR, ensure_config_dir
 from chcode.display import console
 from chcode.i18n import t
-from chcode.prompts import select, confirm, password, text
+from chcode.prompts import (
+    MODELSCOPE_BASE_URL,
+    MODELSCOPE_INTL_BASE_URL,
+    select,
+    confirm,
+    password,
+    text,
+)
 from chcode.utils.json_utils import CachedJsonFile, build_default_fallback_config, region_key
 from chcode.utils.text_utils import mask_api_key
 
 VISION_JSON = CONFIG_DIR / "vision_model.json"
 _vision_json = CachedJsonFile(VISION_JSON, ensure_dir=True)
-
-MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1"
-MODELSCOPE_INTL_BASE_URL = "https://api-inference.modelscope.ai/v1"
 
 # 视觉模型预设 — 参数全部相同，只需列出模型名
 _VISION_MODEL_NAMES = [

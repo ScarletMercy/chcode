@@ -108,6 +108,9 @@ class TestRegionKey:
             {"model": "M", "metadata": {"context_length": 200, "region": "intl"}},
         ]
         res = build_default_fallback_config(presets, "k", default_index=0)
+        # cn 版 "M" 作为 default 完整保留，未被 intl 同名覆盖
+        assert res["default"]["model"] == "M"
+        assert res["default"]["metadata"] == {"context_length": 100}  # cn 版，无 region
         assert set(res["fallback"].keys()) == {"M (国际版)"}
         # 国际版条目完整保留
         intl_cfg = res["fallback"]["M (国际版)"]

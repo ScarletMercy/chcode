@@ -255,7 +255,9 @@ async def first_run_configure() -> dict | None:
 
     if detected:
         choices: list[str] = []
-        choice_ids: list = []  # ("env", dict) | "modelscope" | "manual" | "exit"
+        # 统一 tuple 编码：(动作类型, 可选参数)。env=检测到的提供商；
+        # modelscope 第二项 False=国内版 / True=国际版；manual/exit 无参数。
+        choice_ids: list = []
         for d in detected:
             choices.append(
                 t("firstrun.env_detected", name=d["name"], env_var=d["env_var"])
@@ -266,9 +268,9 @@ async def first_run_configure() -> dict | None:
         choices.append(t("firstrun.modelscope_quick_intl"))
         choice_ids.append(("modelscope", True))
         choices.append(t("firstrun.manual"))
-        choice_ids.append("manual")
+        choice_ids.append(("manual",))
         choices.append(t("firstrun.exit"))
-        choice_ids.append("exit")
+        choice_ids.append(("exit",))
 
         result = await select(t("firstrun.select_method"), choices)
         if result is None:
@@ -276,12 +278,12 @@ async def first_run_configure() -> dict | None:
             return None
         idx = choices.index(result)
         action = choice_ids[idx]
-        if action == "exit":
+        if action[0] == "exit":
             console.print(f"[dim]{t('firstrun.exit_hint')}[/dim]")
             return None
-        if action == "manual":
+        if action[0] == "manual":
             return await configure_new_model(skip_method_select=True)
-        if isinstance(action, tuple) and action[0] == "modelscope":
+        if action[0] == "modelscope":
             return await _configure_modelscope_with_test(intl=action[1])
 
         # env provider
@@ -326,7 +328,8 @@ async def first_run_configure() -> dict | None:
             t("firstrun.manual"),
             t("firstrun.exit"),
         ]
-        choice_ids = ["modelscope", "modelscope_intl", "manual", "exit"]
+        # 与上面 env 分支一致的 tuple 编码（见上文注释）
+        choice_ids = [("modelscope", False), ("modelscope", True), ("manual",), ("exit",)]
         result = await select(t("firstrun.select"), choices)
         if result is None:
             console.print(f"[dim]{t('firstrun.env_hint')}[/dim]")
@@ -335,15 +338,13 @@ async def first_run_configure() -> dict | None:
             return None
         idx = choices.index(result)
         action = choice_ids[idx]
-        if action == "exit":
+        if action[0] == "exit":
             console.print(f"[dim]{t('firstrun.env_hint')}[/dim]")
             console.print(f"[dim]{t('firstrun.env_example')}[/dim]")
             console.print(f"[dim]{t('firstrun.manual_cmd_hint')}[/dim]")
             return None
-        if action == "modelscope":
-            return await _configure_modelscope_with_test()
-        if action == "modelscope_intl":
-            return await _configure_modelscope_with_test(intl=True)
+        if action[0] == "modelscope":
+            return await _configure_modelscope_with_test(intl=action[1])
         return await configure_new_model(skip_method_select=True)
 
 
@@ -360,14 +361,14 @@ async def configure_new_model(*, skip_method_select: bool = False) -> dict | Non
             t("firstrun.modelscope_quick_intl"),
             t("firstrun.manual"),
         ]
+        # 与 first_run_configure 一致的 tuple 编码
+        choice_ids = [("modelscope", False), ("modelscope", True), ("manual",)]
         result = await select(t("model.method_select"), choices)
         if result is None:
             return None
-        idx = choices.index(result)
-        if idx == 0:
-            return await _configure_modelscope_with_test()
-        if idx == 1:
-            return await _configure_modelscope_with_test(intl=True)
+        action = choice_ids[choices.index(result)]
+        if action[0] == "modelscope":
+            return await _configure_modelscope_with_test(intl=action[1])
     config = await model_config_form()
     if config is None:
         return None
