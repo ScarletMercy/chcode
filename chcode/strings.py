@@ -556,10 +556,6 @@ MESSAGES = {
         "zh": "YOLO 模式",
         "en": "YOLO mode",
     },
-    "chat.status.modelscope_quota": {
-        "zh": "\n<ansicyan>魔搭今日免费额度剩余: 全局 {total} │ 模型({model}) {model_rl}</ansicyan>",
-        "en": "\n<ansicyan>ModelScope daily free quota left: global {total} | model({model}) {model_rl}</ansicyan>",
-    },
     "chat.interrupted": {
         "zh": "[已中断]",
         "en": "[interrupted]",

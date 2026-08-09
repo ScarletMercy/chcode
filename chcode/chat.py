@@ -75,7 +75,6 @@ from chcode.agent_setup import (
 from chcode.utils.skill_manager import manage_skills
 from chcode.utils.git_checker import check_git_availability
 from chcode.utils.git_manager import GitManager
-from chcode.utils.modelscope_ratelimit import get_ratelimit, is_modelscope_model
 
 
 # ─── 命令自动补全 ──────────────────────────────────────
@@ -480,18 +479,7 @@ class ChatREPL:
                 if wp:
                     parts.append(f"cwd: {wp}")
                 status = "  │  ".join(parts)
-                ratelimit_line = ""
-                if is_modelscope_model(self.model_config):
-                    rl = get_ratelimit()
-                    if rl:
-                        total = f"{rl['total_remaining']}/{rl['total_limit']}"
-                        model_name = self.model_config.get("model", "").split("/")[-1]
-                        model_rl = f"{rl['model_remaining']}/{rl['model_limit']}"
-                        ratelimit_line = t(
-                            "chat.status.modelscope_quota",
-                            total=total, model=model_name, model_rl=model_rl,
-                        )
-                return HTML(f"<ansiblue>{sep}</ansiblue>\n{status}{ratelimit_line}")
+                return HTML(f"<ansiblue>{sep}</ansiblue>\n{status}")
 
             self._prompt_session: PromptSession = PromptSession(
                 history=_LimitedFileHistory(str(Path.home() / ".chat" / "history")),

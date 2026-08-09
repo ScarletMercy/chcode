@@ -18,7 +18,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 <img src="https://raw.githubusercontent.com/ScarletMercy/chcode/main/assets/chagent.png" alt="chagent prototype" width="600"/>
 </details>
 
-> 7000+ lines of Python, 14 built-in tools, full session persistence, git-aware workflow.
+> 14 built-in tools, full session persistence, git-aware workflow.
 
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -32,7 +32,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 ### Model Management
 
 - Compatible with **all models supporting the OpenAI API** (OpenAI, DeepSeek, Qwen, GLM, Claude via proxy, etc.)
-- Built-in quick setup for **ModelScope** (2000 free model calls/day)
+- Built-in quick setup for **ModelScope** (credits system, 200-250 Magicubes/day ≈ 100-500 model calls)
 - Native **reasoning/thinking model** support — thinking tokens displayed in real time
 - Create / edit / switch models at runtime
 - Per-model hyperparameter tuning (temperature, top_p, top_k, max_completion_tokens, etc.)
@@ -80,7 +80,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 
 ### Rich Terminal UI
 
-- Real-time **status bar** — context usage %, git status indicator, ModelScope API quota
+- Real-time **status bar** — context usage %, git status indicator
 - **Streaming output** with token-by-token rendering
 - Slash command auto-completion
 - Color-coded tool approval UI with **inline diff preview** for file edits
@@ -104,11 +104,6 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 - Install / delete / manage skills via `/skill`
 - Skills are injected into system prompt via LangChain middleware
 - Supports project-level and global skill directories
-
-### ModelScope Rate Limit
-
-- Real-time **API quota display** in status bar (daily limit remaining, per-model remaining)
-- Auto-enabled when using ModelScope models
 
 ## Built-in Tools (14)
 
@@ -226,7 +221,6 @@ chcode/
     ├── git_checker.py      # Git availability check
     ├── git_manager.py      # Git checkpoint management
     ├── json_utils.py       # JSON atomic read/write + mtime cache
-    ├── modelscope_ratelimit.py  # ModelScope API rate limit monitor
     ├── multimodal.py       # Multimodal model detection and media encoding
     ├── session.py          # Session manager (SQLite)
     ├── skill_loader.py     # Skill discovery and loading

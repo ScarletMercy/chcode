@@ -18,7 +18,7 @@
 <img src="https://raw.githubusercontent.com/ScarletMercy/chcode/main/assets/chagent.png" alt="chagent prototype" width="600"/>
 </details>
 
-> 7000+ 行 Python 代码，14 个内置工具，完整会话持久化，Git 感知工作流。
+> 14 个内置工具，完整会话持久化，Git 感知工作流。
 
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -32,7 +32,7 @@
 ### 模型管理
 
 - 兼容**所有支持 OpenAI 接口的模型**（OpenAI、DeepSeek、Qwen、GLM、Claude 代理等）
-- 内置**魔搭**快捷配置（每天 2000 次免费模型调用）
+- 内置**魔搭**快捷配置（积分制，每天 200-250 魔粒，折合约 100-500 次模型调用）
 - 原生支持 **reasoning/thinking 模型** — 实时显示思考过程
 - 运行时创建 / 编辑 / 切换模型
 - 每个模型独立调参（temperature、top_p、top_k、max_completion_tokens 等）
@@ -80,7 +80,7 @@
 
 ### Rich 终端 UI
 
-- 实时**状态栏** — 上下文使用率、Git 状态指示、ModelScope API 配额
+- 实时**状态栏** — 上下文使用率、Git 状态指示
 - **流式输出**，逐 token 渲染
 - 斜杠命令自动补全
 - 彩色工具审核界面，文件编辑显示**行内 diff 预览**
@@ -104,11 +104,6 @@
 - 通过 `/skill` 安装 / 删除 / 管理技能
 - 技能通过 LangChain 中间件注入系统提示
 - 支持项目级和全局技能目录
-
-### ModelScope 限额监控
-
-- 状态栏实时显示 **API 配额**（每日剩余额度、每模型剩余额度）
-- 使用 ModelScope 模型时自动启用
 
 ## 内置工具（14 个）
 
@@ -226,7 +221,6 @@ chcode/
     ├── git_checker.py      # Git 可用性检查
     ├── git_manager.py      # Git 检查点管理
     ├── json_utils.py       # JSON 原子读写 + mtime 缓存
-    ├── modelscope_ratelimit.py  # ModelScope API 限额监控
     ├── multimodal.py       # 多模态模型检测与媒体编码
     ├── session.py          # 会话管理器（SQLite）
     ├── skill_loader.py     # 技能发现与加载

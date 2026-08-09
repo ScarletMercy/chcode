@@ -33,7 +33,6 @@ from langgraph.types import Command
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
-from chcode.utils.modelscope_ratelimit import is_modelscope_model, get_modelscope_clients
 from chcode.utils.multimodal import is_multimodal_model
 from chcode.utils.skill_loader import SkillAgentContext
 from chcode.display import console
@@ -350,10 +349,6 @@ async def load_model(
     model_config = request.runtime.context.model_config
     kwargs = dict(model_config)
     kwargs.setdefault("timeout", httpx.Timeout(connect=10, read=10, write=60, pool=10))
-    if is_modelscope_model(model_config):
-        sync_client, async_client = get_modelscope_clients()
-        kwargs["http_client"] = sync_client
-        kwargs["http_async_client"] = async_client
     return await handler(request.override(model=EnhancedChatOpenAI(**kwargs)))
 
 
