@@ -1,6 +1,7 @@
 """Extended tests for chcode/agent_setup.py"""
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from chcode.agent_setup import (
@@ -91,6 +92,41 @@ class TestModelRetryWithBackoff:
                     await model_retry_with_backoff.awrap_model_call(mock_request, mock_handler)
         finally:
             _fallback_models[:] = old
+
+    async def test_load_model_injects_timeout(self):
+        with patch("chcode.agent_setup.EnhancedChatOpenAI") as mock_cls:
+            mock_request = MagicMock()
+            mock_request.runtime.context.model_config = {"model": "test-model"}
+            handler = AsyncMock(return_value="ok")
+            result = await load_model.awrap_model_call(mock_request, handler)
+        assert result == "ok"
+        _, kwargs = mock_cls.call_args
+        assert kwargs["timeout"] == httpx.Timeout(connect=10, read=10, write=60, pool=10)
+
+    async def test_load_model_preserves_user_timeout(self):
+        with patch("chcode.agent_setup.EnhancedChatOpenAI") as mock_cls:
+            mock_request = MagicMock()
+            mock_request.runtime.context.model_config = {"model": "test-model", "timeout": 42}
+            handler = AsyncMock(return_value="ok")
+            result = await load_model.awrap_model_call(mock_request, handler)
+        assert result == "ok"
+        _, kwargs = mock_cls.call_args
+        assert kwargs["timeout"] == 42
+
+    async def test_sleep_sliced_per_second(self):
+        call_count = 0
+        async def flaky(req):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise RuntimeError("transient")
+            return "ok"
+        mock_request = MagicMock()
+        with patch("chcode.agent_setup.RETRY_DELAYS", [2, 3, 4, 5]), \
+             patch("chcode.agent_setup.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await model_retry_with_backoff.awrap_model_call(mock_request, flaky)
+        assert result == "ok"
+        assert mock_sleep.await_count == 5
 
 
 class TestLoadSkills:

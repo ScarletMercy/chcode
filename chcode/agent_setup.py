@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
+import httpx
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
     dynamic_prompt,
@@ -285,7 +286,8 @@ async def model_retry_with_backoff(
 
             console.print(f"[yellow]{t('agent.retry_in', count=retry_count, max=max_retries, delay=delay, error=e)}[/yellow]")
 
-            await asyncio.sleep(delay)
+            for _ in range(int(delay)):
+                await asyncio.sleep(1)
 
 
 @dynamic_prompt
@@ -347,6 +349,7 @@ async def load_model(
     """动态加载模型"""
     model_config = request.runtime.context.model_config
     kwargs = dict(model_config)
+    kwargs.setdefault("timeout", httpx.Timeout(connect=10, read=10, write=60, pool=10))
     if is_modelscope_model(model_config):
         sync_client, async_client = get_modelscope_clients()
         kwargs["http_client"] = sync_client
