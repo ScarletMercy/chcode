@@ -2586,3 +2586,67 @@ class TestModelSwitchErrorCommandReset:
         assert len(received_inputs) >= 1
         assert isinstance(received_inputs[0], dict)
         assert received_inputs[0] == {"messages": "hello"}
+
+
+# ============================================================================
+# Bug #2: 切换备用模型时必须清理失败轮次，避免重发时重复追加用户消息
+#
+# 旧行为：ModelSwitchError 触发切换后直接 continue，用同一份 input_data 重新
+# astream。但失败轮次的 HumanMessage 已被首次 astream 写入 checkpoint，重发会
+# 把 HumanMessage 再追加一次 → 用户消息被发送两次（非幂等重试）。
+# 正确行为：continue 前调用 _cleanup_last_turn() 删除失败轮次的 HumanMessage。
+# ============================================================================
+
+
+class TestModelSwitchCleansUpLastTurn:
+    """Verify ModelSwitchError path cleans up the failed turn before retrying."""
+
+    @pytest.mark.asyncio
+    async def test_cleanup_last_turn_called_on_switch(self):
+        """When switching to fallback model, _cleanup_last_turn must be called
+        to remove the failed turn's HumanMessage from checkpoint state."""
+        from chcode.agent_setup import ModelSwitchError
+
+        repl = ChatREPL()
+        repl.agent = Mock()
+        repl.session_mgr = Mock()
+        repl.session_mgr.config = {}
+        repl.session_mgr.thread_id = "test-thread"
+        repl.workplace_path = Path("/tmp")
+        repl.model_config = {"model": "gpt-4"}
+        repl.checkpointer = Mock()
+
+        call_count = 0
+
+        async def mock_astream(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call with the original model fails -> switch
+                raise ModelSwitchError("Switch needed")
+                yield  # make it a generator
+            # Second call (after switch) succeeds, no output
+            return
+
+        repl.agent.astream = mock_astream
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={"messages": []}))
+
+        _new_agent = Mock()
+        _new_agent.astream = mock_astream
+        _new_agent.aget_state = AsyncMock(return_value=Mock(values={"messages": []}))
+
+        with patch("chcode.chat.get_fallback_model", return_value={"model": "fallback"}), \
+             patch("chcode.chat.advance_fallback"), \
+             patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=_new_agent), \
+             patch("chcode.display.console.print"), \
+             patch("chcode.chat.asyncio.create_task"), \
+             patch.object(ChatREPL, "_cleanup_last_turn", new_callable=AsyncMock) as mock_cleanup:
+            await repl._process_input("hello")
+
+        # 切换路径必须调用 _cleanup_last_turn 清理失败轮次的 HumanMessage
+        assert mock_cleanup.await_count >= 1, (
+            "_cleanup_last_turn must be called when switching to fallback model "
+            "to avoid resending the user message"
+        )
+        assert repl.model_config["model"] == "fallback"
+

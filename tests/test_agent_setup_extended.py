@@ -93,6 +93,51 @@ class TestModelRetryWithBackoff:
         finally:
             _fallback_models[:] = old
 
+    async def test_retry_count_includes_all_four_retries(self):
+        """Bug #1: max_retries=4 表示重试 4 次（初始调用 + 4 次重试 = 共 5 次调用）。
+
+        打印 4 次退避提示 (1/4)..(4/4)，第 5 次失败才切换；切换消息显示"重试4次失败"，
+        与退避提示的 4 次一致。
+        """
+        from chcode.agent_setup import _fallback_models
+        old = _fallback_models[:]
+        _fallback_models[:] = [{"model": "fallback"}]
+        try:
+            mock_handler = AsyncMock(side_effect=RuntimeError("fail"))
+            mock_request = MagicMock()
+            with patch("chcode.agent_setup.RETRY_DELAYS", [0.01, 0.01, 0.01, 0.01]), \
+                 patch("chcode.agent_setup.asyncio.sleep", new_callable=AsyncMock), \
+                 patch("chcode.agent_setup._load_fallback_config", return_value={"model": "fb"}), \
+                 patch("chcode.agent_setup.console") as mock_console:
+                with pytest.raises(ModelSwitchError):
+                    await model_retry_with_backoff.awrap_model_call(mock_request, mock_handler)
+
+            # 共调用 5 次：初始 1 次 + 重试 4 次
+            assert mock_handler.call_count == 5, (
+                f"Expected 5 model calls (1 initial + 4 retries), got {mock_handler.call_count}"
+            )
+
+            # 打印了 4 次退避提示 "请求失败 (n/4)"（n=1..4），第 5 次失败才切换
+            retry_in_prints = [
+                c for c in mock_console.print.call_args_list
+                if c.args and "请求失败" in str(c.args[0])
+            ]
+            assert len(retry_in_prints) == 4, (
+                f"Expected 4 backoff prompts (1/4..4/4), got {len(retry_in_prints)}: {retry_in_prints}"
+            )
+
+            # 切换消息显示"重试4次失败"，与退避提示的 4 次一致（而非误报 5 次）
+            switch_prints = [
+                c for c in mock_console.print.call_args_list
+                if c.args and "重试" in str(c.args[0]) and "次失败" in str(c.args[0])
+            ]
+            assert len(switch_prints) == 1, f"Expected 1 switch msg, got {switch_prints}"
+            assert "4次失败" in str(switch_prints[0]), (
+                f"Switch msg should say 4 retries, got: {switch_prints[0]}"
+            )
+        finally:
+            _fallback_models[:] = old
+
     async def test_load_model_injects_timeout(self):
         with patch("chcode.agent_setup.EnhancedChatOpenAI") as mock_cls:
             mock_request = MagicMock()

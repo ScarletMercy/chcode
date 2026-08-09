@@ -1559,6 +1559,8 @@ class ChatREPL:
                             # 重置为原始输入，避免复用已消费的 Command
                             if isinstance(input_data, Command):
                                 input_data = _original_input_data
+                            # 删除失败轮次已写入的 HumanMessage，避免重发时重复追加
+                            await self._cleanup_last_turn()
                             console.print(f"[green]{t('chat.switched_fallback_retry')}[/green]")
                             continue  # 用备用模型重试当前请求
                         except Exception as e:

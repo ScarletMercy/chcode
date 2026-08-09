@@ -271,8 +271,7 @@ async def model_retry_with_backoff(
         try:
             return await handler(request)
         except Exception as e:
-            retry_count += 1
-
+            # retry_count = 已重试次数（不含首次失败），仅在进入重试时递增
             if retry_count >= max_retries:
                 fallback = _load_fallback_config()
                 if fallback:
@@ -281,8 +280,9 @@ async def model_retry_with_backoff(
                 console.print(f"[red]{t('agent.no_fallback_giveup', error=e)}[/red]")
                 raise
 
-            delay_idx = min(retry_count - 1, len(RETRY_DELAYS) - 1)
+            delay_idx = min(retry_count, len(RETRY_DELAYS) - 1)
             delay = RETRY_DELAYS[delay_idx]
+            retry_count += 1
 
             console.print(f"[yellow]{t('agent.retry_in', count=retry_count, max=max_retries, delay=delay, error=e)}[/yellow]")
 
