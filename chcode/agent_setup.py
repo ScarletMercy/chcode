@@ -10,10 +10,10 @@ import socket
 import sys
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Annotated, Awaitable, Callable, NotRequired, TypedDict
 
 import httpx
-from langchain.agents import create_agent
+from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import (
     dynamic_prompt,
     wrap_tool_call,
@@ -27,7 +27,7 @@ from langchain.agents.middleware.context_editing import (
     ClearToolUsesEdit,
 )
 from langchain.agents.middleware.summarization import SummarizationMiddleware
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain.tools.tool_node import ToolCallRequest
 from langgraph.types import Command
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -50,6 +50,26 @@ import aiosqlite
 # ─── 内置默认模型配置 ──────────────────────────────────
 
 import os
+
+
+class ToolCallSnapshot(TypedDict):
+    name: str
+    args_key: str
+    result_key: str
+
+
+class ToolStormTracker(TypedDict):
+    previous: ToolCallSnapshot
+    exact_streak: int
+    varying_result_streak: int
+    varying_args_streak: int
+
+
+class State(AgentState):
+    tool_storm: NotRequired[
+        Annotated[ToolStormTracker | None, lambda _old, new: new]
+    ]
+
 
 INNER_MODEL_CONFIG = {
     "model": "Qwen/Qwen3-235B-A22B-Thinking-2507",
@@ -170,8 +190,17 @@ async def emit_tool_events(
     _ipc_send(start_evt)
     try:
         result = await handler(request)
-        ok = not (isinstance(result, ToolMessage) and getattr(result, "status", None) == "error")
-        end_evt: dict = {"type": "tool_end", "tool": tool_name, "success": ok, "ts": time.time()}
+        # 判断工具是否失败：直接 ToolMessage 看 status，Command 则穿透 update.messages
+        if isinstance(result, ToolMessage):
+            failed = result.status == "error"
+        else:
+            msgs = result.update.get("messages", []) if isinstance(result.update, dict) else []
+            if isinstance(msgs, ToolMessage):
+                msgs = [msgs]
+            failed = isinstance(msgs, (list, tuple)) and any(
+                isinstance(m, ToolMessage) and m.status == "error" for m in msgs
+            )
+        end_evt: dict = {"type": "tool_end", "tool": tool_name, "success": not failed, "ts": time.time()}
         if tool_name == "agent":
             end_evt["subagent_type"] = args.get("subagent_type", "general-purpose")
             end_evt["subagent_tag"] = start_evt.get("subagent_tag", "")
@@ -392,6 +421,108 @@ async def tool_result_budget(
     return await handler(request)
 
 
+# 工具风暴阻断提示：按模式描述具体行为
+_STORM_DETAIL = {
+    "exact": "调用同一工具，且工具参数和返回结果完全相同",
+    "varying_result": "使用相同工具和参数，但返回结果持续波动",
+    "varying_args": "调用同一工具并频繁更换参数，但问题仍未收敛",
+}
+
+
+@wrap_tool_call
+async def tool_call_storm_block(
+    request: ToolCallRequest,
+    handler: Callable[
+        [ToolCallRequest], Awaitable[ToolMessage | Command]
+    ],
+) -> ToolMessage | Command:
+    name = request.tool_call.get("name", "")
+    args_key = json.dumps(request.tool_call.get("args", {}), ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    tracker = request.state.get("tool_storm")
+
+    # 并行批量工具调用：streak 不确定，执行但重置 tracker
+    last_ai_msg = next(
+        (m for m in reversed(request.state.get("messages", []))
+         if isinstance(m, AIMessage)),
+        None,
+    )
+    if last_ai_msg and len(last_ai_msg.tool_calls) > 1:
+        result = await handler(request)
+        if isinstance(result, Command):
+            return result
+        return Command(
+            update={"tool_storm": None, "messages": [result]}
+        )
+
+    # 判断是否触发阻断（阈值：完全重复 3、同参异果 5、同工具异参 8）
+    reason: str | None = None
+    if tracker:
+        previous = tracker["previous"]
+        same_name = name == previous["name"]
+        same_args = args_key == previous["args_key"]
+        if same_name and same_args and tracker["exact_streak"] >= 3:
+            reason = "exact"
+        elif same_name and same_args and tracker["varying_result_streak"] >= 5:
+            reason = "varying_result"
+        elif same_name and not same_args and tracker["varying_args_streak"] >= 8:
+            reason = "varying_args"
+
+    if reason is not None:
+        message = ToolMessage(
+            content=(
+                "【工具调用风暴限制触发】\n"
+                f"你已连续多次{_STORM_DETAIL[reason]}，已阻断本次调用。\n"
+                "请复盘当前解题思路：调整查询参数、更换其他可用工具，或换全新推理策略，"
+                "不要重复无意义工具调用，调用任意其他类型的工具 1 次，即可重置限制并继续使用本工具。"
+            ),
+            tool_call_id=request.tool_call["id"],
+            status="error",
+        )
+        return Command(
+            update={"tool_storm": None, "messages": [message]}
+        )
+
+    result = await handler(request)
+    if isinstance(result, Command):
+        # 控制流指令（如 native command）：原样透传，不参与风暴计数。
+        # 注意：tracker 在此既不更新也不重置，理论上若模型连续 N 次同工具同参后
+        # 插入一个返回 Command 的操作、再重复同一调用，会基于过期 streak 误阻断。
+        # 实际不触发：当前所有工具都返回 ToolMessage，无工具返回 Command。
+        return result
+
+    # 更新 storm tracker：与上次快照比对，累加命中的 streak（其余重置为 1）
+    current: ToolCallSnapshot = {
+        "name": name,
+        "args_key": args_key,
+        "result_key": json.dumps(
+            {"content": result.content, "status": result.status},
+            ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str,
+        ),
+    }
+    next_tracker: ToolStormTracker = {
+        "previous": current,
+        "exact_streak": 1,
+        "varying_result_streak": 1,
+        "varying_args_streak": 1,
+    }
+    if tracker:
+        previous = tracker["previous"]
+        same_name = current["name"] == previous["name"]
+        same_args = current["args_key"] == previous["args_key"]
+        same_result = current["result_key"] == previous["result_key"]
+
+        if same_name and same_args and same_result:
+            next_tracker["exact_streak"] = tracker["exact_streak"] + 1
+        elif same_name and same_args:
+            next_tracker["varying_result_streak"] = tracker["varying_result_streak"] + 1
+        elif same_name:
+            next_tracker["varying_args_streak"] = tracker["varying_args_streak"] + 1
+
+    return Command(
+        update={"tool_storm": next_tracker, "messages": [result]}
+    )
+
+
 # ─── Agent 构建 ──────────────────────────────────────────
 
 
@@ -460,6 +591,7 @@ def build_agent(
         middleware=[
             restrict_agent_type,
             emit_tool_events,
+            tool_call_storm_block,
             handle_tool_errors,
             filter_vision_tool,
             emit_thinking_events,
@@ -487,6 +619,7 @@ def build_agent(
             _hitl_middleware,
         ],
         context_schema=SkillAgentContext,
+        state_schema=State,
         checkpointer=checkpointer,
     )
     return agent
