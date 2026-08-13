@@ -101,8 +101,8 @@ class SkillLoader:
 
         Args:
             skill_paths: 自定义 Skills 搜索路径，默认为:
-                - .claude/skills/ (项目级，优先)
-                - ~/.claude/skills/ (用户级，兜底)
+                - .chat/skills/ (项目级，优先)
+                - ~/.chat/skills/ (用户级，兜底)
         """
         self.skill_paths = skill_paths or DEFAULT_SKILL_PATHS
         self._metadata_cache: dict[str, SkillMetadata] = {}
@@ -227,7 +227,7 @@ class SkillLoader:
         """
         Level 2: 加载 Skill 完整内容
 
-        读取 SKILL.md 的完整指令，以及其他 .md 文件和脚本列表。
+        读取 SKILL.md 的完整指令。
         这是 load_skill tool 的核心实现。
 
         Args:
@@ -239,7 +239,7 @@ class SkillLoader:
         # 先检查缓存
         metadata = self._metadata_cache.get(skill_name)
 
-        # 原始冗余代码
+        # 缓存未命中（通常因尚未扫描过），兜底触发一次扫描再查
         if not metadata:
             # 尝试重新扫描
             self.scan_skills()
