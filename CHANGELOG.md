@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.5] - 2026-08-13
+
+### Features
+- **Tool-Call Storm Detection**: Middleware that blocks repetitive tool-call loops by detecting exact repeats (≥3), same-args/varying-results (≥5), and same-tool/varying-args (≥8); resets on parallel batches and persists across checkpoints
+- **Default API Timeout & Backoff**: Injects a default API timeout and slices retry backoff sleeps (3/10/30/60s)
+- **ModelScope International Endpoint**: Adds the ModelScope international (.ai) endpoint option for model setup
+- **Streaming Markdown Rendering**: Stable/unstable chunking for smoother streaming output
+- **Custom Vision Model & Quick Setup**: Custom vision model config plus ModelScope quick setup; unified context-length and multimodal prompts
+- **Connection Test Before Save**: Tests connection before saving in vision ModelScope quick setup
+- **Retry/Re-enter/Abort Menu**: Adds a retry/re-enter/abort menu on connection-test failure
+
+### Fixes
+- **Retry Count Semantics**: Corrected retry count semantics and cleaned up the failed turn on model switch
+- **Vision region_key**: Extended `region_key` to vision config to separate cn/intl same-name models
+- **model.json Fallback Keying**: Keyed `model.json` fallback entries by region to avoid cn/intl collision
+- **GLM Namespace**: Use `zai-org` namespace for the GLM model in ModelScope international presets
+- **Windows Device Names**: Excluded Windows reserved device names (nul/con/...) that caused shadow-git commit failure
+
+### Refactored
+- **Removed ModelScope Rate-Limit Monitoring**: Credits system replaced the free quota; dropped `modelscope_ratelimit.py`
+- **Unified Dispatch Encoding**: Deduplicated ModelScope `base_url` constants and unified dispatch encoding
+- **Shared Vision Helpers**: Extracted shared vision key-collection and test-retry helpers
+
+### Documentation
+- Updated README.md and README_en.md: ModelScope description switched to the credits/Magicubes system, removed the standalone ModelScope Rate Limit section, dropped `modelscope_ratelimit.py` from the architecture listing, and removed the obsolete "7000+ lines" tagline
+
 ## [0.1.4] - 2026-07-16
 
 ### Features
