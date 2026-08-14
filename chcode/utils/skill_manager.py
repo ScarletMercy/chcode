@@ -24,11 +24,12 @@ async def manage_skills(workplace_path: Path) -> None:
     """技能管理主菜单"""
     view_label = t("skill.view_installed")
     install_label = t("skill.install_new")
+    market_label = t("skill.skill_market")
     back_label = t("common.back")
     while True:
         action = await select(
             t("skill.menu"),
-            [view_label, install_label, back_label],
+            [view_label, install_label, market_label, back_label],
         )
         if action is None or action == back_label:
             return
@@ -37,6 +38,10 @@ async def manage_skills(workplace_path: Path) -> None:
             await _list_skills(workplace_path)
         elif action == install_label:
             await _install_skill(workplace_path)
+        elif action == market_label:
+            from chcode.utils.skill_hub import manage_skill_hub
+
+            await manage_skill_hub(workplace_path)
 
 
 def _skill_type_label(type_value: str) -> str:
@@ -131,6 +136,27 @@ async def _delete_skill(skill: dict) -> None:
         console.print(f"[red]{t('skill.delete_failed', error=e)}[/red]")
 
 
+async def select_install_root(workplace_path: Path) -> Path | None:
+    """让用户选择安装位置(项目级/全局级),返回目标根目录;取消返回 None。"""
+    # 语言无关:按索引判定项目级/全局级
+    project_label = t("skill.install_project")
+    choices = [project_label, t("skill.install_global")]
+    location = await select(
+        t("skill.select_install_location"),
+        choices,
+    )
+    if location is None:
+        return None
+
+    if choices.index(location) == 0:
+        install_path = workplace_path / ".chat" / "skills"
+    else:
+        install_path = Path.home() / ".chat" / "skills"
+
+    install_path.mkdir(parents=True, exist_ok=True)
+    return install_path
+
+
 async def _install_skill(workplace_path: Path) -> None:
     """安装技能"""
     file_path = await text(t("skill.input_archive_path"))
@@ -149,22 +175,18 @@ async def _install_skill(workplace_path: Path) -> None:
         console.print(f"[red]{t('skill.invalid_package')}[/red]")
         return
 
-    # 选择安装位置（语言无关：按索引判定项目级/全局级）
-    project_label = t("skill.install_project")
-    choices = [project_label, t("skill.install_global")]
-    location = await select(
-        t("skill.select_install_location"),
-        choices,
-    )
-    if location is None:
+    install_path = await select_install_root(workplace_path)
+    if install_path is None:
         return
 
-    if choices.index(location) == 0:
-        install_path = workplace_path / ".chat" / "skills"
-    else:
-        install_path = Path.home() / ".chat" / "skills"
-
-    install_path.mkdir(parents=True, exist_ok=True)
+    # frontmatter name 会成为目标目录名,必须落在安装目录内(防路径穿越)
+    if not (install_path / skill_info["name"]).resolve().is_relative_to(
+        install_path.resolve()
+    ):
+        console.print(
+            f"[red]{t('skillhub.err_invalid_package_name', slug=skill_info['name'])}[/red]"
+        )
+        return
 
     console.print(f"[yellow]{t('skill.installing')}[/yellow]")
     if install_skill(str(path), install_path):

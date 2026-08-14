@@ -411,6 +411,10 @@ MESSAGES = {
         "zh": "安装新技能",
         "en": "Install a new skill",
     },
+    "skill.skill_market": {
+        "zh": "技能市场(从远程 hub 搜索安装)",
+        "en": "Skill marketplace (search & install from remote hub)",
+    },
     "skill.none_installed": {
         "zh": "没有发现已安装的技能",
         "en": "No installed skills found",
@@ -527,6 +531,108 @@ MESSAGES = {
         "zh": "全局",
         "en": "Global",
     },
+    "skillhub.input_query": {
+        "zh": "输入搜索关键词(留空取消):",
+        "en": "Enter search keyword (empty to cancel):",
+    },
+    "skillhub.searching": {
+        "zh": "正在搜索 skill hub...",
+        "en": "Searching skill hub...",
+    },
+    "skillhub.no_results": {
+        "zh": "未找到相关 skill",
+        "en": "No matching skills found",
+    },
+    "skillhub.source_failed": {
+        "zh": "部分数据源暂不可达,结果可能不全:{sources}",
+        "en": "Some sources unreachable, results may be incomplete: {sources}",
+    },
+    "skillhub.results_title": {
+        "zh": "搜索结果",
+        "en": "Search results",
+    },
+    "skillhub.col_name": {
+        "zh": "名称",
+        "en": "Name",
+    },
+    "skillhub.col_source": {
+        "zh": "来源",
+        "en": "Source",
+    },
+    "skillhub.col_desc": {
+        "zh": "描述",
+        "en": "Description",
+    },
+    "skillhub.select_to_install": {
+        "zh": "选择要安装的 skill:",
+        "en": "Select a skill to install:",
+    },
+    "skillhub.select_owner": {
+        "zh": "存在多个同名 skill,选择要安装的来源:",
+        "en": "Multiple skills share this name; choose the source to install:",
+    },
+    # 安装位置/安装中/安装成功文案复用 skill.select_install_location、
+    # skill.installing、skill.install_success,不另设 skillhub.* 键
+    "skillhub.install_failed": {
+        "zh": "安装失败:{error}",
+        "en": "Installation failed: {error}",
+    },
+    "skillhub.err_unknown_source": {
+        "zh": "未知来源: {source}",
+        "en": "Unknown source: {source}",
+    },
+    "skillhub.err_ambiguous_cancelled": {
+        "zh": "存在多个同名 skill({slug}),已取消",
+        "en": "Multiple skills share this name ({slug}), cancelled",
+    },
+    "skillhub.err_network": {
+        "zh": "clawhub 暂不可达: {slug}",
+        "en": "clawhub unreachable: {slug}",
+    },
+    "skillhub.err_not_found": {
+        "zh": "clawhub 上未找到: {slug}",
+        "en": "Skill not found on clawhub: {slug}",
+    },
+    "skillhub.err_invalid_response": {
+        "zh": "clawhub 响应异常: {slug}",
+        "en": "Invalid response from clawhub: {slug}",
+    },
+    "skillhub.err_no_version": {
+        "zh": "无法解析版本号: {slug}",
+        "en": "Cannot resolve version for {slug}",
+    },
+    "skillhub.err_download_failed": {
+        "zh": "下载失败: {slug} (HTTP {code})",
+        "en": "Download failed for {slug} (HTTP {code})",
+    },
+    "skillhub.err_invalid_package": {
+        "zh": "无效的技能包(缺少 SKILL.md): {slug}",
+        "en": "Invalid package (no SKILL.md): {slug}",
+    },
+    "skillhub.err_invalid_package_name": {
+        "zh": "包内 skill 名称非法: {slug}",
+        "en": "Invalid skill name in package: {slug}",
+    },
+    "skillhub.err_invalid_skill_name": {
+        "zh": "无法确定合法 skill 名称: {name}",
+        "en": "Cannot determine a valid skill name: {name}",
+    },
+    "skillhub.err_write_failed": {
+        "zh": "无法写入技能文件: {slug}",
+        "en": "Cannot write skill files: {slug}",
+    },
+    "skillhub.err_non_github": {
+        "zh": "非 GitHub 源({host})暂不支持直接安装",
+        "en": "Non-GitHub source ({host}) not supported yet",
+    },
+    "skillhub.err_unrecognized_id": {
+        "zh": "无法识别的 skills.sh 标识: {identifier}",
+        "en": "Unrecognized skills.sh identifier: {identifier}",
+    },
+    "skillhub.err_skillmd_not_found": {
+        "zh": "未找到 SKILL.md: {identifier}",
+        "en": "SKILL.md not found: {identifier}",
+    },
     # ─── chat REPL ───
     "chat.empty_group": {
         "zh": "(空消息组)",
@@ -623,8 +729,8 @@ MESSAGES = {
         "en": "Vision model config",
     },
     "cmd.skill": {
-        "zh": "技能管理",
-        "en": "Skill management",
+        "zh": "技能管理(查看/安装/技能市场)",
+        "en": "Skill management (view/install/marketplace)",
     },
     # ─── /tools ───
     "cmd.tools": {

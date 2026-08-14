@@ -138,6 +138,17 @@ class TestInstallSkill:
             await _install_skill(mock_workplace_path)
             assert mock_install.called  # install_skill should be called
 
+    async def test_rejects_traversal_name(self, mock_workplace_path, tmp_path):
+        """frontmatter name 含 ../ 时应拒绝安装,install_skill 不被调用。"""
+        zip_path = tmp_path / "evil.zip"
+        zip_path.write_bytes(b"stub")  # 内容不重要,validate 被 mock
+        with patch("chcode.utils.skill_manager.text", new_callable=AsyncMock, return_value=str(zip_path)), \
+             patch("chcode.utils.skill_manager.validate_skill_package", return_value={"name": "../evil"}), \
+             patch("chcode.utils.skill_manager.select", new_callable=AsyncMock, return_value="项目级 (当前工作目录)"), \
+             patch("chcode.utils.skill_manager.install_skill", return_value=True) as mock_install:
+            await _install_skill(mock_workplace_path)
+            assert not mock_install.called  # 穿越名在调用前被拦截
+
 
 class TestListSkillsOperationBranches:
     """Cover lines 79-88: operation select branches."""
