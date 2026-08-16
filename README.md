@@ -18,7 +18,7 @@
 <img src="https://raw.githubusercontent.com/ScarletMercy/chcode/main/assets/chagent.png" alt="chagent prototype" width="600"/>
 </details>
 
-> 14 个内置工具，完整会话持久化，Git 感知工作流。
+> 15 个内置工具，完整会话持久化，Git 感知工作流。
 
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -110,10 +110,11 @@
 ### 技能系统
 
 - 通过 `/skill` 安装 / 删除 / 管理技能
+- **技能市场** — 从 clawhub.ai / skills.sh 等远程 hub 搜索并安装技能（无 LLM 参与）
 - 技能通过 LangChain 中间件注入系统提示
 - 支持项目级和全局技能目录
 
-## 内置工具（14 个）
+## 内置工具（15 个）
 
 | 工具 | 说明 |
 |------|------|
@@ -130,6 +131,7 @@
 | `ask_user` | 单选、多选、批量问题与用户交互 |
 | `agent` | 启动子代理（Explore、Plan、YOLO 模式下含 General-purpose、custom），支持并行执行 |
 | `todo_write` | 结构化任务追踪，适用于复杂多步骤工作 |
+| `update_memory` | 向 CHCODE.md 追加 / 替换记忆条目（Common 模式需确认，带行级 diff 预览） |
 | `vision` | 通过视觉模型分析图片和视频 |
 
 ## 快速开始
@@ -216,7 +218,9 @@ chcode/
 ├── agent_setup.py          # 代理构建、中间件、模型重试与回退
 ├── config.py               # 模型配置、Tavily、环境变量检测
 ├── display.py              # Rich 渲染、流式输出、状态栏
+├── i18n.py                 # 国际化（i18n）核心
 ├── prompts.py              # 交互式提示（选择/确认/文本）
+├── strings.py              # UI 文案目录（zh / en）
 ├── vision_config.py        # 视觉模型配置管理
 ├── agents/
 │   ├── definitions.py      # 代理类型（explore、plan、general）
@@ -230,7 +234,9 @@ chcode/
     ├── git_manager.py      # Git 检查点管理
     ├── json_utils.py       # JSON 原子读写 + mtime 缓存
     ├── multimodal.py       # 多模态模型检测与媒体编码
+    ├── project_memory.py   # CHCODE.md 项目记忆（迁移/注入/容量控制）
     ├── session.py          # 会话管理器（SQLite）
+    ├── skill_hub.py        # 技能市场（从远程 hub 搜索并安装技能）
     ├── skill_loader.py     # 技能发现与加载
     ├── skill_manager.py    # 技能安装/删除 UI
     ├── text_utils.py       # 消息内容文本提取

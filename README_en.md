@@ -18,7 +18,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 <img src="https://raw.githubusercontent.com/ScarletMercy/chcode/main/assets/chagent.png" alt="chagent prototype" width="600"/>
 </details>
 
-> 14 built-in tools, full session persistence, git-aware workflow.
+> 15 built-in tools, full session persistence, git-aware workflow.
 
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -110,10 +110,11 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 ### Skill System
 
 - Install / delete / manage skills via `/skill`
+- **Skill marketplace** — search and install skills from remote hubs (clawhub.ai / skills.sh), no LLM involved
 - Skills are injected into system prompt via LangChain middleware
 - Supports project-level and global skill directories
 
-## Built-in Tools (14)
+## Built-in Tools (15)
 
 | Tool | Description |
 |------|-------------|
@@ -130,6 +131,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 | `ask_user` | Single-select, multi-select, batch questions for user interaction |
 | `agent` | Launch sub-agents (Explore, Plan, General-purpose in YOLO mode, custom), supports parallel execution |
 | `todo_write` | Structured task tracking for complex multi-step work |
+| `update_memory` | Append / replace memory entries in CHCODE.md (approval + line-level diff preview in Common mode) |
 | `vision` | Analyze images and videos via vision models |
 
 ## Quick Start
@@ -216,7 +218,9 @@ chcode/
 ├── agent_setup.py          # Agent construction, middleware, model retry with fallback
 ├── config.py               # Model config, Tavily, env detection
 ├── display.py              # Rich rendering, streaming, status bar
+├── i18n.py                 # i18n core
 ├── prompts.py              # Interactive prompts (select/confirm/text)
+├── strings.py              # UI strings catalog (zh / en)
 ├── vision_config.py        # Vision model configuration
 ├── agents/
 │   ├── definitions.py      # Agent types (explore, plan, general)
@@ -230,7 +234,9 @@ chcode/
     ├── git_manager.py      # Git checkpoint management
     ├── json_utils.py       # JSON atomic read/write + mtime cache
     ├── multimodal.py       # Multimodal model detection and media encoding
+    ├── project_memory.py   # CHCODE.md project memory (migration/injection/capacity)
     ├── session.py          # Session manager (SQLite)
+    ├── skill_hub.py        # Skill marketplace (search & install from remote hubs)
     ├── skill_loader.py     # Skill discovery and loading
     ├── skill_manager.py    # Skill install/delete UI
     ├── text_utils.py       # Message content text extraction
