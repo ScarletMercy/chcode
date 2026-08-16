@@ -20,6 +20,7 @@ from rich.text import Text
 
 from chcode.agents.definitions import AgentDefinition
 from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+from chcode.utils.project_memory import build_memory_reminder
 from chcode.utils.skill_loader import SkillLoader, SkillAgentContext
 from chcode.utils.tool_result_pipeline import (
     clean_tool_output,
@@ -41,7 +42,8 @@ async def _display_subagent_tools(
         args = request.tool_call.get("args", {})
         summary = ""
         for key in ("command", "file_path", "pattern", "query", "url", "question",
-                    "task", "filePath", "skill_name", "path", "prompt", "image_path"):
+                    "task", "filePath", "skill_name", "path", "prompt", "image_path",
+                    "section"):
             if key in args:
                 summary = str(args[key])[:80]
                 break
@@ -124,6 +126,21 @@ async def _subagent_system_prompt(request: ModelRequest) -> str:
     return request.runtime.context.extra.get("system_prompt", "")
 
 
+@wrap_model_call
+async def _inject_subagent_memory(
+    request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
+) -> ModelResponse:
+    """子代理也前置 CHCODE.md 记忆块。
+
+    只注入会话冻结块、不做 mtime 轮询，避免与主代理的变更基线竞争。
+    """
+    workdir = request.runtime.context.working_directory
+    reminder = await asyncio.to_thread(build_memory_reminder, workdir)
+    messages = list(request.messages)
+    messages.insert(0, HumanMessage(content=reminder))
+    return await handler(request.override(messages=messages))
+
+
 def _resolve_tools(
     agent_def: AgentDefinition,
     all_tools: list,
@@ -178,6 +195,7 @@ async def run_subagent(
         handle_tool_errors,
         _tool_result_budget,
         _subagent_system_prompt,
+        _inject_subagent_memory,
     ]
 
     if agent_def.read_only:

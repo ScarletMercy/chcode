@@ -170,7 +170,9 @@ class TestChatREPLInitialize:
                                         assert repl.workplace_path == tmp_path
                                         assert repl.model_config == {"model": "gpt-4"}
                                         mock_cp.assert_called_once()
-                                        mock_thread.assert_called_once()
+                                        # to_thread: ensure_project_memory + build_agent
+                                        assert mock_thread.call_count == 2
+                                        assert mock_thread.call_args_list[1][0][0].__name__ == "build_agent"
 
     @pytest.mark.asyncio
     async def test_initialize_first_run(self, tmp_path):
@@ -1758,6 +1760,46 @@ class TestChatREPLCollectDecisions:
                     decisions = await repl._collect_decisions_async(interrupt_chunk)
 
                     assert len(decisions) == 1
+
+    @pytest.mark.asyncio
+    async def test_collect_decisions_update_memory(self, tmp_path):
+        """update_memory 审批：预演写入 + 分类渲染，批准后返回 approve"""
+        repl = ChatREPL()
+        repl.yolo = False
+        repl.workplace_path = tmp_path
+
+        from chcode.utils.project_memory import save_memory_entry
+        save_memory_entry(tmp_path, "常用命令", "old rule")
+
+        interrupt_chunk = {
+            "__interrupt__": [
+                Mock(value={
+                    "action_requests": [{
+                        "name": "update_memory",
+                        "args": {
+                            "section": "常用命令",
+                            "content": "new rule",
+                            "mode": "append",
+                        }
+                    }],
+                    "review_configs": []
+                })
+            ]
+        }
+
+        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
+            mock_sel.return_value = "approve (批准)"
+            with patch("chcode.chat.render_warning"):
+                with patch("chcode.chat.console.print") as mock_print:
+                    decisions = await repl._collect_decisions_async(interrupt_chunk)
+
+                    assert decisions[0]["type"] == "approve"
+                    # 预演不落盘：磁盘上仍是 old rule，没有 new rule
+                    disk = (tmp_path / "CHCODE.md").read_text(encoding="utf-8")
+                    assert "old rule" in disk
+                    assert "new rule" not in disk
+                    # 渲染发生了（头部 + 形态标签）
+                    assert mock_print.called
 
 
 # ============================================================================

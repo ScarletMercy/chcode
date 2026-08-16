@@ -140,7 +140,7 @@ BUILT_IN_AGENTS: dict[str, AgentDefinition] = {
         ),
         system_prompt=_EXPLORE_SYSTEM_PROMPT,
         tools=None,
-        disallowed_tools=["write_file", "edit"],
+        disallowed_tools=["write_file", "edit", "update_memory"],
         read_only=True,
     ),
     "Plan": AgentDefinition(
@@ -152,7 +152,7 @@ BUILT_IN_AGENTS: dict[str, AgentDefinition] = {
         ),
         system_prompt=_PLAN_SYSTEM_PROMPT,
         tools=None,
-        disallowed_tools=["write_file", "edit"],
+        disallowed_tools=["write_file", "edit", "update_memory"],
         read_only=True,
     ),
 }

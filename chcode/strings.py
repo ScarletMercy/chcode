@@ -905,6 +905,15 @@ MESSAGES = {
         "zh": "上下文用量更新失败: {error}",
         "en": "Context usage update failed: {error}",
     },
+    # ─── CHCODE.md 项目记忆 ───
+    "chat.memory.created": {
+        "zh": "已创建项目记忆: {path}",
+        "en": "Created project memory: {path}",
+    },
+    "chat.memory.migrated": {
+        "zh": "已将 CLAUDE.md 内容迁移到 {path}（原文件保留，此后以 CHCODE.md 为准）",
+        "en": "Migrated CLAUDE.md content to {path} (original kept; CHCODE.md now takes precedence)",
+    },
     # ─── /search ───
     "cmd.search": {
         "zh": "配置 Tavily 搜索 API Key",
@@ -1110,6 +1119,18 @@ MESSAGES = {
     "hitl.write_file": {
         "zh": "写入文件: {path}\n内容: {content}",
         "en": "Write file: {path}\nContent: {content}",
+    },
+    "hitl.update_memory": {
+        "zh": "写入项目记忆 [{mode}] 分类: {section}",
+        "en": "Write project memory [{mode}] section: {section}",
+    },
+    "hitl.memory.preview_failed": {
+        "zh": "预演失败: {error}",
+        "en": "Preview failed: {error}",
+    },
+    "hitl.memory.more_lines": {
+        "zh": "…另有 {n} 行未显示",
+        "en": "…{n} more lines not shown",
     },
     "hitl.edit_modify": {
         "zh": "[HITL] edit  修改文件: {path}",
@@ -1445,6 +1466,10 @@ MESSAGES = {
     "tool_desc.write_file": {
         "zh": "写入内容到文件。",
         "en": "Write content to a file.",
+    },
+    "tool_desc.update_memory": {
+        "zh": "保存或更新持久化项目知识到 CHCODE.md。",
+        "en": "Save or update persistent project knowledge in CHCODE.md.",
     },
     "tool_desc.glob": {
         "zh": "按 glob 模式查找文件。",

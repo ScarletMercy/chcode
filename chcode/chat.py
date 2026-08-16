@@ -75,6 +75,14 @@ from chcode.agent_setup import (
 from chcode.utils.skill_manager import manage_skills
 from chcode.utils.git_checker import check_git_availability
 from chcode.utils.git_manager import GitManager
+from chcode.utils.project_memory import (
+    check_memory_changed,
+    diff_memory_lines,
+    ensure_project_memory,
+    preview_memory_entry,
+    refresh_memory_state,
+    reset_memory_cache,
+)
 
 
 # ─── 命令自动补全 ──────────────────────────────────────
@@ -202,6 +210,35 @@ def _group_messages_by_turn(messages: list) -> list[list]:
         groups.append(current_group)  # 所以需要放入消息组
 
     return groups
+
+
+def _attach_memory_note(input_data: dict, note: str) -> dict:
+    """把 CHCODE.md 变更提醒挂到本轮用户消息的 metadata（memory_note）。
+
+    时间线锚定在变更发生的回合；渲染/编辑只读 content，备注天然不可见；
+    发给模型时由 inject_project_memory 中间件展开进 content（注入/剥离）。
+    """
+    msgs = input_data["messages"]
+    if isinstance(msgs, str):
+        return {
+            "messages": [
+                HumanMessage(content=msgs, additional_kwargs={"memory_note": note})
+            ]
+        }
+    if isinstance(msgs, HumanMessage):  # 多模态单消息形态
+        kw = dict(msgs.additional_kwargs)
+        kw["memory_note"] = note
+        return {"messages": msgs.model_copy(update={"additional_kwargs": kw})}
+    msgs = list(msgs)
+    for i in range(len(msgs) - 1, -1, -1):
+        if isinstance(msgs[i], HumanMessage):
+            kw = dict(msgs[i].additional_kwargs)
+            kw["memory_note"] = note
+            msgs[i] = msgs[i].model_copy(update={"additional_kwargs": kw})
+            break
+    else:  # 找不到 HumanMessage（罕见）：退化为追加
+        msgs.append(HumanMessage(content=note))
+    return {"messages": msgs}
 
 
 # 历史会话的会话名显示
@@ -332,6 +369,22 @@ class ChatREPL:
         self.workplace_path = Path.cwd()  # 获取当前目录路径
 
         self._ensure_chat_dir(self.workplace_path)  # 确保当前项目配置文件存在
+
+        # 确保 CHCODE.md 项目记忆存在（首次创建 / CLAUDE.md 迁移）
+        memory_status = await asyncio.to_thread(
+            ensure_project_memory, self.workplace_path
+        )
+        if memory_status == "created":
+            console.print(
+                f"[dim]{t('chat.memory.created', path=self.workplace_path / 'CHCODE.md')}[/dim]"
+            )
+        elif memory_status == "migrated":
+            console.print(
+                f"[dim]{t('chat.memory.migrated', path=self.workplace_path / 'CHCODE.md')}[/dim]"
+            )
+        # 会话起点：清空冻结缓存并建立变更检测基线
+        reset_memory_cache()
+        refresh_memory_state(self.workplace_path)
 
         self.session_mgr: SessionManager = SessionManager(self.workplace_path)  # 初始化历史会话管理器
 
@@ -600,6 +653,8 @@ class ChatREPL:
     async def _cmd_new(self, _arg: str) -> None:
         reset_budget_state()
         self.session_mgr.new_session()
+        reset_memory_cache()  # 新会话：记忆冻结块失效重读
+        refresh_memory_state(self.workplace_path)
         render_success(t("chat.new_session_started"))
 
     # 模型配置
@@ -780,6 +835,9 @@ class ChatREPL:
 
         if not await confirm(t("chat.compress.confirm"), default=True):
             return  # 如果拒绝直接退出
+
+        reset_memory_cache()  # 压缩重建上下文：记忆冻结块失效重读
+        refresh_memory_state(self.workplace_path)
 
         render_info(t("chat.compress.working"))
         try:
@@ -1031,6 +1089,11 @@ class ChatREPL:
         # 重建子目录（skill和会话 等目录）
         self._ensure_chat_dir(self.workplace_path)
 
+        # 新目录同样确保 CHCODE.md 项目记忆存在
+        await asyncio.to_thread(ensure_project_memory, self.workplace_path)
+        reset_memory_cache()  # 切目录：记忆冻结块失效，重读新目录
+        refresh_memory_state(self.workplace_path)
+
         # 关闭旧 checkpointer（会话） 连接，重建会话和 agent
         await self._rebuild_agent(rebuild_session=True)
 
@@ -1095,6 +1158,9 @@ class ChatREPL:
 
         state = await self.agent.aget_state(self.session_mgr.config) # 取出 agent 当前 state
         messages: list[BaseMessage] = state.values.get("messages", []) # 从state中获取消息列表
+        # 跳过 hide 标记的元消息（如压缩生成的提示/摘要），不参与编辑/分叉/删除。
+        # CHCODE.md 变更提醒挂的是用户消息的 memory_note metadata，不受此过滤影响
+        messages = [m for m in messages if not m.additional_kwargs.get("hide")]
 
         groups = _group_messages_by_turn(messages) # 按照 从某个HumanMessage到下一个HumanMessage的上一个消息为一组 来对消息进行分组
         if not groups: # 消息列表中没有消息
@@ -1428,6 +1494,15 @@ class ChatREPL:
             else:
                 input_data = {"messages": user_input}
 
+            # CHCODE.md 外部修改检测（用户回合边界）：变更提醒挂到本轮用户消息的
+            # metadata，落库随历史整场携带；渲染只读 content 天然不可见，
+            # 传模型时由中间件展开（注入/剥离）
+            # （单次 stat + 偶发小读，直接同步调用，避免挤占 to_thread 序列）
+            if self.workplace_path:
+                memory_note = check_memory_changed(self.workplace_path)
+                if memory_note:
+                    input_data = _attach_memory_note(input_data, memory_note)
+
             # 保存原始输入，用于模型切换后重试时重置 input_data
             _original_input_data = input_data
 
@@ -1633,6 +1708,34 @@ class ChatREPL:
                         content = args.get("command", "")
                     case "write_file":
                         content = t("hitl.write_file", path=args.get('file_path'), content=args.get('content', '')[:200])
+                    case "update_memory":
+                        # 预演写入（不落盘），渲染红删绿增 diff（同 edit 工具审批）
+                        content = None  # 已直接渲染，跳过通用渲染
+                        _section = args.get("section", "")
+                        _mode = args.get("mode", "append")
+                        render_warning(
+                            t("hitl.update_memory", section=_section, mode=_mode)
+                        )
+                        try:
+                            # 单文件小读 + 纯 CPU 对比，直接同步调用，
+                            # 避免挤占 to_thread 序列（同 check_memory_changed）
+                            _old, _new = preview_memory_entry(
+                                self.workplace_path,
+                                _section,
+                                args.get("content", ""),
+                                _mode,
+                            )
+                            _added, _removed = diff_memory_lines(_old, _new)
+                        except ValueError as e:
+                            # 参数校验失败（超长条目 / 超容量 / 非法 mode 等）
+                            console.print(
+                                Text(
+                                    f"  {t('hitl.memory.preview_failed', error=e)}",
+                                    style="yellow",
+                                )
+                            )
+                        else:
+                            self._render_memory_preview(_added, _removed)
                     case "edit":
                         file_path = args.get("file_path", "")
                         old_str = args.get("old_string", "")
@@ -1747,6 +1850,25 @@ class ChatREPL:
                 decisions.append(decision)
 
         return decisions
+
+    _MEMORY_PREVIEW_MAX_LINES = 50
+
+    def _render_memory_preview(self, added: list[str], removed: list[str]) -> None:
+        """渲染 CHCODE.md 写入预览：红删绿增的紧凑 diff"""
+        # 删除行在前（红 -），新增行在后（绿 +）
+        for ln in removed[: self._MEMORY_PREVIEW_MAX_LINES]:
+            console.print(Text(f"  - {ln}", style="red"))
+        for ln in added[: self._MEMORY_PREVIEW_MAX_LINES]:
+            console.print(Text(f"  + {ln}", style="green"))
+        # 两列表各自超出上限的部分之和才是真实省略行数
+        omitted = sum(
+            max(0, len(lines) - self._MEMORY_PREVIEW_MAX_LINES)
+            for lines in (removed, added)
+        )
+        if omitted > 0:
+            console.print(
+                Text(f"  {t('hitl.memory.more_lines', n=omitted)}", style="dim")
+            )
 
     async def _load_conversation(self) -> None:
         """加载当前会话的对话历史并渲染"""

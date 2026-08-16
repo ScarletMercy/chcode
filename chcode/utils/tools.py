@@ -37,6 +37,7 @@ from chcode.utils.shell import (
     interpret_command_result,
 )
 from chcode.utils.skill_loader import SkillAgentContext
+from chcode.utils.project_memory import save_memory_entry
 from chcode.utils.multimodal import _ALL_MEDIA_EXTS
 from tavily import TavilyClient
 
@@ -323,6 +324,60 @@ async def write_file(
 
     except Exception as e:
         return f"write:\n[FAILED] Failed to write file: {str(e)}"
+
+
+@tool
+async def update_memory(
+    section: str,
+    content: str,
+    mode: str = "append",
+    *,
+    runtime: ToolRuntime[SkillAgentContext],
+) -> str:
+    """
+    Save or update persistent project knowledge in CHCODE.md.
+
+    Use this whenever you learn a durable, reusable fact about the project:
+    common commands, package manager type, build/test/verify steps, coding
+    conventions, prohibitions, or pitfalls encountered. Do NOT use it for
+    anything tied to the current task or conversation only.
+
+    Rules for entries:
+    - Each entry must be under 500 characters, action-related, and phrased
+      as a constraint (MUST / NEVER / ALWAYS) — never a vague suggestion.
+    - NEVER save: complete API documentation, session history or changelogs,
+      empty slogans, expired rules, or temporary task state.
+    - When CHCODE.md is over capacity, append is rejected; clean it up with
+      mode="replace" first (remove or merge outdated entries).
+
+    Args:
+        section: Target section. Prefer canonical sections: Project Overview,
+            Development Style, Project Structure, Common Commands, Coding
+            Standards, Prohibitions, Verification Workflow, Pitfalls (Chinese
+            equivalents are accepted). An existing header in CHCODE.md also
+            works; unknown names create a new section.
+        content: The entry. For mode="append", a short constraint-style
+            sentence (becomes one bullet). For mode="replace", the full new
+            body of the section.
+        mode: "append" adds an entry under the section; "replace" rewrites
+            the section body (use to update or clean outdated entries).
+    """
+    render_tool_call("update_memory", f"[{mode}] {section}")
+
+    try:
+        result = await asyncio.to_thread(
+            save_memory_entry,
+            runtime.context.working_directory,
+            section,
+            content,
+            mode,
+        )
+        return f"update_memory:\n[OK] {result}"
+
+    except ValueError as e:
+        return f"update_memory:\n[FAILED] {str(e)}"
+    except Exception as e:
+        return f"update_memory:\n[FAILED] Failed to update CHCODE.md: {str(e)}"
 
 
 @tool
@@ -1535,6 +1590,7 @@ ALL_TOOLS = [
     bash,
     read_file,
     write_file,
+    update_memory,
     glob,
     grep,
     edit,

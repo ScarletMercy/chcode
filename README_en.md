@@ -51,6 +51,14 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 - **Context compression** — auto-summarize when approaching token limit
 - Real-time **context usage display** in status bar
 
+### Project Memory (CHCODE.md)
+
+- **Auto-creates CHCODE.md** on first run in a project directory, accumulating cross-session project knowledge (common commands, package manager, coding standards, prohibitions, verification workflow, pitfalls, etc.)
+- **Auto-migrates** a non-empty `CLAUDE.md` into an empty `CHCODE.md` (original file kept); afterwards `CHCODE.md` always takes precedence
+- Injected into the conversation context as a `<system-reminder>` meta message every session; external edits reach the model next turn as an incremental diff reminder
+- Save memories via the dedicated `update_memory` tool (approval required in Common mode); entries are enforced to be **brief, action-related, and constraint-phrased** — no API docs, changelogs, or empty slogans
+- **Three-layer capacity control** — above 8K chars the AI is nudged to clean outdated entries; above 16K injection is truncated and appends are blocked (clean-before-add); the file itself is never silently modified
+
 ### Message Management & Shadow Repo (Git-aware)
 
 - **Shadow repo isolation** — working-directory rollbacks caused by history edits and branches are performed in an isolated shadow repo, fully separated from your working repo and never polluting real code

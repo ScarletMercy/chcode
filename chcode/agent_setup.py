@@ -27,7 +27,7 @@ from langchain.agents.middleware.context_editing import (
     ClearToolUsesEdit,
 )
 from langchain.agents.middleware.summarization import SummarizationMiddleware
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain.tools.tool_node import ToolCallRequest
 from langgraph.types import Command
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -35,6 +35,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
 from chcode.utils.multimodal import is_multimodal_model
 from chcode.utils.skill_loader import SkillAgentContext
+from chcode.utils.project_memory import build_memory_reminder
 from chcode.display import console
 from chcode.i18n import t
 from chcode.utils.tool_result_pipeline import (
@@ -160,7 +161,7 @@ async def emit_tool_events(
     args = request.tool_call.get("args", {})
     summary = ""
     for key in ("command", "file_path", "pattern", "query", "url", "question",
-                "task", "filePath", "skill_name", "path", "prompt", "image_path"):
+                "task", "filePath", "skill_name", "path", "prompt", "image_path", "section"):
         if key in args:
             summary = str(args[key])[:80]
             break
@@ -334,6 +335,7 @@ async def load_skills(request: ModelRequest) -> str:
 Tools:
 - bash: execute shell commands and scripts. Stop immediately if the user refuses.
 - read_file: view file content; write_file: create or save files; edit: modify existing files. Always read before write, prefer edit over write_file.
+- update_memory: save durable project knowledge (commands, conventions, prohibitions, pitfalls) to CHCODE.md; keep entries brief and constraint-style.
 - glob: find files by name pattern; grep: search file contents with regex; list_dir: browse directory structure.
 - web_search: search the Internet; web_fetch: fetch and read a URL's content.
 - ask_user: present choices to the user and collect their input or confirmation.
@@ -349,6 +351,7 @@ Tools:
 Tools:
 - bash: execute shell commands and scripts. Stop immediately if the user refuses.
 - read_file: view file content; write_file: create or save files; edit: modify existing files. Always read before write, prefer edit over write_file.
+- update_memory: save durable project knowledge (commands, conventions, prohibitions, pitfalls) to CHCODE.md; keep entries brief and constraint-style.
 - glob: find files by name pattern; grep: search file contents with regex; list_dir: browse directory structure.
 - web_search: search the Internet; web_fetch: fetch and read a URL's content.
 - ask_user: present choices to the user and collect their input or confirmation.
@@ -367,7 +370,49 @@ Tools:
         agents_section += "\n- general-purpose: full-capability tasks including reading, writing, and executing code"
     base_prompt += agents_section
 
+    # CHCODE.md 维护指引（静态文本；记忆内容由 inject_project_memory
+    # 以 <system-reminder> 元消息前置注入，会话内字节稳定以保前缀缓存）
+    base_prompt += """
+
+Project Memory (CHCODE.md):
+- CHCODE.md is the persistent project memory; its contents are provided in the conversation context. Whenever you learn a durable, reusable fact about this project — common commands, package manager type, build/test/verify steps, coding conventions, prohibitions, pitfalls encountered — save it immediately with the update_memory tool.
+- Every entry MUST be brief, action-related, and phrased as a constraint (MUST / NEVER / ALWAYS), never a vague suggestion.
+- When an entry becomes outdated or wrong, fix it with mode="replace"; remove entries that no longer apply.
+- NEVER save: complete API documentation, session history or changelogs, empty slogans, expired rules, or temporary task state."""
+
     return await asyncio.to_thread(skill_loader.build_system_prompt, base_prompt)
+
+
+@wrap_model_call
+async def inject_project_memory(
+    request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
+) -> ModelResponse:
+    """
+    每次模型调用注入项目记忆（注入/剥离式）：
+    - CHCODE.md 冻结块包成 <system-reminder> 元消息前置到消息流最前
+      （会话内字节稳定以保前缀缓存）
+    - 挂在用户消息 metadata（memory_note）上的外部变更提醒，展开拼进
+      该消息 content 尾部 — 状态里只存 metadata，展示层天然不可见；
+      发送副本同步剥离该 metadata，避免随 additional_kwargs 序列化
+      进 API payload 造成内容重复传输
+    """
+    workdir = request.runtime.context.working_directory
+    reminder = await asyncio.to_thread(build_memory_reminder, workdir)
+    messages = [HumanMessage(content=reminder)]
+    for m in request.messages:
+        note = getattr(m, "additional_kwargs", {}).get("memory_note")
+        if isinstance(m, HumanMessage) and note:
+            if isinstance(m.content, str):
+                new_content = f"{m.content}\n\n{note}"
+            else:  # 多模态列表 content：追加文本块
+                new_content = list(m.content) + [{"type": "text", "text": note}]
+            kw = {k: v for k, v in m.additional_kwargs.items() if k != "memory_note"}
+            messages.append(
+                m.model_copy(update={"content": new_content, "additional_kwargs": kw})
+            )
+        else:
+            messages.append(m)
+    return await handler(request.override(messages=messages))
 
 
 @wrap_model_call
@@ -545,6 +590,7 @@ def _build_interrupt_on(yolo: bool) -> dict:
             "bash": {"allowed_decisions": ["approve", "reject"]},
             "edit": {"allowed_decisions": ["approve", "reject"]},
             "write_file": {"allowed_decisions": ["approve", "reject"]},
+            "update_memory": {"allowed_decisions": ["approve", "reject"]},
         }
     )
 
@@ -598,6 +644,7 @@ def build_agent(
             detect_parallel_agents,
             tool_result_budget,
             load_skills,
+            inject_project_memory,
             load_model,
             model_retry_with_backoff,
             fix_messages,
