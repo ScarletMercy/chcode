@@ -1143,18 +1143,38 @@ class ChatREPL:
         )
 
     async def _cmd_danger(self, _arg: str) -> None:
-        from chcode.utils.shell.guard import set_guard_enabled
-
-        action = await select(
-            t("chat.danger.select"),
-            [t("chat.danger.on"), t("chat.danger.off")],
+        from chcode.utils.shell.guard import (
+            ALL_CATEGORIES,
+            get_disabled_categories,
+            set_category_enabled,
+            set_guard_enabled,
         )
-        if action is None:
+
+        category_labels = {
+            "recursive_delete": t("chat.danger.cat_recursive_delete"),
+            "force_kill": t("chat.danger.cat_force_kill"),
+            "system_damage": t("chat.danger.cat_system_damage"),
+            "shutdown": t("chat.danger.cat_shutdown"),
+        }
+
+        disabled = get_disabled_categories()
+        labels = [category_labels[cat] for cat in ALL_CATEGORIES]
+        preselected = [
+            category_labels[cat] for cat in ALL_CATEGORIES if cat not in disabled
+        ]
+
+        selected = await checkbox(t("chat.danger.select"), labels, checked=preselected)
+        if selected is None:
             return
-        enable = action == t("chat.danger.on")
-        set_guard_enabled(enable)
-        state_key = "chat.danger.state_on" if enable else "chat.danger.state_off"
-        render_success(t("chat.danger.switched", state=t(state_key)))
+
+        selected_set = set(selected)
+        for cat in ALL_CATEGORIES:
+            set_category_enabled(cat, category_labels[cat] in selected_set)
+
+        # 多选框即总开关的真相源：勾选≥1 → 开；全取消 → 关
+        set_guard_enabled(bool(selected))
+
+        render_success(t("chat.danger.switched"))
 
     async def _cmd_help(self, _arg: str) -> None:
         from rich.table import Table

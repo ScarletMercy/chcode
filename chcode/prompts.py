@@ -50,13 +50,21 @@ async def confirm(message: str, default: bool = True) -> bool:
     return await asyncio.to_thread(_ask)
 
 
-async def checkbox(message: str, choices: list[str]) -> list[str]:
-    """多选框"""
+async def checkbox(
+    message: str,
+    choices: list[str],
+    checked: list[str] | None = None,
+) -> list[str]:
+    """多选框。checked 为预勾选的选项子集。"""
 
     def _ask():
-        return questionary.checkbox(message=message, choices=choices).ask()
+        q_choices = [
+            questionary.Choice(title=c, checked=c in (checked or []))
+            for c in choices
+        ]
+        return questionary.checkbox(message=message, choices=q_choices).ask()
 
-    return await asyncio.to_thread(_ask) or []
+    return await asyncio.to_thread(_ask)
 
 
 async def text(message: str, default: str = "") -> str:

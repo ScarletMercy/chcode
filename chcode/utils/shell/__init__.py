@@ -1,8 +1,12 @@
 from chcode.utils.shell.guard import (
+    ALL_CATEGORIES,
     GuardResult,
     check_command,
     ensure_guard_config_written,
+    get_disabled_categories,
+    is_category_enabled,
     is_guard_enabled,
+    set_category_enabled,
     set_guard_enabled,
 )
 from chcode.utils.shell.output import TruncatedOutput, truncate_output
@@ -26,4 +30,8 @@ __all__ = [
     "set_guard_enabled",
     "is_guard_enabled",
     "ensure_guard_config_written",
+    "ALL_CATEGORIES",
+    "set_category_enabled",
+    "is_category_enabled",
+    "get_disabled_categories",
 ]

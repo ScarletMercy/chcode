@@ -596,59 +596,76 @@ class TestChatREPLSlashCommands:
             assert os.environ.get("LANGSMITH_TRACING") == original
 
     @pytest.mark.asyncio
-    async def test_cmd_danger_enable(self):
-        from chcode.utils.shell.guard import is_guard_enabled, set_guard_enabled
+    async def test_cmd_danger_select_all(self):
+        from chcode.utils.shell.guard import get_disabled_categories, is_category_enabled
 
-        set_guard_enabled(False)  # 前置：从关闭状态开始
         repl = ChatREPL()
 
         with (
-            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.checkbox", new_callable=AsyncMock) as mock_cb,
             patch("chcode.config._update_setting"),
             patch("chcode.chat.render_success"),
         ):
-            mock_sel.return_value = t("chat.danger.on")
+            # 用户全选所有类别
+            mock_cb.return_value = [
+                t("chat.danger.cat_recursive_delete"),
+                t("chat.danger.cat_force_kill"),
+                t("chat.danger.cat_system_damage"),
+                t("chat.danger.cat_shutdown"),
+            ]
             await repl._cmd_danger("")
 
-            assert is_guard_enabled() is True
+            for cat in ("recursive_delete", "force_kill", "system_damage", "shutdown"):
+                assert is_category_enabled(cat) is True
+            assert get_disabled_categories() == set()
 
     @pytest.mark.asyncio
-    async def test_cmd_danger_disable(self):
-        from chcode.utils.shell.guard import is_guard_enabled, set_guard_enabled
+    async def test_cmd_danger_deselect_recursive_delete(self):
+        from chcode.utils.shell.guard import get_disabled_categories, is_category_enabled
 
-        set_guard_enabled(True)  # 前置：从开启状态开始
         repl = ChatREPL()
 
         try:
             with (
-                patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+                patch("chcode.chat.checkbox", new_callable=AsyncMock) as mock_cb,
                 patch("chcode.config._update_setting"),
                 patch("chcode.chat.render_success"),
             ):
-                mock_sel.return_value = t("chat.danger.off")
+                # 用户取消勾选"递归删除"
+                mock_cb.return_value = [
+                    t("chat.danger.cat_force_kill"),
+                    t("chat.danger.cat_system_damage"),
+                    t("chat.danger.cat_shutdown"),
+                ]
                 await repl._cmd_danger("")
 
-                assert is_guard_enabled() is False
+                assert is_category_enabled("recursive_delete") is False
+                assert is_category_enabled("force_kill") is True
+                assert is_category_enabled("system_damage") is True
+                assert is_category_enabled("shutdown") is True
+                assert get_disabled_categories() == {"recursive_delete"}
         finally:
-            # 复位模块级开关，避免泄漏到其它测试（尤其是 test_guard.py 的拦截用例）
-            set_guard_enabled(True)
+            from chcode.utils.shell.guard import set_category_enabled
+            set_category_enabled("recursive_delete", True)
 
     @pytest.mark.asyncio
     async def test_cmd_danger_cancel(self):
-        from chcode.utils.shell.guard import is_guard_enabled, set_guard_enabled
+        from chcode.utils.shell.guard import get_disabled_categories, is_guard_enabled
 
-        set_guard_enabled(True)
         repl = ChatREPL()
+        before = get_disabled_categories()
+        master_before = is_guard_enabled()
 
         with (
-            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.checkbox", new_callable=AsyncMock) as mock_cb,
             patch("chcode.config._update_setting"),
         ):
-            mock_sel.return_value = None
+            mock_cb.return_value = None
             await repl._cmd_danger("")
 
-            # 取消不改变状态
-            assert is_guard_enabled() is True
+            # 取消不改变状态（类别 + 总开关）
+            assert get_disabled_categories() == before
+            assert is_guard_enabled() == master_before
 
     @pytest.mark.asyncio
     async def test_cmd_langsmith_edit_project(self):

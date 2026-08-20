@@ -31,33 +31,52 @@ class GuardResult:
 # 持久化到 ~/.chat/chagent.json 的 "guard_enabled" 字段，跨会话保留。
 _guard_enabled: bool = True
 
+# 被禁用的拦截类别（这些类别的命令不会被拦截）。可通过 /danger 斜杠命令编辑。
+# 持久化到 ~/.chat/chagent.json 的 "disabled_categories" 字段。
+_disabled_categories: set[str] = set()
 
-def _load_persisted_flag() -> None:
-    """模块加载时从 chagent.json 读取持久化的开关值（失败则保持默认 True）。"""
-    global _guard_enabled
+# 所有可拦截的类别
+ALL_CATEGORIES = ["recursive_delete", "force_kill", "system_damage", "shutdown"]
+
+
+def _load_persisted_state() -> None:
+    """模块加载时从 chagent.json 读取持久化的开关与禁用类别（失败则保持默认值）。"""
+    global _guard_enabled, _disabled_categories
     try:
         from chcode.config import _load_setting
 
-        value = _load_setting().get("guard_enabled")
-        if isinstance(value, bool):
-            _guard_enabled = value
+        data = _load_setting()
+        guard_value = data.get("guard_enabled")
+        if isinstance(guard_value, bool):
+            _guard_enabled = guard_value
+        categories = data.get("disabled_categories")
+        if isinstance(categories, list):
+            _disabled_categories = {c for c in categories if c in ALL_CATEGORIES}
     except Exception:
         pass
 
 
-_load_persisted_flag()
+_load_persisted_state()
+
+
+def _persist() -> None:
+    """将开关状态和禁用类别持久化到 chagent.json。"""
+    try:
+        from chcode.config import _update_setting
+
+        _update_setting(
+            guard_enabled=_guard_enabled,
+            disabled_categories=sorted(_disabled_categories),
+        )
+    except Exception:
+        pass
 
 
 def set_guard_enabled(enabled: bool) -> None:
     """设置危险命令拦截总开关，并持久化到 ~/.chat/chagent.json。"""
     global _guard_enabled
     _guard_enabled = enabled
-    try:
-        from chcode.config import _update_setting
-
-        _update_setting(guard_enabled=enabled)
-    except Exception:
-        pass
+    _persist()
 
 
 def is_guard_enabled() -> bool:
@@ -65,18 +84,46 @@ def is_guard_enabled() -> bool:
     return _guard_enabled
 
 
-def ensure_guard_config_written() -> None:
-    """确保 chagent.json 中存在 guard_enabled 字段。
+def set_category_enabled(category: str, enabled: bool) -> None:
+    """启用或禁用某个拦截类别，并持久化。无效类别静默忽略。"""
+    global _disabled_categories
+    if category not in ALL_CATEGORIES:
+        return
+    if enabled:
+        _disabled_categories.discard(category)
+    else:
+        _disabled_categories.add(category)
+    _persist()
 
-    首次初始化时若字段缺失，写入默认值 True（拦截开启），使用户配置可见；
+
+def is_category_enabled(category: str) -> bool:
+    """查询某个拦截类别是否启用（未被禁用）。"""
+    return category not in _disabled_categories
+
+
+def get_disabled_categories() -> set[str]:
+    """获取所有被禁用的拦截类别。"""
+    return set(_disabled_categories)
+
+
+def ensure_guard_config_written() -> None:
+    """确保 chagent.json 中存在 guard_enabled 和 disabled_categories 字段。
+
+    首次初始化时若字段缺失，写入默认值（拦截开启、无禁用类别），使用户配置可见；
     已存在则不做任何操作，避免覆盖用户已保存的偏好。
     应在 ChatREPL.initialize() 中、ensure_config_dir() 之后调用。
     """
     try:
         from chcode.config import _load_setting, _update_setting
 
-        if "guard_enabled" not in _load_setting():
-            _update_setting(guard_enabled=True)
+        data = _load_setting()
+        updated: dict[str, object] = {}
+        if "guard_enabled" not in data:
+            updated["guard_enabled"] = True
+        if "disabled_categories" not in data:
+            updated["disabled_categories"] = []
+        if updated:
+            _update_setting(**updated)
     except Exception:
         pass
 
@@ -223,7 +270,7 @@ def check_command(command: str) -> GuardResult:
     """检查命令字符串是否命中危险规则。
 
     命中任意一条即返回 blocked=True 及其类别；未命中返回 blocked=False。
-    对空命令直接放行。总开关关闭时一律放行。
+    对空命令直接放行。总开关关闭时一律放行。被禁用的类别也放行。
     """
     if not _guard_enabled:
         return GuardResult(blocked=False)
@@ -237,11 +284,15 @@ def check_command(command: str) -> GuardResult:
             continue
         match = _match_position(first, second)
         if match is not None:
-            return GuardResult(blocked=True, category=match[0], pattern_id=match[1])
+            category, pattern_id = match
+            if category not in _disabled_categories:
+                return GuardResult(blocked=True, category=category, pattern_id=pattern_id)
 
     # 上下文/标志规则
     text = command.strip()
     for category, rules in _CONTEXT_RULES.items():
+        if category in _disabled_categories:
+            continue
         for pattern_id, pattern in rules:
             if pattern.search(text):
                 return GuardResult(blocked=True, category=category, pattern_id=pattern_id)

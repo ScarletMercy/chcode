@@ -1176,28 +1176,28 @@ MESSAGES = {
     },
     # ─── /danger ───
     "chat.danger.select": {
-        "zh": "危险命令拦截:",
-        "en": "Dangerous command guard:",
-    },
-    "chat.danger.on": {
-        "zh": "开启 (自动拦截危险命令)",
-        "en": "On (auto-block dangerous commands)",
-    },
-    "chat.danger.off": {
-        "zh": "关闭 (允许所有命令)",
-        "en": "Off (allow all commands)",
+        "zh": "选择要拦截的危险类别:",
+        "en": "Select categories to block:",
     },
     "chat.danger.switched": {
-        "zh": "危险命令拦截已{state}",
-        "en": "Dangerous command guard {state}",
+        "zh": "已更新拦截设置",
+        "en": "Guard settings updated",
     },
-    "chat.danger.state_on": {
-        "zh": "开启",
-        "en": "enabled",
+    "chat.danger.cat_recursive_delete": {
+        "zh": "递归删除 (rm -rf / rd /s / Remove-Item -Recurse)",
+        "en": "Recursive delete (rm -rf / rd /s / Remove-Item -Recurse)",
     },
-    "chat.danger.state_off": {
-        "zh": "关闭",
-        "en": "disabled",
+    "chat.danger.cat_force_kill": {
+        "zh": "强制杀进程 (kill -9 / taskkill /f / Stop-Process -Force)",
+        "en": "Force kill (kill -9 / taskkill /f / Stop-Process -Force)",
+    },
+    "chat.danger.cat_system_damage": {
+        "zh": "系统损坏 (mkfs / dd 裸盘 / fork bomb)",
+        "en": "System damage (mkfs / dd raw disk / fork bomb)",
+    },
+    "chat.danger.cat_shutdown": {
+        "zh": "关机/重启 (shutdown / reboot / halt / init 0|6)",
+        "en": "Shutdown/reboot (shutdown / reboot / halt / init 0|6)",
     },
     "cmd.quit": {
         "zh": "退出",

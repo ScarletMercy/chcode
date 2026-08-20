@@ -4,7 +4,10 @@ import pytest
 
 from chcode.utils.shell.guard import (
     check_command,
+    get_disabled_categories,
+    is_category_enabled,
     is_guard_enabled,
+    set_category_enabled,
     set_guard_enabled,
 )
 
@@ -16,12 +19,17 @@ def _mock_persistence():
         patch("chcode.config._load_setting", return_value={}),
         patch("chcode.config._update_setting"),
     ):
-        # 模块级 _load_persisted_flag 已在本 fixture 之前跑过（导入时），
-        # 这里再强制复位到默认 True，保证用例起点一致。
         set_guard_enabled(True)
-        # is_guard_enabled 读的是内存变量，但 set_guard_enabled 会触发 mock 的写盘——无害。
+        set_category_enabled("recursive_delete", True)
+        set_category_enabled("force_kill", True)
+        set_category_enabled("system_damage", True)
+        set_category_enabled("shutdown", True)
         yield
         set_guard_enabled(True)
+        set_category_enabled("recursive_delete", True)
+        set_category_enabled("force_kill", True)
+        set_category_enabled("system_damage", True)
+        set_category_enabled("shutdown", True)
 
 
 class TestGuardToggle:
@@ -66,36 +74,36 @@ class TestGuardPersistence:
     def test_set_guard_enabled_writes_to_settings(self):
         with patch("chcode.config._update_setting") as mock_update:
             set_guard_enabled(False)
-            mock_update.assert_called_once_with(guard_enabled=False)
+            mock_update.assert_called_once_with(guard_enabled=False, disabled_categories=[])
             set_guard_enabled(True)
-            assert mock_update.call_args.kwargs == {"guard_enabled": True}
+            assert mock_update.call_args.kwargs["guard_enabled"] is True
 
-    def test_load_persisted_flag_applies_saved_value(self):
+    def test_load_persisted_state_applies_saved_value(self):
         # 模拟 chagent.json 中已保存 guard_enabled=False
         with patch("chcode.config._load_setting", return_value={"guard_enabled": False}):
-            from chcode.utils.shell.guard import _load_persisted_flag
+            from chcode.utils.shell.guard import _load_persisted_state
 
-            _load_persisted_flag()
+            _load_persisted_state()
             assert is_guard_enabled() is False
 
-    def test_load_persisted_flag_ignores_non_bool(self):
+    def test_load_persisted_state_ignores_non_bool(self):
         # 非 bool 值应被忽略，保持默认 True
         with patch("chcode.config._load_setting", return_value={"guard_enabled": "yes"}):
-            from chcode.utils.shell.guard import _load_persisted_flag
+            from chcode.utils.shell.guard import _load_persisted_state
 
-            _load_persisted_flag()
+            _load_persisted_state()
             assert is_guard_enabled() is True
 
-    def test_load_persisted_flag_swallows_errors(self):
+    def test_load_persisted_state_swallows_errors(self):
         # 读盘异常不应抛错，保持默认值
         with patch("chcode.config._load_setting", side_effect=Exception("disk error")):
-            from chcode.utils.shell.guard import _load_persisted_flag
+            from chcode.utils.shell.guard import _load_persisted_state
 
-            _load_persisted_flag()
+            _load_persisted_state()
             assert is_guard_enabled() is True
 
     def test_ensure_guard_config_written_writes_default_when_missing(self):
-        # chagent.json 中无 guard_enabled → 写入默认 True
+        # chagent.json 中无字段 → 写入默认值（guard_enabled=True, disabled_categories=[]）
         with (
             patch("chcode.config._load_setting", return_value={}),
             patch("chcode.config._update_setting") as mock_update,
@@ -103,18 +111,35 @@ class TestGuardPersistence:
             from chcode.utils.shell.guard import ensure_guard_config_written
 
             ensure_guard_config_written()
-            mock_update.assert_called_once_with(guard_enabled=True)
+            mock_update.assert_called_once_with(guard_enabled=True, disabled_categories=[])
 
     def test_ensure_guard_config_written_does_not_overwrite_existing(self):
-        # chagent.json 中已有 guard_enabled=False → 不覆盖
+        # chagent.json 中两个字段都已存在 → 不写入
         with (
-            patch("chcode.config._load_setting", return_value={"guard_enabled": False}),
+            patch(
+                "chcode.config._load_setting",
+                return_value={"guard_enabled": False, "disabled_categories": ["force_kill"]},
+            ),
             patch("chcode.config._update_setting") as mock_update,
         ):
             from chcode.utils.shell.guard import ensure_guard_config_written
 
             ensure_guard_config_written()
             mock_update.assert_not_called()
+
+    def test_ensure_guard_config_written_fills_missing_disabled_categories(self):
+        # guard_enabled 已存在但 disabled_categories 缺失 → 只补写后者
+        with (
+            patch(
+                "chcode.config._load_setting",
+                return_value={"guard_enabled": False},
+            ),
+            patch("chcode.config._update_setting") as mock_update,
+        ):
+            from chcode.utils.shell.guard import ensure_guard_config_written
+
+            ensure_guard_config_written()
+            mock_update.assert_called_once_with(disabled_categories=[])
 
     def test_ensure_guard_config_written_swallows_errors(self):
         with (
@@ -125,3 +150,87 @@ class TestGuardPersistence:
 
             ensure_guard_config_written()
             mock_update.assert_not_called()
+
+
+class TestCategoryToggle:
+    """按类别控制拦截"""
+
+    def test_disable_recursive_delete_category(self):
+        set_category_enabled("recursive_delete", False)
+        assert is_category_enabled("recursive_delete") is False
+        # rm -rf 不再被拦截
+        assert check_command("rm -rf /").blocked is False
+        # 其他类别仍拦截
+        assert check_command("shutdown -h now").blocked is True
+        assert check_command("kill -9 1234").blocked is True
+
+    def test_disable_force_kill_category(self):
+        set_category_enabled("force_kill", False)
+        assert check_command("kill -9 1234").blocked is False
+        assert check_command("taskkill /f /im app.exe").blocked is False
+        # 其他类别不受影响
+        assert check_command("rm -rf /").blocked is True
+
+    def test_disable_system_damage_category(self):
+        set_category_enabled("system_damage", False)
+        assert check_command("mkfs.ext4 /dev/sda1").blocked is False
+        assert check_command("dd if=/dev/zero of=/dev/sda").blocked is False
+        # 其他类别仍拦截
+        assert check_command("reboot").blocked is True
+
+    def test_disable_shutdown_category(self):
+        set_category_enabled("shutdown", False)
+        assert check_command("shutdown -h now").blocked is False
+        assert check_command("reboot").blocked is False
+        assert check_command("init 0").blocked is False
+        # 其他类别仍拦截
+        assert check_command("rm -rf /").blocked is True
+
+    def test_multiple_disabled_categories(self):
+        set_category_enabled("recursive_delete", False)
+        set_category_enabled("force_kill", False)
+        assert check_command("rm -rf /").blocked is False
+        assert check_command("kill -9 1234").blocked is False
+        assert check_command("shutdown -h now").blocked is True
+
+    def test_reenable_category(self):
+        set_category_enabled("recursive_delete", False)
+        assert check_command("rm -rf /").blocked is False
+        set_category_enabled("recursive_delete", True)
+        assert check_command("rm -rf /").blocked is True
+
+    def test_get_disabled_categories(self):
+        set_category_enabled("recursive_delete", False)
+        set_category_enabled("system_damage", False)
+        disabled = get_disabled_categories()
+        assert disabled == {"recursive_delete", "system_damage"}
+
+    def test_master_switch_overrides_categories(self):
+        # 总开关关闭时，即使类别启用也不拦截
+        set_guard_enabled(False)
+        assert check_command("rm -rf /").blocked is False
+        assert check_command("shutdown -h now").blocked is False
+
+    def test_set_category_enabled_persists(self):
+        with patch("chcode.config._update_setting") as mock_update:
+            set_category_enabled("recursive_delete", False)
+            mock_update.assert_called_once()
+            kwargs = mock_update.call_args.kwargs
+            assert kwargs["disabled_categories"] == ["recursive_delete"]
+
+    def test_set_category_enabled_ignores_invalid_category(self):
+        set_category_enabled("nonexistent", False)
+        assert "nonexistent" not in get_disabled_categories()
+
+    def test_load_persisted_disabled_categories(self):
+        with patch(
+            "chcode.config._load_setting",
+            return_value={"disabled_categories": ["force_kill", "system_damage"]},
+        ):
+            from chcode.utils.shell.guard import _load_persisted_state
+
+            _load_persisted_state()
+            assert is_category_enabled("force_kill") is False
+            assert is_category_enabled("system_damage") is False
+            assert is_category_enabled("recursive_delete") is True
+            assert is_category_enabled("shutdown") is True
