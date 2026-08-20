@@ -1,6 +1,17 @@
+from unittest.mock import patch
+
 import pytest
 
-from chcode.utils.shell.guard import check_command
+from chcode.utils.shell.guard import check_command, set_guard_enabled
+
+
+@pytest.fixture(autouse=True)
+def _reset_guard_enabled():
+    """每个用例前后复位拦截开关，避免模块级全局状态跨用例（跨文件）泄漏。"""
+    with patch("chcode.config._update_setting"):
+        set_guard_enabled(True)
+        yield
+        set_guard_enabled(True)
 
 
 # (命令, 期望类别) — 应被拦截的危险命令

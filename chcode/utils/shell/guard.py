@@ -27,6 +27,60 @@ class GuardResult:
     pattern_id: str = ""
 
 
+# 危险命令拦截总开关（默认开启）。可通过 /danger 斜杠命令切换。
+# 持久化到 ~/.chat/chagent.json 的 "guard_enabled" 字段，跨会话保留。
+_guard_enabled: bool = True
+
+
+def _load_persisted_flag() -> None:
+    """模块加载时从 chagent.json 读取持久化的开关值（失败则保持默认 True）。"""
+    global _guard_enabled
+    try:
+        from chcode.config import _load_setting
+
+        value = _load_setting().get("guard_enabled")
+        if isinstance(value, bool):
+            _guard_enabled = value
+    except Exception:
+        pass
+
+
+_load_persisted_flag()
+
+
+def set_guard_enabled(enabled: bool) -> None:
+    """设置危险命令拦截总开关，并持久化到 ~/.chat/chagent.json。"""
+    global _guard_enabled
+    _guard_enabled = enabled
+    try:
+        from chcode.config import _update_setting
+
+        _update_setting(guard_enabled=enabled)
+    except Exception:
+        pass
+
+
+def is_guard_enabled() -> bool:
+    """查询危险命令拦截总开关状态。"""
+    return _guard_enabled
+
+
+def ensure_guard_config_written() -> None:
+    """确保 chagent.json 中存在 guard_enabled 字段。
+
+    首次初始化时若字段缺失，写入默认值 True（拦截开启），使用户配置可见；
+    已存在则不做任何操作，避免覆盖用户已保存的偏好。
+    应在 ChatREPL.initialize() 中、ensure_config_dir() 之后调用。
+    """
+    try:
+        from chcode.config import _load_setting, _update_setting
+
+        if "guard_enabled" not in _load_setting():
+            _update_setting(guard_enabled=True)
+    except Exception:
+        pass
+
+
 # 启动器前缀：透明传递，使 sudo halt / doas reboot 仍按命令位置匹配
 _LAUNCHERS = {"sudo", "doas"}
 
@@ -169,8 +223,11 @@ def check_command(command: str) -> GuardResult:
     """检查命令字符串是否命中危险规则。
 
     命中任意一条即返回 blocked=True 及其类别；未命中返回 blocked=False。
-    对空命令直接放行。
+    对空命令直接放行。总开关关闭时一律放行。
     """
+    if not _guard_enabled:
+        return GuardResult(blocked=False)
+
     if not command or not command.strip():
         return GuardResult(blocked=False)
 

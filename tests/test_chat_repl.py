@@ -27,6 +27,7 @@ from chcode.chat import (
     _get_group_display,
     _collect_ids_from_group,
 )
+from chcode.i18n import t
 
 
 # ============================================================================
@@ -593,6 +594,61 @@ class TestChatREPLSlashCommands:
             await repl._cmd_langsmith("")
 
             assert os.environ.get("LANGSMITH_TRACING") == original
+
+    @pytest.mark.asyncio
+    async def test_cmd_danger_enable(self):
+        from chcode.utils.shell.guard import is_guard_enabled, set_guard_enabled
+
+        set_guard_enabled(False)  # 前置：从关闭状态开始
+        repl = ChatREPL()
+
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.config._update_setting"),
+            patch("chcode.chat.render_success"),
+        ):
+            mock_sel.return_value = t("chat.danger.on")
+            await repl._cmd_danger("")
+
+            assert is_guard_enabled() is True
+
+    @pytest.mark.asyncio
+    async def test_cmd_danger_disable(self):
+        from chcode.utils.shell.guard import is_guard_enabled, set_guard_enabled
+
+        set_guard_enabled(True)  # 前置：从开启状态开始
+        repl = ChatREPL()
+
+        try:
+            with (
+                patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+                patch("chcode.config._update_setting"),
+                patch("chcode.chat.render_success"),
+            ):
+                mock_sel.return_value = t("chat.danger.off")
+                await repl._cmd_danger("")
+
+                assert is_guard_enabled() is False
+        finally:
+            # 复位模块级开关，避免泄漏到其它测试（尤其是 test_guard.py 的拦截用例）
+            set_guard_enabled(True)
+
+    @pytest.mark.asyncio
+    async def test_cmd_danger_cancel(self):
+        from chcode.utils.shell.guard import is_guard_enabled, set_guard_enabled
+
+        set_guard_enabled(True)
+        repl = ChatREPL()
+
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.config._update_setting"),
+        ):
+            mock_sel.return_value = None
+            await repl._cmd_danger("")
+
+            # 取消不改变状态
+            assert is_guard_enabled() is True
 
     @pytest.mark.asyncio
     async def test_cmd_langsmith_edit_project(self):

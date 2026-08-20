@@ -1167,8 +1167,37 @@ MESSAGES = {
         "en": "Open project homepage",
     },
     "cmd.help": {
-        "zh": "显示帮助",
+        "zh": "显示帮助信息",
         "en": "Show help",
+    },
+    "cmd.danger": {
+        "zh": "开关危险命令拦截",
+        "en": "Toggle dangerous command guard",
+    },
+    # ─── /danger ───
+    "chat.danger.select": {
+        "zh": "危险命令拦截:",
+        "en": "Dangerous command guard:",
+    },
+    "chat.danger.on": {
+        "zh": "开启 (自动拦截危险命令)",
+        "en": "On (auto-block dangerous commands)",
+    },
+    "chat.danger.off": {
+        "zh": "关闭 (允许所有命令)",
+        "en": "Off (allow all commands)",
+    },
+    "chat.danger.switched": {
+        "zh": "危险命令拦截已{state}",
+        "en": "Dangerous command guard {state}",
+    },
+    "chat.danger.state_on": {
+        "zh": "开启",
+        "en": "enabled",
+    },
+    "chat.danger.state_off": {
+        "zh": "关闭",
+        "en": "disabled",
     },
     "cmd.quit": {
         "zh": "退出",

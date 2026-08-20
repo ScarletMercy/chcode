@@ -104,6 +104,7 @@ SLASH_COMMANDS = {
     "/lang": "cmd.lang",
     "/homepage": "cmd.homepage",
     "/help": "cmd.help",
+    "/danger": "cmd.danger",
     "/quit": "cmd.quit",
 }
 
@@ -365,6 +366,11 @@ class ChatREPL:
     async def initialize(self) -> bool:
         """初始化：加载配置、设置工作目录、构建 agent"""
         ensure_config_dir()  # 确保全局配置目录.chat存在
+
+        # 首次启动时把危险命令拦截的默认开关值写入 chagent.json（若缺失）
+        from chcode.utils.shell import ensure_guard_config_written
+
+        ensure_guard_config_written()
 
         self.workplace_path = Path.cwd()  # 获取当前目录路径
 
@@ -637,6 +643,7 @@ class ChatREPL:
             "/tools": self._cmd_tools,
             "/langsmith": self._cmd_langsmith,
             "/lang": self._cmd_lang,
+            "/danger": self._cmd_danger,
             "/messages": self._cmd_messages,
             "/homepage": self._cmd_homepage,
             "/help": self._cmd_help,
@@ -1134,6 +1141,20 @@ class ChatREPL:
         render_success(
             t("lang.saved_zh") if new_lang == "zh" else t("lang.saved_en")
         )
+
+    async def _cmd_danger(self, _arg: str) -> None:
+        from chcode.utils.shell.guard import set_guard_enabled
+
+        action = await select(
+            t("chat.danger.select"),
+            [t("chat.danger.on"), t("chat.danger.off")],
+        )
+        if action is None:
+            return
+        enable = action == t("chat.danger.on")
+        set_guard_enabled(enable)
+        state_key = "chat.danger.state_on" if enable else "chat.danger.state_off"
+        render_success(t("chat.danger.switched", state=t(state_key)))
 
     async def _cmd_help(self, _arg: str) -> None:
         from rich.table import Table
