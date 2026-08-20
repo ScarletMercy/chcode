@@ -1,3 +1,4 @@
+from chcode.utils.shell.guard import GuardResult, check_command
 from chcode.utils.shell.output import TruncatedOutput, truncate_output
 from chcode.utils.shell.provider import BashProvider, PowerShellProvider, ShellProvider
 from chcode.utils.shell.result import ShellResult
@@ -14,4 +15,6 @@ __all__ = [
     "interpret_command_result",
     "TruncatedOutput",
     "truncate_output",
+    "GuardResult",
+    "check_command",
 ]

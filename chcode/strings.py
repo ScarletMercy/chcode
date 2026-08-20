@@ -1511,6 +1511,27 @@ MESSAGES = {
         "zh": "使用视觉模型分析图片或视频。",
         "en": "Analyze an image or video using a vision model.",
     },
+    # ─── 危险命令拦截中间件 ───
+    "guard.category.recursive_delete": {
+        "zh": "递归删除",
+        "en": "Recursive deletion",
+    },
+    "guard.category.shutdown": {
+        "zh": "关机/重启",
+        "en": "Shutdown/Reboot",
+    },
+    "guard.category.force_kill": {
+        "zh": "强制结束进程",
+        "en": "Force kill process",
+    },
+    "guard.category.system_damage": {
+        "zh": "破坏性系统操作",
+        "en": "Destructive system operation",
+    },
+    "guard.blocked": {
+        "zh": "已拦截危险命令（{category}）：{command}",
+        "en": "Blocked dangerous command ({category}): {command}",
+    },
 }
 
 CATALOGS = {

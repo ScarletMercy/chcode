@@ -9,6 +9,7 @@ import subprocess
 
 from charset_normalizer import from_bytes
 
+from chcode.utils.shell.guard import check_command
 from chcode.utils.shell.output import TruncatedOutput, truncate_output
 from chcode.utils.shell.provider import ShellProvider
 from chcode.utils.shell.result import ShellResult
@@ -38,6 +39,21 @@ class ShellSession:
         timeout: int | None = 120000,
         workdir: str | None = None,
     ) -> tuple[ShellResult, TruncatedOutput]:
+        # 危险命令拦截中间件：在拼装/执行前扫描原始命令，覆盖 bash/powershell/cmd
+        guard = check_command(command)
+        if guard.blocked:
+            from chcode.i18n import t
+
+            reason = t(
+                "guard.blocked",
+                category=t(f"guard.category.{guard.category}"),
+                command=command,
+            )
+            return (
+                ShellResult(exit_code=126, stderr=reason),
+                truncate_output(""),
+            )
+
         cwd_file = self._provider.create_cwd_file()
         full_command = self._provider.build_command(command, cwd_file)
 
