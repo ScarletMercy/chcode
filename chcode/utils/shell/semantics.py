@@ -15,7 +15,10 @@ _RULES: list[tuple[list[str], dict[int, str]]] = [
     (["diff", "compare-object", "fc"], {1: "Files or inputs differ"}),
     (["test", "["], {1: "Test condition evaluated to false"}),
     (["ping"], {1: "Host unreachable or no response"}),
-    (["which", "where", "where.exe", "command", "get-command"], {1: "Command not found"}),
+    (
+        ["which", "where", "where.exe", "command", "get-command"],
+        {1: "Command not found"},
+    ),
     (["type", "cat", "get-content"], {1: "File not found or unreadable"}),
     (["mkdir"], {1: "Directory creation failed"}),
     (["robocopy"], {1: "Files copied successfully (robocopy exit 1 = success)"}),

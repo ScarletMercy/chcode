@@ -29,7 +29,6 @@ def mock_config_dir(tmp_path: Path, monkeypatch):
     return config_dir
 
 
-
 class TestLoadVisionJson:
     """Tests for load_vision_json()."""
 
@@ -84,7 +83,10 @@ class TestSaveVisionJson:
         """Should write dict as formatted JSON to vision_model.json."""
         import chcode.vision_config as mod
 
-        data = {"default": {"model": "save-test"}, "fallback": {"fb1": {"model": "fb1"}}}
+        data = {
+            "default": {"model": "save-test"},
+            "fallback": {"fb1": {"model": "fb1"}},
+        }
         mod.save_vision_json(data)
 
         assert mod.VISION_JSON.exists()
@@ -118,7 +120,9 @@ class TestGetVisionDefaultModel:
         """Should return None if default exists but api_key is empty."""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({"default": {"model": "test", "api_key": ""}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "test", "api_key": ""}, "fallback": {}}
+        )
 
         result = mod.get_vision_default_model()
         assert result is None
@@ -127,7 +131,11 @@ class TestGetVisionDefaultModel:
         """Should return default model when api_key is present."""
         import chcode.vision_config as mod
 
-        expected = {"model": "moonshotai/Kimi-K2.5", "api_key": "secret-key", "base_url": "https://x.com"}
+        expected = {
+            "model": "moonshotai/Kimi-K2.5",
+            "api_key": "secret-key",
+            "base_url": "https://x.com",
+        }
         mod.save_vision_json({"default": expected, "fallback": {}})
 
         result = mod.get_vision_default_model()
@@ -150,14 +158,16 @@ class TestGetVisionFallbackModels:
         """Should return fallback models that have api_key."""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({
-            "default": {"model": "default", "api_key": "k1"},
-            "fallback": {
-                "fb1": {"model": "fb1", "api_key": "k2"},
-                "fb2": {"model": "fb2", "api_key": ""},
-                "fb3": {"model": "fb3", "api_key": "k3"},
+        mod.save_vision_json(
+            {
+                "default": {"model": "default", "api_key": "k1"},
+                "fallback": {
+                    "fb1": {"model": "fb1", "api_key": "k2"},
+                    "fb2": {"model": "fb2", "api_key": ""},
+                    "fb3": {"model": "fb3", "api_key": "k3"},
+                },
             }
-        })
+        )
 
         result = mod.get_vision_fallback_models()
 
@@ -197,13 +207,18 @@ class TestDetectModelscopeApiKey:
 
         monkeypatch.delenv("ModelScopeToken", raising=False)
         model_json = mock_config_dir / "model.json"
-        model_json.write_text(json.dumps({
-            "default": {
-                "model": "test",
-                "api_key": "json-key",
-                "base_url": "https://api-inference.modelscope.cn/v1"
-            }
-        }), encoding="utf-8")
+        model_json.write_text(
+            json.dumps(
+                {
+                    "default": {
+                        "model": "test",
+                        "api_key": "json-key",
+                        "base_url": "https://api-inference.modelscope.cn/v1",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = mod._detect_modelscope_api_key(mod.MODELSCOPE_BASE_URL)
 
@@ -215,15 +230,22 @@ class TestDetectModelscopeApiKey:
 
         monkeypatch.delenv("ModelScopeToken", raising=False)
         model_json = mock_config_dir / "model.json"
-        model_json.write_text(json.dumps({
-            "default": {
-                "model": "test",
-                "api_key": "intl-key",
-                "base_url": "https://api-inference.modelscope.ai/v1"
-            }
-        }), encoding="utf-8")
+        model_json.write_text(
+            json.dumps(
+                {
+                    "default": {
+                        "model": "test",
+                        "api_key": "intl-key",
+                        "base_url": "https://api-inference.modelscope.ai/v1",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
 
-        assert mod._detect_modelscope_api_key(mod.MODELSCOPE_INTL_BASE_URL) == "intl-key"
+        assert (
+            mod._detect_modelscope_api_key(mod.MODELSCOPE_INTL_BASE_URL) == "intl-key"
+        )
         assert mod._detect_modelscope_api_key(mod.MODELSCOPE_BASE_URL) is None
 
     def test_checks_model_json_fallback(self, mock_config_dir, monkeypatch):
@@ -232,20 +254,25 @@ class TestDetectModelscopeApiKey:
 
         monkeypatch.delenv("ModelScopeToken", raising=False)
         model_json = mock_config_dir / "model.json"
-        model_json.write_text(json.dumps({
-            "default": {
-                "model": "other",
-                "api_key": "other-key",
-                "base_url": "https://other.com"
-            },
-            "fallback": {
-                "ms-model": {
-                    "model": "ms-model",
-                    "api_key": "fb-key",
-                    "base_url": "https://api-inference.modelscope.cn/v1"
+        model_json.write_text(
+            json.dumps(
+                {
+                    "default": {
+                        "model": "other",
+                        "api_key": "other-key",
+                        "base_url": "https://other.com",
+                    },
+                    "fallback": {
+                        "ms-model": {
+                            "model": "ms-model",
+                            "api_key": "fb-key",
+                            "base_url": "https://api-inference.modelscope.cn/v1",
+                        }
+                    },
                 }
-            }
-        }), encoding="utf-8")
+            ),
+            encoding="utf-8",
+        )
 
         result = mod._detect_modelscope_api_key(mod.MODELSCOPE_BASE_URL)
 
@@ -319,10 +346,16 @@ class TestAutoConfigureVision:
         import chcode.vision_config as mod
 
         monkeypatch.setenv("ModelScopeToken", "same-key")
-        mod.save_vision_json({
-            "default": {"model": "keep-this", "api_key": "same-key", "base_url": mod.MODELSCOPE_BASE_URL},
-            "fallback": {}
-        })
+        mod.save_vision_json(
+            {
+                "default": {
+                    "model": "keep-this",
+                    "api_key": "same-key",
+                    "base_url": mod.MODELSCOPE_BASE_URL,
+                },
+                "fallback": {},
+            }
+        )
         old_mtime = mod.VISION_JSON.stat().st_mtime
 
         result = mod.auto_configure_vision()
@@ -335,10 +368,16 @@ class TestAutoConfigureVision:
         import chcode.vision_config as mod
 
         monkeypatch.setenv("ModelScopeToken", "new-key")
-        mod.save_vision_json({
-            "default": {"model": "old-model", "api_key": "old-key", "base_url": "other"},
-            "fallback": {}
-        })
+        mod.save_vision_json(
+            {
+                "default": {
+                    "model": "old-model",
+                    "api_key": "old-key",
+                    "base_url": "other",
+                },
+                "fallback": {},
+            }
+        )
 
         result = mod.auto_configure_vision()
 
@@ -358,7 +397,9 @@ class TestConfigureVisionInteractive:
         """User cancels on unconfigured state."""
         import chcode.vision_config as mod
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value="返回"):
+        with patch(
+            "chcode.vision_config.select", new_callable=AsyncMock, return_value="返回"
+        ):
             result = await mod.configure_vision_interactive()
             assert result is None
 
@@ -367,9 +408,13 @@ class TestConfigureVisionInteractive:
         """User cancels on configured state."""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "m", "api_key": "k"}, "fallback": {}}
+        )
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value="返回"):
+        with patch(
+            "chcode.vision_config.select", new_callable=AsyncMock, return_value="返回"
+        ):
             result = await mod.configure_vision_interactive()
             assert result is None
 
@@ -380,8 +425,14 @@ class TestConfigureVisionInteractive:
 
         mod.save_vision_json({"default": {"model": "display-test"}, "fallback": {}})
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value="查看当前配置"), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value="查看当前配置",
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             result = await mod.configure_vision_interactive()
             assert result is None
 
@@ -390,20 +441,34 @@ class TestConfigureVisionInteractive:
         """User switches to another model."""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({
-            "default": {"model": "model_a", "api_key": "k", "base_url": "url"},
-            "fallback": {
-                "model_b": {"model": "model_b", "api_key": "k", "base_url": "url"},
-                "model_c": {"model": "model_c", "api_key": "k", "base_url": "url"},
+        mod.save_vision_json(
+            {
+                "default": {"model": "model_a", "api_key": "k", "base_url": "url"},
+                "fallback": {
+                    "model_b": {"model": "model_b", "api_key": "k", "base_url": "url"},
+                    "model_c": {"model": "model_c", "api_key": "k", "base_url": "url"},
+                },
             }
-        })
+        )
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=[
-            "切换模型",  # 菜单选择
-            "model_c (当前默认)" if "fallback" in mod.get_vision_fallback_models().__str__() else "model_c",  # 选择模型
-        ]), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "切换模型",  # 菜单选择
+                    "model_c (当前默认)"
+                    if "fallback" in mod.get_vision_fallback_models().__str__()
+                    else "model_c",  # 选择模型
+                ],
+            ),
+            patch(
+                "chcode.vision_config.confirm",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             result = await mod.configure_vision_interactive()
 
             assert result is not None
@@ -418,17 +483,31 @@ class TestConfigureVisionInteractive:
         """User declines switch confirmation."""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({
-            "default": {"model": "model_a", "api_key": "k", "base_url": "url"},
-            "fallback": {"model_b": {"model": "model_b", "api_key": "k", "base_url": "url"}}
-        })
+        mod.save_vision_json(
+            {
+                "default": {"model": "model_a", "api_key": "k", "base_url": "url"},
+                "fallback": {
+                    "model_b": {"model": "model_b", "api_key": "k", "base_url": "url"}
+                },
+            }
+        )
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=[
-            "切换模型",
-            "model_b",
-        ]), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "切换模型",
+                    "model_b",
+                ],
+            ),
+            patch(
+                "chcode.vision_config.confirm",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             result = await mod.configure_vision_interactive()
 
             assert result is None
@@ -449,10 +528,24 @@ class TestConfigureVisionInteractive:
                 return mod.VISION_MODEL_PRESETS[0]["model"]
             return choices[0]
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="wizard-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="wizard-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             result = await mod.configure_vision_interactive()
 
             assert result is not None
@@ -468,7 +561,9 @@ class TestConfigureVisionCustom:
         """_test_vision_connection returns True when model returns non-empty content."""
         import chcode.vision_config as mod
 
-        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+        with patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_llm_cls:
             mock_llm = MagicMock()
             mock_llm_cls.return_value = mock_llm
             mock_result = MagicMock()
@@ -481,11 +576,15 @@ class TestConfigureVisionCustom:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_test_vision_connection_empty_content_still_passes(self, mock_config_dir):
+    async def test_test_vision_connection_empty_content_still_passes(
+        self, mock_config_dir
+    ):
         """不报错即通过：即使响应 content 为空也算成功（不检查响应内容）。"""
         import chcode.vision_config as mod
 
-        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+        with patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_llm_cls:
             mock_llm = MagicMock()
             mock_llm_cls.return_value = mock_llm
             mock_result = MagicMock()
@@ -498,26 +597,36 @@ class TestConfigureVisionCustom:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_test_vision_connection_exception_returns_error(self, mock_config_dir):
+    async def test_test_vision_connection_exception_returns_error(
+        self, mock_config_dir
+    ):
         """_test_vision_connection returns error string on exception."""
         import chcode.vision_config as mod
 
-        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+        with patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_llm_cls:
             mock_llm = MagicMock()
             mock_llm_cls.return_value = mock_llm
             mock_llm.invoke.side_effect = Exception("boom")
 
             result = await mod._test_vision_connection(
-                {"model": "vl", "base_url": "http://x", "api_key": "k"}, quiet=True, return_error=True
+                {"model": "vl", "base_url": "http://x", "api_key": "k"},
+                quiet=True,
+                return_error=True,
             )
             assert result == "boom"
 
     @pytest.mark.asyncio
-    async def test_test_vision_connection_null_choices_is_success(self, mock_config_dir):
+    async def test_test_vision_connection_null_choices_is_success(
+        self, mock_config_dir
+    ):
         """null value for 'choices' 视为连接通过（与文本侧 _test_connection 对齐，#5）。"""
         import chcode.vision_config as mod
 
-        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+        with patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_llm_cls:
             mock_llm = MagicMock()
             mock_llm_cls.return_value = mock_llm
             mock_llm.invoke.side_effect = Exception("null value for 'choices'")
@@ -532,7 +641,9 @@ class TestConfigureVisionCustom:
         """null value 但不含 'choices'（如 'model'）仍判失败（#5）。"""
         import chcode.vision_config as mod
 
-        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
+        with patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_llm_cls:
             mock_llm = MagicMock()
             mock_llm_cls.return_value = mock_llm
             mock_llm.invoke.side_effect = Exception("null value for 'model'")
@@ -548,16 +659,37 @@ class TestConfigureVisionCustom:
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
-            "my-vl", "http://api.x/v1",
-        ]), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.add_vision_model", return_value="default") as mock_add, \
-             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-             patch("chcode.config._add_to_model_fallback") as mock_sync, \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.vision_config.text",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "my-vl",
+                    "http://api.x/v1",
+                ],
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="key123",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "chcode.vision_config.add_vision_model", return_value="default"
+            ) as mock_add,
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config._add_to_model_fallback") as mock_sync,
+            patch("chcode.vision_config.console"),
+            patch(
+                "chcode.vision_config.confirm",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
             result = await mod._configure_vision_custom()
 
             assert result is not None
@@ -572,16 +704,37 @@ class TestConfigureVisionCustom:
         """自定义视觉条目带 temperature/top_p，与预设视觉模型结构一致（#7）。"""
         import chcode.vision_config as mod
 
-        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
-            "my-vl", "http://api.x/v1",
-        ]), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.add_vision_model", return_value="default") as mock_add, \
-             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-             patch("chcode.config._add_to_model_fallback"), \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.vision_config.text",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "my-vl",
+                    "http://api.x/v1",
+                ],
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="key123",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "chcode.vision_config.add_vision_model", return_value="default"
+            ) as mock_add,
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config._add_to_model_fallback"),
+            patch("chcode.vision_config.console"),
+            patch(
+                "chcode.vision_config.confirm",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
             await mod._configure_vision_custom()
 
             passed_config = mock_add.call_args.args[0]
@@ -594,17 +747,42 @@ class TestConfigureVisionCustom:
         import chcode.vision_config as mod
 
         # _ask_hyperparam 在函数内 from prompts import，故 patch prompts 模块
-        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
-            "my-vl", "http://api.x/v1",
-        ]), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.add_vision_model", return_value="default") as mock_add, \
-             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-             patch("chcode.config._add_to_model_fallback"), \
-             patch("chcode.prompts._ask_hyperparam", new_callable=AsyncMock, side_effect=["0.3", "0.8"]), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.text",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "my-vl",
+                    "http://api.x/v1",
+                ],
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="key123",
+            ),
+            patch(
+                "chcode.vision_config.confirm",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "chcode.vision_config.add_vision_model", return_value="default"
+            ) as mock_add,
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config._add_to_model_fallback"),
+            patch(
+                "chcode.prompts._ask_hyperparam",
+                new_callable=AsyncMock,
+                side_effect=["0.3", "0.8"],
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_custom()
 
             passed_config = mock_add.call_args.args[0]
@@ -616,8 +794,12 @@ class TestConfigureVisionCustom:
         """Empty model name -> returns None without testing."""
         import chcode.vision_config as mod
 
-        with patch("chcode.vision_config.text", new_callable=AsyncMock, return_value=""), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock) as mock_test:
+        with (
+            patch("chcode.vision_config.text", new_callable=AsyncMock, return_value=""),
+            patch(
+                "chcode.vision_config._test_vision_connection", new_callable=AsyncMock
+            ) as mock_test,
+        ):
             result = await mod._configure_vision_custom()
             assert result is None
             mock_test.assert_not_called()
@@ -628,21 +810,44 @@ class TestConfigureVisionCustom:
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
-            "my-vl", "http://api.x/v1",
-        ]), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
-                 "connection refused",  # first test fails
-                 True,                  # retry succeeds
-             ]), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.retry")), \
-             patch("chcode.vision_config.add_vision_model", return_value="default"), \
-             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-             patch("chcode.config._add_to_model_fallback"), \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.config.console"), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.vision_config.text",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "my-vl",
+                    "http://api.x/v1",
+                ],
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="key123",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "connection refused",  # first test fails
+                    True,  # retry succeeds
+                ],
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value=t("connection.retry"),
+            ),
+            patch("chcode.vision_config.add_vision_model", return_value="default"),
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config._add_to_model_fallback"),
+            patch("chcode.vision_config.console"),
+            patch("chcode.config.console"),
+            patch(
+                "chcode.vision_config.confirm",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
             result = await mod._configure_vision_custom()
             assert result is not None
             assert result["model"] == "my-vl"
@@ -653,22 +858,48 @@ class TestConfigureVisionCustom:
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
-            "bad-vl", "http://bad/v1",      # 第一次收集
-            "good-vl", "http://good/v1",    # 重新输入后的收集
-        ]), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
-                 "connection refused",  # 第一次测试失败
-                 True,                  # 重新输入后测试成功
-             ]), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.reinput")), \
-             patch("chcode.vision_config.add_vision_model", return_value="default") as mock_add, \
-             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-             patch("chcode.config._add_to_model_fallback"), \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.config.console"), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.vision_config.text",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "bad-vl",
+                    "http://bad/v1",  # 第一次收集
+                    "good-vl",
+                    "http://good/v1",  # 重新输入后的收集
+                ],
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="key123",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "connection refused",  # 第一次测试失败
+                    True,  # 重新输入后测试成功
+                ],
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value=t("connection.reinput"),
+            ),
+            patch(
+                "chcode.vision_config.add_vision_model", return_value="default"
+            ) as mock_add,
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config._add_to_model_fallback"),
+            patch("chcode.vision_config.console"),
+            patch("chcode.config.console"),
+            patch(
+                "chcode.vision_config.confirm",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
             result = await mod._configure_vision_custom()
             assert result is not None
             # 最终保存的是重新输入后的模型
@@ -682,16 +913,39 @@ class TestConfigureVisionCustom:
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
-            "my-vl", "http://api.x/v1",
-        ]), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key123"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value="boom"), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.abort")), \
-             patch("chcode.vision_config.add_vision_model") as mock_add, \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.config.console"), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.vision_config.text",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "my-vl",
+                    "http://api.x/v1",
+                ],
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="key123",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value="boom",
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value=t("connection.abort"),
+            ),
+            patch("chcode.vision_config.add_vision_model") as mock_add,
+            patch("chcode.vision_config.console"),
+            patch("chcode.config.console"),
+            patch(
+                "chcode.vision_config.confirm",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
             result = await mod._configure_vision_custom()
             assert result is None
             mock_add.assert_not_called()
@@ -703,20 +957,45 @@ class TestConfigureVisionCustom:
         import chcode.config as cfgmod
 
         # 预置一个主模型默认
-        cfgmod.save_model_json({
-            "default": {"model": "text-main", "api_key": "tk", "base_url": "http://t/v1"},
-            "fallback": {},
-        })
+        cfgmod.save_model_json(
+            {
+                "default": {
+                    "model": "text-main",
+                    "api_key": "tk",
+                    "base_url": "http://t/v1",
+                },
+                "fallback": {},
+            }
+        )
 
-        with patch("chcode.vision_config.text", new_callable=AsyncMock, side_effect=[
-            "vl-model", "http://vl/v1",
-        ]), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="vk"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.add_vision_model", return_value="fallback"), \
-             patch("chcode.config.text", new_callable=AsyncMock, return_value="200000"), \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.vision_config.text",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "vl-model",
+                    "http://vl/v1",
+                ],
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="vk",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.add_vision_model", return_value="fallback"),
+            patch("chcode.config.text", new_callable=AsyncMock, return_value="200000"),
+            patch("chcode.vision_config.console"),
+            patch(
+                "chcode.vision_config.confirm",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
             await mod._configure_vision_custom()
 
         # 验证 model.json：default 不变，fallback 含新模型且带 context_length
@@ -731,10 +1010,22 @@ class TestConfigureVisionCustom:
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "m", "api_key": "k"}, "fallback": {}}
+        )
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.new_model")), \
-             patch("chcode.vision_config._configure_vision_custom", new_callable=AsyncMock, return_value={"model": "custom"}) as mock_custom:
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.new_model"),
+            ),
+            patch(
+                "chcode.vision_config._configure_vision_custom",
+                new_callable=AsyncMock,
+                return_value={"model": "custom"},
+            ) as mock_custom,
+        ):
             result = await mod.configure_vision_interactive()
             assert result is not None
             assert result["model"] == "custom"
@@ -746,8 +1037,18 @@ class TestConfigureVisionCustom:
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.new_model")), \
-             patch("chcode.vision_config._configure_vision_custom", new_callable=AsyncMock, return_value={"model": "custom"}) as mock_custom:
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.new_model"),
+            ),
+            patch(
+                "chcode.vision_config._configure_vision_custom",
+                new_callable=AsyncMock,
+                return_value={"model": "custom"},
+            ) as mock_custom,
+        ):
             result = await mod.configure_vision_interactive()
             assert result is not None
             mock_custom.assert_called_once()
@@ -762,45 +1063,85 @@ class TestConfigureVisionModelscope:
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "m", "api_key": "k"}, "fallback": {}}
+        )
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.modelscope_quick")), \
-             patch("chcode.vision_config._configure_vision_modelscope", new_callable=AsyncMock, return_value={"model": "ms"}) as mock_ms:
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.modelscope_quick"),
+            ),
+            patch(
+                "chcode.vision_config._configure_vision_modelscope",
+                new_callable=AsyncMock,
+                return_value={"model": "ms"},
+            ) as mock_ms,
+        ):
             result = await mod.configure_vision_interactive()
             assert result is not None
             assert result["model"] == "ms"
             mock_ms.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_menu_modelscope_quick_intl_routes_with_intl_flag(self, mock_config_dir):
+    async def test_menu_modelscope_quick_intl_routes_with_intl_flag(
+        self, mock_config_dir
+    ):
         """Configured menu: selecting 魔搭快捷配置（国际版）routes to _configure_vision_modelscope(intl=True)."""
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "m", "api_key": "k"}, "fallback": {}}
+        )
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.modelscope_quick_intl")), \
-             patch("chcode.vision_config._configure_vision_modelscope", new_callable=AsyncMock, return_value={"model": "ms-intl"}) as mock_ms:
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.modelscope_quick_intl"),
+            ),
+            patch(
+                "chcode.vision_config._configure_vision_modelscope",
+                new_callable=AsyncMock,
+                return_value={"model": "ms-intl"},
+            ) as mock_ms,
+        ):
             result = await mod.configure_vision_interactive()
             assert result is not None
             assert result["model"] == "ms-intl"
             mock_ms.assert_called_once_with(intl=True)
 
     @pytest.mark.asyncio
-    async def test_menu_unconfigured_configure_intl_routes_to_wizard(self, mock_config_dir):
+    async def test_menu_unconfigured_configure_intl_routes_to_wizard(
+        self, mock_config_dir
+    ):
         """Unconfigured menu: 配置视觉模型（国际版）routes to _configure_vision_wizard(intl=True)."""
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.configure_intl")), \
-             patch("chcode.vision_config._configure_vision_wizard", new_callable=AsyncMock, return_value={"model": "w-intl"}) as mock_wizard:
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.configure_intl"),
+            ),
+            patch(
+                "chcode.vision_config._configure_vision_wizard",
+                new_callable=AsyncMock,
+                return_value={"model": "w-intl"},
+            ) as mock_wizard,
+        ):
             result = await mod.configure_vision_interactive()
             assert result is not None
             assert result["model"] == "w-intl"
             mock_wizard.assert_called_once_with(intl=True)
 
     @pytest.mark.asyncio
-    async def test_modelscope_appends_presets_without_changing_default(self, mock_config_dir):
+    async def test_modelscope_appends_presets_without_changing_default(
+        self, mock_config_dir
+    ):
         """给 API Key → 8 个预设补进 fallback，default 完全不变，model.json 不被写入。"""
         import chcode.vision_config as mod
         from chcode.i18n import t
@@ -812,10 +1153,24 @@ class TestConfigureVisionModelscope:
         }
         mod.save_vision_json({"default": hand_filled_default, "fallback": {}})
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.manual_key"),
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="ms-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_modelscope()
 
         data = mod.load_vision_json()
@@ -828,6 +1183,7 @@ class TestConfigureVisionModelscope:
             assert data["fallback"][preset["model"]]["api_key"] == "ms-key"
         # model.json 不应被写入（不同步到文本侧）
         from chcode.config import MODEL_JSON
+
         assert not MODEL_JSON.exists()
 
     @pytest.mark.asyncio
@@ -843,21 +1199,39 @@ class TestConfigureVisionModelscope:
         }
         mod.save_vision_json({"default": hand_filled_default, "fallback": {}})
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.manual_key"),
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="ms-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_modelscope(intl=True)
 
         data = mod.load_vision_json()
         assert data["default"] == hand_filled_default
         assert len(data["fallback"]) == len(mod.VISION_MODEL_INTL_PRESETS)
         from chcode.utils.json_utils import region_key
+
         for preset in mod.VISION_MODEL_INTL_PRESETS:
             # 国际版预设打 region="intl" 标记，fallback key 带 (国际版) 后缀
             expected_key = region_key(preset)
-            assert expected_key == f'{preset["model"]} (国际版)'
-            assert data["fallback"][expected_key]["base_url"] == mod.MODELSCOPE_INTL_BASE_URL
+            assert expected_key == f"{preset['model']} (国际版)"
+            assert (
+                data["fallback"][expected_key]["base_url"]
+                == mod.MODELSCOPE_INTL_BASE_URL
+            )
             assert data["fallback"][expected_key]["api_key"] == "ms-key"
 
     @pytest.mark.asyncio
@@ -875,10 +1249,24 @@ class TestConfigureVisionModelscope:
         }
         mod.save_vision_json({"default": hand_filled_default, "fallback": {}})
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.manual_key"),
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="ms-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_modelscope()
 
         data = mod.load_vision_json()
@@ -906,15 +1294,31 @@ class TestConfigureVisionModelscope:
         }
         mod.save_vision_json({"default": intl_default, "fallback": {}})
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-cn"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.manual_key"),
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="ms-cn",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_modelscope()  # 走国内版预设
 
         data = mod.load_vision_json()
         # 国内版 235B 进了 fallback（未被纯名比较误跳）
-        assert same_name in data["fallback"], "国内版 235B 应进 fallback，未被国际版 default 误杀"
+        assert same_name in data["fallback"], (
+            "国内版 235B 应进 fallback，未被国际版 default 误杀"
+        )
         assert data["fallback"][same_name]["base_url"] == mod.MODELSCOPE_BASE_URL
         # default 仍是国际版，未被覆盖
         assert (data["default"].get("metadata") or {}).get("region") == "intl"
@@ -933,14 +1337,34 @@ class TestConfigureVisionModelscope:
             "api_key": "orig-key",
         }
         existing_fallback = {
-            "someone-else-vl": {"model": "someone-else-vl", "api_key": "old", "base_url": "http://x/v1"},
+            "someone-else-vl": {
+                "model": "someone-else-vl",
+                "api_key": "old",
+                "base_url": "http://x/v1",
+            },
         }
-        mod.save_vision_json({"default": hand_filled_default, "fallback": existing_fallback})
+        mod.save_vision_json(
+            {"default": hand_filled_default, "fallback": existing_fallback}
+        )
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.manual_key"),
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="ms-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_modelscope()
 
         data = mod.load_vision_json()
@@ -962,17 +1386,39 @@ class TestConfigureVisionModelscope:
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "m", "api_key": "k"}, "fallback": {}}
+        )
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
-                 "connection refused", "connection refused", "connection refused",  # 首轮 3 个全失败
-                 True,  # 重试后通过
-             ]), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.retry")), \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.manual_key"),
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="ms-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "connection refused",
+                    "connection refused",
+                    "connection refused",  # 首轮 3 个全失败
+                    True,  # 重试后通过
+                ],
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value=t("connection.retry"),
+            ),
+            patch("chcode.vision_config.console"),
+            patch("chcode.config.console"),
+        ):
             result = await mod._configure_vision_modelscope()
 
         # 测试通过后才落盘
@@ -982,30 +1428,55 @@ class TestConfigureVisionModelscope:
         assert data["default"] == {"model": "m", "api_key": "k"}
 
     @pytest.mark.asyncio
-    async def test_modelscope_test_fails_then_reinput_then_success(self, mock_config_dir):
+    async def test_modelscope_test_fails_then_reinput_then_success(
+        self, mock_config_dir
+    ):
         """连接测试全失败 -> 选重新输入配置 -> 重填 Key -> 测试通过。"""
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "m", "api_key": "k"}, "fallback": {}}
+        )
 
         # vision_config.select: 两次 _collect_key 各消耗一次（都选 manual_key）
         # password: 首次 bad-key, 重输后 good-key
         # _test_vision_connection: 首轮 3 个预设全失败, 重输后第一个就通过
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=[
-            t("vision.manual_key"),     # 首次收集 Key 来源
-            t("vision.manual_key"),     # 重新输入后的 Key 来源
-        ]), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, side_effect=[
-            "bad-key", "good-key",
-        ]), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
-            "auth failed", "auth failed", "auth failed",  # 首轮 3 个代表预设全失败
-            True,                                           # 重输 good-key 后通过
-        ]), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.reinput")), \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=[
+                    t("vision.manual_key"),  # 首次收集 Key 来源
+                    t("vision.manual_key"),  # 重新输入后的 Key 来源
+                ],
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "bad-key",
+                    "good-key",
+                ],
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "auth failed",
+                    "auth failed",
+                    "auth failed",  # 首轮 3 个代表预设全失败
+                    True,  # 重输 good-key 后通过
+                ],
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value=t("connection.reinput"),
+            ),
+            patch("chcode.vision_config.console"),
+            patch("chcode.config.console"),
+        ):
             await mod._configure_vision_modelscope()
 
         data = mod.load_vision_json()
@@ -1019,14 +1490,34 @@ class TestConfigureVisionModelscope:
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "m", "api_key": "k"}, "fallback": {}}
+        )
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value="boom"), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.abort")), \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.manual_key"),
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="ms-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value="boom",
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value=t("connection.abort"),
+            ),
+            patch("chcode.vision_config.console"),
+            patch("chcode.config.console"),
+        ):
             result = await mod._configure_vision_modelscope()
 
         assert result is None
@@ -1040,15 +1531,31 @@ class TestConfigureVisionModelscope:
         import chcode.vision_config as mod
         from chcode.i18n import t
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "m", "api_key": "k"}, "fallback": {}}
+        )
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=t("vision.manual_key")), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
-            "err",  # 第一个预设失败
-            True,   # 第二个预设通过 -> break
-        ]) as mock_test, \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=t("vision.manual_key"),
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="ms-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "err",  # 第一个预设失败
+                    True,  # 第二个预设通过 -> break
+                ],
+            ) as mock_test,
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_modelscope()
 
         # 只测了 2 个（第三个因第二个通过而不再测）
@@ -1063,7 +1570,9 @@ class TestConfigureVisionWizard:
         """User cancels at API key source selection."""
         import chcode.vision_config as mod
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, return_value=None):
+        with patch(
+            "chcode.vision_config.select", new_callable=AsyncMock, return_value=None
+        ):
             result = await mod._configure_vision_wizard()
             assert result is None
 
@@ -1079,8 +1588,16 @@ class TestConfigureVisionWizard:
                 return mod.VISION_MODEL_PRESETS[0]["model"]
             return choices[0]
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value=""):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password", new_callable=AsyncMock, return_value=""
+            ),
+        ):
             result = await mod._configure_vision_wizard()
             assert result is None
 
@@ -1099,15 +1616,28 @@ class TestConfigureVisionWizard:
                 return chosen_model
             return choices[0]
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             result = await mod._configure_vision_wizard()
 
             assert result is not None
             assert result["model"] == chosen_model
             assert result["api_key"] == "wizard-key"
-            assert len(mod.load_vision_json()["fallback"]) == len(mod.VISION_MODEL_PRESETS) - 1
+            assert (
+                len(mod.load_vision_json()["fallback"])
+                == len(mod.VISION_MODEL_PRESETS) - 1
+            )
 
     @pytest.mark.asyncio
     async def test_successful_wizard_with_manual_key(self, mock_config_dir):
@@ -1121,10 +1651,24 @@ class TestConfigureVisionWizard:
                 return mod.VISION_MODEL_PRESETS[0]["model"]
             return choices[0]
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="manual-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="manual-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             result = await mod._configure_vision_wizard()
 
             assert result is not None
@@ -1142,17 +1686,34 @@ class TestConfigureVisionWizard:
                 return mod.VISION_MODEL_INTL_PRESETS[0]["model"]
             return choices[0]
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="intl-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="intl-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             result = await mod._configure_vision_wizard(intl=True)
 
         assert result is not None
         assert result["model"] == mod.VISION_MODEL_INTL_PRESETS[0]["model"]
         assert result["base_url"] == mod.MODELSCOPE_INTL_BASE_URL
         assert result["api_key"] == "intl-key"
-        assert len(mod.load_vision_json()["fallback"]) == len(mod.VISION_MODEL_INTL_PRESETS) - 1
+        assert (
+            len(mod.load_vision_json()["fallback"])
+            == len(mod.VISION_MODEL_INTL_PRESETS) - 1
+        )
         for cfg in mod.load_vision_json()["fallback"].values():
             assert cfg["base_url"] == mod.MODELSCOPE_INTL_BASE_URL
 
@@ -1168,8 +1729,18 @@ class TestConfigureVisionWizard:
                 return None
             return choices[0]
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="key"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="key",
+            ),
+        ):
             result = await mod._configure_vision_wizard()
             assert result is None
 
@@ -1186,15 +1757,33 @@ class TestConfigureVisionWizard:
                 return mod.VISION_MODEL_PRESETS[0]["model"]
             return choices[0]
 
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="ms-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
-                 "auth failed",  # 首轮失败
-                 True,           # 重试通过
-             ]), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.retry")), \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="ms-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "auth failed",  # 首轮失败
+                    True,  # 重试通过
+                ],
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value=t("connection.retry"),
+            ),
+            patch("chcode.vision_config.console"),
+            patch("chcode.config.console"),
+        ):
             result = await mod._configure_vision_wizard()
 
         assert result is not None
@@ -1211,21 +1800,40 @@ class TestConfigureVisionWizard:
 
         chosen = mod.VISION_MODEL_PRESETS[0]["model"]
         # select 顺序: 首次 key 来源 → 选模型 → 重新输入时 key 来源（不重选模型）
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=[
-            "手动输入 API Key",   # 首次 key 来源
-            chosen,               # 选模型
-            "手动输入 API Key",   # 重新输入 key 来源
-        ]), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, side_effect=[
-                 "bad-key", "good-key",
-             ]), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, side_effect=[
-                 "auth failed",  # bad-key 失败
-                 True,           # good-key 通过
-             ]), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.reinput")), \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "手动输入 API Key",  # 首次 key 来源
+                    chosen,  # 选模型
+                    "手动输入 API Key",  # 重新输入 key 来源
+                ],
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "bad-key",
+                    "good-key",
+                ],
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                side_effect=[
+                    "auth failed",  # bad-key 失败
+                    True,  # good-key 通过
+                ],
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value=t("connection.reinput"),
+            ),
+            patch("chcode.vision_config.console"),
+            patch("chcode.config.console"),
+        ):
             result = await mod._configure_vision_wizard()
 
         assert result is not None
@@ -1245,13 +1853,30 @@ class TestConfigureVisionWizard:
             return choices[0]
 
         mod.save_vision_json({"default": {}, "fallback": {}})
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="bad-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock,
-                   return_value="auth failed"), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value=t("connection.abort")), \
-             patch("chcode.vision_config.console"), \
-             patch("chcode.config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="bad-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value="auth failed",
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value=t("connection.abort"),
+            ),
+            patch("chcode.vision_config.console"),
+            patch("chcode.config.console"),
+        ):
             result = await mod._configure_vision_wizard()
 
         assert result is None
@@ -1276,21 +1901,27 @@ class TestDisplayVisionConfig:
         import chcode.vision_config as mod
 
         with patch("chcode.vision_config.console") as mock_console:
-            mod._display_vision_config({
-                "default": {"model": "Qwen/Qwen3-VL-235B-A22B-Instruct"},
-                "fallback": {}
-            })
-            mock_console.print.assert_any_call("[bold]默认视觉模型:[/bold] Qwen/Qwen3-VL-235B-A22B-Instruct")
+            mod._display_vision_config(
+                {
+                    "default": {"model": "Qwen/Qwen3-VL-235B-A22B-Instruct"},
+                    "fallback": {},
+                }
+            )
+            mock_console.print.assert_any_call(
+                "[bold]默认视觉模型:[/bold] Qwen/Qwen3-VL-235B-A22B-Instruct"
+            )
 
     def test_shows_fallback_table(self):
         """Should show table when fallback models exist."""
         import chcode.vision_config as mod
 
         with patch("chcode.vision_config.console") as mock_console:
-            mod._display_vision_config({
-                "default": {"model": "m1"},
-                "fallback": {"fb1": {"model": "fb1"}, "fb2": {"model": "fb2"}}
-            })
+            mod._display_vision_config(
+                {
+                    "default": {"model": "m1"},
+                    "fallback": {"fb1": {"model": "fb1"}, "fb2": {"model": "fb2"}},
+                }
+            )
             mock_table = mock_console.print.call_args_list[-1].args[0]
             assert hasattr(mock_table, "title")
             assert "备用视觉模型" in str(mock_table.title)
@@ -1303,7 +1934,12 @@ class TestAddVisionModel:
         """无 default 时新模型设为 default。"""
         import chcode.vision_config as mod
 
-        config = {"model": "mm-1", "base_url": "https://x/v1", "api_key": "k1", "stream_usage": True}
+        config = {
+            "model": "mm-1",
+            "base_url": "https://x/v1",
+            "api_key": "k1",
+            "stream_usage": True,
+        }
         role = mod.add_vision_model(config)
 
         assert role == "default"
@@ -1315,7 +1951,9 @@ class TestAddVisionModel:
         """已有有效 default（api_key 非空）时加入 fallback，default 不变。"""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({"default": {"model": "old", "api_key": "ko"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "old", "api_key": "ko"}, "fallback": {}}
+        )
         role = mod.add_vision_model({"model": "new", "api_key": "kn"})
 
         assert role == "fallback"
@@ -1327,7 +1965,9 @@ class TestAddVisionModel:
         """default 的 api_key 为空时视同无 default，新模型设为 default。"""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({"default": {"model": "old", "api_key": ""}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "old", "api_key": ""}, "fallback": {}}
+        )
         role = mod.add_vision_model({"model": "new", "api_key": "kn"})
 
         assert role == "default"
@@ -1337,17 +1977,21 @@ class TestAddVisionModel:
         """同名同 key 已是 default 时幂等返回 None。"""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "m", "api_key": "k"}, "fallback": {}}
+        )
         assert mod.add_vision_model({"model": "m", "api_key": "k"}) is None
 
     def test_same_name_in_fallback_overwrites(self, mock_config_dir):
         """同名模型已在 fallback 时覆盖更新该条目。"""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({
-            "default": {"model": "other", "api_key": "ko"},
-            "fallback": {"m": {"model": "m", "api_key": "old-key"}},
-        })
+        mod.save_vision_json(
+            {
+                "default": {"model": "other", "api_key": "ko"},
+                "fallback": {"m": {"model": "m", "api_key": "old-key"}},
+            }
+        )
         role = mod.add_vision_model({"model": "m", "api_key": "new-key"})
 
         assert role == "fallback"
@@ -1357,7 +2001,9 @@ class TestAddVisionModel:
         """同名模型已是 default 且改了 api_key → 就地更新 default，不新增 fallback。"""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "old"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "m", "api_key": "old"}, "fallback": {}}
+        )
         role = mod.add_vision_model({"model": "m", "api_key": "new", "base_url": "x"})
 
         assert role == "default"
@@ -1369,7 +2015,12 @@ class TestAddVisionModel:
         """同名模型已是 default 且改了超参（key 不变）→ 更新 default 超参。"""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({"default": {"model": "m", "api_key": "k", "temperature": 0.5}, "fallback": {}})
+        mod.save_vision_json(
+            {
+                "default": {"model": "m", "api_key": "k", "temperature": 0.5},
+                "fallback": {},
+            }
+        )
         role = mod.add_vision_model({"model": "m", "api_key": "k", "temperature": 0.9})
 
         assert role == "default"
@@ -1379,10 +2030,12 @@ class TestAddVisionModel:
         """同名模型在 fallback 且内容完全一致 → 幂等返回 None。"""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({
-            "default": {"model": "other", "api_key": "ko"},
-            "fallback": {"m": {"model": "m", "api_key": "k"}},
-        })
+        mod.save_vision_json(
+            {
+                "default": {"model": "other", "api_key": "ko"},
+                "fallback": {"m": {"model": "m", "api_key": "k"}},
+            }
+        )
         assert mod.add_vision_model({"model": "m", "api_key": "k"}) is None
 
     def test_missing_model_returns_none(self, mock_config_dir):
@@ -1403,23 +2056,38 @@ class TestAddVisionModel:
         import chcode.vision_config as mod
 
         config = {
-            "model": "m", "base_url": "https://x/v1", "api_key": "k",
-            "temperature": 0.7, "top_p": 0.9, "stream_usage": True,
-            "extra_body": {"top_k": 20}, "stop_sequences": ["x"], "max_retries": 4,
+            "model": "m",
+            "base_url": "https://x/v1",
+            "api_key": "k",
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "stream_usage": True,
+            "extra_body": {"top_k": 20},
+            "stop_sequences": ["x"],
+            "max_retries": 4,
         }
         mod.add_vision_model(config)
         entry = mod.load_vision_json()["default"]
 
-        assert set(entry.keys()) == {"model", "base_url", "api_key", "temperature", "top_p", "stream_usage"}
+        assert set(entry.keys()) == {
+            "model",
+            "base_url",
+            "api_key",
+            "temperature",
+            "top_p",
+            "stream_usage",
+        }
 
     def test_preserves_existing_fallback_when_setting_default(self, mock_config_dir):
         """设为 default 时保留已存在的 fallback。"""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({
-            "default": {},
-            "fallback": {"fb": {"model": "fb", "api_key": "kf"}},
-        })
+        mod.save_vision_json(
+            {
+                "default": {},
+                "fallback": {"fb": {"model": "fb", "api_key": "kf"}},
+            }
+        )
         mod.add_vision_model({"model": "new", "api_key": "kn"})
         data = mod.load_vision_json()
 
@@ -1440,26 +2108,45 @@ class TestAddVisionModel:
 class TestVisionRegionAwareFallback:
     """视觉 fallback region 对齐文本侧：同名国内/国际版模型能共存、key 区分。"""
 
-    def test_add_vision_model_cross_region_same_name_not_overwrite_default(self, mock_config_dir):
+    def test_add_vision_model_cross_region_same_name_not_overwrite_default(
+        self, mock_config_dir
+    ):
         """跨 region 同名不误覆盖 default：default 是国内版 235B，加入国际版 235B（同名
         不同 region）时，应进 fallback 而非覆盖 default——否则旧国内版 default 丢失。"""
         import chcode.vision_config as mod
 
         same_name = "Qwen/Qwen3-VL-235B-A22B-Instruct"
-        mod.save_vision_json({
-            "default": {"model": same_name, "base_url": mod.MODELSCOPE_BASE_URL,
-                        "api_key": "cn-key", "temperature": 1.0, "top_p": 0.95, "stream_usage": True},
-            "fallback": {},
-        })
+        mod.save_vision_json(
+            {
+                "default": {
+                    "model": same_name,
+                    "base_url": mod.MODELSCOPE_BASE_URL,
+                    "api_key": "cn-key",
+                    "temperature": 1.0,
+                    "top_p": 0.95,
+                    "stream_usage": True,
+                },
+                "fallback": {},
+            }
+        )
         # 加入国际版同名模型
-        role = mod.add_vision_model({
-            "model": same_name, "base_url": mod.MODELSCOPE_INTL_BASE_URL, "api_key": "intl-key",
-            "metadata": {"region": "intl"}, "temperature": 1.0, "top_p": 0.95, "stream_usage": True,
-        })
+        role = mod.add_vision_model(
+            {
+                "model": same_name,
+                "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+                "api_key": "intl-key",
+                "metadata": {"region": "intl"},
+                "temperature": 1.0,
+                "top_p": 0.95,
+                "stream_usage": True,
+            }
+        )
         data = mod.load_vision_json()
         # 国际版进 fallback，default 保持国内版不被覆盖
         assert role == "fallback", "跨 region 同名应进 fallback，而非覆盖 default"
-        assert data["default"]["base_url"] == mod.MODELSCOPE_BASE_URL, "default 应保持国内版"
+        assert data["default"]["base_url"] == mod.MODELSCOPE_BASE_URL, (
+            "default 应保持国内版"
+        )
         assert f"{same_name} (国际版)" in data["fallback"], "国际版 235B 应进 fallback"
 
     def test_intl_presets_carry_region_marker(self):
@@ -1477,13 +2164,17 @@ class TestVisionRegionAwareFallback:
 
         assert "metadata" in mod._VISION_FIELDS
         # 落盘的视觉条目保留 metadata.region
-        mod.save_vision_json({"default": {"model": "d", "api_key": "kd"}, "fallback": {}})
-        mod.add_vision_model({
-            "model": "Qwen/Qwen3-VL-8B-Instruct",
-            "api_key": "k",
-            "base_url": mod.MODELSCOPE_INTL_BASE_URL,
-            "metadata": {"region": "intl"},
-        })
+        mod.save_vision_json(
+            {"default": {"model": "d", "api_key": "kd"}, "fallback": {}}
+        )
+        mod.add_vision_model(
+            {
+                "model": "Qwen/Qwen3-VL-8B-Instruct",
+                "api_key": "k",
+                "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+                "metadata": {"region": "intl"},
+            }
+        )
         data = mod.load_vision_json()
         # 国际版 key 带 (国际版) 后缀
         key = "Qwen/Qwen3-VL-8B-Instruct (国际版)"
@@ -1494,14 +2185,22 @@ class TestVisionRegionAwareFallback:
         """同名国内/国际版视觉模型经 add_vision_model 后在 fallback 共存，互不覆盖。"""
         import chcode.vision_config as mod
 
-        mod.save_vision_json({"default": {"model": "d", "api_key": "kd"}, "fallback": {}})
+        mod.save_vision_json(
+            {"default": {"model": "d", "api_key": "kd"}, "fallback": {}}
+        )
         # 国内版
-        mod.add_vision_model({"model": "VL", "api_key": "cn-key", "base_url": mod.MODELSCOPE_BASE_URL})
+        mod.add_vision_model(
+            {"model": "VL", "api_key": "cn-key", "base_url": mod.MODELSCOPE_BASE_URL}
+        )
         # 国际版同名
-        mod.add_vision_model({
-            "model": "VL", "api_key": "intl-key",
-            "base_url": mod.MODELSCOPE_INTL_BASE_URL, "metadata": {"region": "intl"},
-        })
+        mod.add_vision_model(
+            {
+                "model": "VL",
+                "api_key": "intl-key",
+                "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+                "metadata": {"region": "intl"},
+            }
+        )
         data = mod.load_vision_json()
         # 两个 key 都在，各自独立
         assert "VL" in data["fallback"]
@@ -1509,7 +2208,9 @@ class TestVisionRegionAwareFallback:
         assert data["fallback"]["VL"]["api_key"] == "cn-key"
         assert data["fallback"]["VL (国际版)"]["api_key"] == "intl-key"
 
-    def test_auto_configure_follows_main_default_family(self, mock_config_dir, monkeypatch):
+    def test_auto_configure_follows_main_default_family(
+        self, mock_config_dir, monkeypatch
+    ):
         """auto_configure 只跟随主模型 model.json default 所属家族，不把两家族都放入。
 
         主模型 default 是国内版 → 只配国内版视觉；是国际版 → 只配国际版视觉。
@@ -1518,17 +2219,32 @@ class TestVisionRegionAwareFallback:
         import chcode.vision_config as mod
 
         # 两家族都检测到（model.json 里两个 key 都在）
-        cn_preset = {"model": "VL", "base_url": mod.MODELSCOPE_BASE_URL,
-                     "temperature": 1.0, "top_p": 0.95, "stream_usage": True}
-        intl_preset = {"model": "VL", "base_url": mod.MODELSCOPE_INTL_BASE_URL,
-                       "temperature": 1.0, "top_p": 0.95, "stream_usage": True,
-                       "metadata": {"region": "intl"}}
-        monkeypatch.setattr(mod, "_detect_api_keys",
-                            lambda: [("cn-key", [cn_preset]), ("intl-key", [intl_preset])])
+        cn_preset = {
+            "model": "VL",
+            "base_url": mod.MODELSCOPE_BASE_URL,
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "stream_usage": True,
+        }
+        intl_preset = {
+            "model": "VL",
+            "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "stream_usage": True,
+            "metadata": {"region": "intl"},
+        }
+        monkeypatch.setattr(
+            mod,
+            "_detect_api_keys",
+            lambda: [("cn-key", [cn_preset]), ("intl-key", [intl_preset])],
+        )
 
         # 主模型 default = 国内版 → 视觉只配国内版
-        monkeypatch.setattr("chcode.config.load_model_json",
-                            lambda: {"default": {"base_url": mod.MODELSCOPE_BASE_URL}})
+        monkeypatch.setattr(
+            "chcode.config.load_model_json",
+            lambda: {"default": {"base_url": mod.MODELSCOPE_BASE_URL}},
+        )
         mod.save_vision_json({"default": {}, "fallback": {}})
         mod.auto_configure_vision()
         data = mod.load_vision_json()
@@ -1537,8 +2253,10 @@ class TestVisionRegionAwareFallback:
         assert len(data["fallback"]) == 1
 
         # 主模型 default = 国际版 → 视觉只配国际版
-        monkeypatch.setattr("chcode.config.load_model_json",
-                            lambda: {"default": {"base_url": mod.MODELSCOPE_INTL_BASE_URL}})
+        monkeypatch.setattr(
+            "chcode.config.load_model_json",
+            lambda: {"default": {"base_url": mod.MODELSCOPE_INTL_BASE_URL}},
+        )
         mod.save_vision_json({"default": {}, "fallback": {}})
         mod.auto_configure_vision()
         data = mod.load_vision_json()
@@ -1546,19 +2264,36 @@ class TestVisionRegionAwareFallback:
         assert "VL" not in data["fallback"], "国际版 default 不应配国内版视觉"
         assert len(data["fallback"]) == 1
 
-    def test_auto_configure_non_modelscope_default_takes_one_family(self, mock_config_dir, monkeypatch):
+    def test_auto_configure_non_modelscope_default_takes_one_family(
+        self, mock_config_dir, monkeypatch
+    ):
         """主模型 default 非魔搭家族（如 OpenAI）时，只取检测到的第一个家族，不全放入。"""
         import chcode.vision_config as mod
 
-        cn_preset = {"model": "VL", "base_url": mod.MODELSCOPE_BASE_URL,
-                     "temperature": 1.0, "top_p": 0.95, "stream_usage": True}
-        intl_preset = {"model": "VL", "base_url": mod.MODELSCOPE_INTL_BASE_URL,
-                       "temperature": 1.0, "top_p": 0.95, "stream_usage": True,
-                       "metadata": {"region": "intl"}}
-        monkeypatch.setattr(mod, "_detect_api_keys",
-                            lambda: [("cn-key", [cn_preset]), ("intl-key", [intl_preset])])
-        monkeypatch.setattr("chcode.config.load_model_json",
-                            lambda: {"default": {"base_url": "https://api.openai.com/v1"}})
+        cn_preset = {
+            "model": "VL",
+            "base_url": mod.MODELSCOPE_BASE_URL,
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "stream_usage": True,
+        }
+        intl_preset = {
+            "model": "VL",
+            "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "stream_usage": True,
+            "metadata": {"region": "intl"},
+        }
+        monkeypatch.setattr(
+            mod,
+            "_detect_api_keys",
+            lambda: [("cn-key", [cn_preset]), ("intl-key", [intl_preset])],
+        )
+        monkeypatch.setattr(
+            "chcode.config.load_model_json",
+            lambda: {"default": {"base_url": "https://api.openai.com/v1"}},
+        )
 
         mod.save_vision_json({"default": {}, "fallback": {}})
         mod.auto_configure_vision()
@@ -1573,24 +2308,45 @@ class TestVisionRegionAwareFallback:
         import chcode.vision_config as mod
 
         same_name = "VL"
-        mod.save_vision_json({
-            "default": {"model": same_name, "api_key": "cn-key",
-                        "base_url": mod.MODELSCOPE_BASE_URL},
-            "fallback": {
-                # 同名国际版（key 带后缀）+ 另一个国内版模型
-                f"{same_name} (国际版)": {"model": same_name, "api_key": "intl-key",
-                                          "base_url": mod.MODELSCOPE_INTL_BASE_URL,
-                                          "metadata": {"region": "intl"}},
-                "other": {"model": "other", "api_key": "k", "base_url": "http://x/v1"},
-            },
-        })
+        mod.save_vision_json(
+            {
+                "default": {
+                    "model": same_name,
+                    "api_key": "cn-key",
+                    "base_url": mod.MODELSCOPE_BASE_URL,
+                },
+                "fallback": {
+                    # 同名国际版（key 带后缀）+ 另一个国内版模型
+                    f"{same_name} (国际版)": {
+                        "model": same_name,
+                        "api_key": "intl-key",
+                        "base_url": mod.MODELSCOPE_INTL_BASE_URL,
+                        "metadata": {"region": "intl"},
+                    },
+                    "other": {
+                        "model": "other",
+                        "api_key": "k",
+                        "base_url": "http://x/v1",
+                    },
+                },
+            }
+        )
 
         # select 返回国际版那项的显示文本（key 本身，无"当前默认"标记——因为
         # 当前 default 是国内版同名，不在 fallback 列表里）
-        with patch("chcode.vision_config.select", new_callable=AsyncMock,
-                   return_value=f"{same_name} (国际版)"), \
-             patch("chcode.vision_config.confirm", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                return_value=f"{same_name} (国际版)",
+            ),
+            patch(
+                "chcode.vision_config.confirm",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             result = await mod._switch_vision_model()
 
         data = mod.load_vision_json()
@@ -1624,16 +2380,44 @@ class TestVisionWizardPreservesOldDefault:
 
         mod.save_vision_json({"default": {}, "fallback": {}})
         # 第一次：国内版向导
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="cn-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="cn-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_wizard(intl=False)
         # 第二次：国际版向导，选同名 default
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="intl-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="intl-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_wizard(intl=True)
 
         data = mod.load_vision_json()
@@ -1644,7 +2428,14 @@ class TestVisionWizardPreservesOldDefault:
         assert chosen in data["fallback"], "旧国内版 default 应转入 fallback"
         assert data["fallback"][chosen]["api_key"] == "cn-key"
         # 国际版其余预设也在 fallback（带后缀），数量 = 6 国内预设 + 6 国际预设 + 1 旧 default
-        assert len(data["fallback"]) == len(mod.VISION_MODEL_PRESETS) - 1 + len(mod.VISION_MODEL_INTL_PRESETS) - 1 + 1
+        assert (
+            len(data["fallback"])
+            == len(mod.VISION_MODEL_PRESETS)
+            - 1
+            + len(mod.VISION_MODEL_INTL_PRESETS)
+            - 1
+            + 1
+        )
 
     @pytest.mark.asyncio
     async def test_intl_default_preserved_when_reconfiguring_cn(self, mock_config_dir):
@@ -1661,20 +2452,50 @@ class TestVisionWizardPreservesOldDefault:
             return choices[0]
 
         mod.save_vision_json({"default": {}, "fallback": {}})
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="intl-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="intl-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_wizard(intl=True)
-        with patch("chcode.vision_config.select", new_callable=AsyncMock, side_effect=select_route), \
-             patch("chcode.vision_config.password", new_callable=AsyncMock, return_value="cn-key"), \
-             patch("chcode.vision_config._test_vision_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.console"):
+        with (
+            patch(
+                "chcode.vision_config.select",
+                new_callable=AsyncMock,
+                side_effect=select_route,
+            ),
+            patch(
+                "chcode.vision_config.password",
+                new_callable=AsyncMock,
+                return_value="cn-key",
+            ),
+            patch(
+                "chcode.vision_config._test_vision_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.vision_config.console"),
+        ):
             await mod._configure_vision_wizard(intl=False)
 
         data = mod.load_vision_json()
         assert data["default"]["model"] == chosen
-        assert (data["default"].get("metadata") or {}).get("region") != "intl"  # 新 default 是国内版
+        assert (data["default"].get("metadata") or {}).get(
+            "region"
+        ) != "intl"  # 新 default 是国内版
         # 旧国际版 default 保留进 fallback（带国际版后缀）
         intl_key = f"{chosen} (国际版)"
         assert intl_key in data["fallback"], "旧国际版 default 应转入 fallback"

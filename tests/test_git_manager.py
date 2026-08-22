@@ -39,12 +39,15 @@ class TestGitManager:
     def test_init_shadow_includes_existing_files(self, tmp_path: Path):
         """有文件时 init 含项目初始文件；rollback 到 init 保留原有文件、删除后续改动"""
         import subprocess
+
         (tmp_path / "原有.py").write_text("src", encoding="utf-8")
         gm = GitManager(str(tmp_path))
         assert gm.init_shadow() is True
         r = subprocess.run(
             ["git", f"--git-dir={gm.cp_repo_dir}", "show", "HEAD:原有.py"],
-            cwd=str(tmp_path), capture_output=True, text=True,
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
         )
         assert r.returncode == 0 and r.stdout == "src"
         (tmp_path / "新.txt").write_text("new", encoding="utf-8")
@@ -122,6 +125,7 @@ class TestGitManager:
         """真实 git：fork(复制 .chat/cp-repo)后新位置追踪自己的文件，不串旧路径"""
         import shutil
         import subprocess
+
         src = tmp_path / "src"
         src.mkdir()
         gm = GitManager(str(src))
@@ -142,7 +146,9 @@ class TestGitManager:
         def head_show(path):
             r = subprocess.run(
                 ["git", f"--git-dir={gm2.cp_repo_dir}", "show", f"HEAD:{path}"],
-                cwd=str(dst), capture_output=True, text=True,
+                cwd=str(dst),
+                capture_output=True,
+                text=True,
             )
             return r.stdout
 
@@ -156,6 +162,7 @@ class TestGitManager:
         本条覆盖 rollback 裁剪，锁定 fork 后计数 = fork 点之前 + 新消息。
         """
         import shutil
+
         src = tmp_path / "src"
         src.mkdir()
         gm = GitManager(str(src))
@@ -172,7 +179,9 @@ class TestGitManager:
 
         gm2 = GitManager(str(dst))
         assert gm2.init_shadow() is True  # cp-repo 已存在，跳过 init
-        assert len(json.loads(gm2.checkpoints_file.read_text(encoding="utf-8"))) == 4  # 复制后全量继承源会话
+        assert (
+            len(json.loads(gm2.checkpoints_file.read_text(encoding="utf-8"))) == 4
+        )  # 复制后全量继承源会话
 
         # fork 点 = m2：rollback 裁剪 m2/m3，工作目录回到 m1
         assert gm2.rollback(["m2", "m3"], ["m1", "m2", "m3"]) is True
@@ -386,8 +395,11 @@ class TestGitManager:
 
         def git(*args):
             return subprocess.run(
-                ["git", *args], cwd=str(tmp_path),
-                capture_output=True, text=True, encoding="utf-8",
+                ["git", *args],
+                cwd=str(tmp_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
             )
 
         # 模拟旧版：检查点直接写进用户真实 .git
@@ -423,9 +435,9 @@ class TestGitManager:
             == "chcode"
         )
         # exclude 补上
-        assert (
-            gm.cp_repo_dir / "info" / "exclude"
-        ).read_text(encoding="utf-8") == gm.SHADOW_EXCLUDE
+        assert (gm.cp_repo_dir / "info" / "exclude").read_text(
+            encoding="utf-8"
+        ) == gm.SHADOW_EXCLUDE
         # 活动 hook 被清
         assert not (gm.cp_repo_dir / "hooks" / "pre-commit").exists()
         # 老 rollback 仍可用：回滚 m1 -> 工作树回到 init(a.txt=v1)

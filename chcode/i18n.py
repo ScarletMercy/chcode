@@ -49,6 +49,7 @@ def detect_locale_language() -> str:
 def os_env_lang() -> str:
     """读取 LANG / LC_ALL 等环境变量（跨平台兜底）。"""
     import os
+
     for var in ("LANG", "LC_ALL", "LC_MESSAGES"):
         val = os.getenv(var, "")
         if val:

@@ -1,4 +1,5 @@
 """Extended tests for chcode/utils/shell/session.py"""
+
 import os
 import sys
 from unittest.mock import MagicMock, patch
@@ -9,20 +10,24 @@ import pytest
 class TestRobustDecode:
     def test_empty_bytes(self):
         from chcode.utils.shell.session import _robust_decode
+
         assert _robust_decode(b"") == ""
 
     def test_utf8(self):
         from chcode.utils.shell.session import _robust_decode
+
         assert _robust_decode("hello 世界".encode("utf-8")) == "hello 世界"
 
     def test_utf8_bom(self):
         from chcode.utils.shell.session import _robust_decode
+
         data = b"\xef\xbb\xbfhello"
         result = _robust_decode(data)
         assert "hello" in result
 
     def test_utf16_le_bom(self):
         from chcode.utils.shell.session import _robust_decode
+
         # utf-16 with BOM (le) — the BOM is b'\xff\xfe'
         data = "hello".encode("utf-16")
         result = _robust_decode(data)
@@ -30,6 +35,7 @@ class TestRobustDecode:
 
     def test_charset_normalizer_fallback(self):
         from chcode.utils.shell.session import _robust_decode
+
         # Non-UTF8 bytes that need fallback decoding
         data = b"\x80\x81\x82"
         with patch("chcode.utils.shell.session.from_bytes") as mock_from_bytes:
@@ -44,6 +50,7 @@ class TestRobustDecode:
 class TestKillProcTree:
     def test_psutil_available(self):
         from chcode.utils.shell.session import _kill_proc_tree
+
         mock_proc = MagicMock()
         mock_proc.pid = 1234
         mock_psutil = MagicMock()
@@ -54,9 +61,12 @@ class TestKillProcTree:
             _kill_proc_tree(mock_proc)
             mock_parent.kill.assert_called_once()
 
-    @pytest.mark.skipif(sys.platform != "win32", reason="taskkill only available on Windows")
+    @pytest.mark.skipif(
+        sys.platform != "win32", reason="taskkill only available on Windows"
+    )
     def test_windows_no_psutil(self):
         from chcode.utils.shell.session import _kill_proc_tree
+
         mock_proc = MagicMock()
         mock_proc.pid = 1234
         with patch.dict("sys.modules", {"psutil": None}):
@@ -66,11 +76,13 @@ class TestKillProcTree:
 
     def test_linux_no_psutil(self):
         from chcode.utils.shell.session import _kill_proc_tree
+
         mock_proc = MagicMock()
         mock_proc.pid = 1234
         mock_proc.poll.return_value = None
         # os.killpg and signal.SIGKILL don't exist on Windows
         import signal
+
         orig_killpg = getattr(os, "killpg", None)
         orig_sigkill = getattr(signal, "SIGKILL", None)
         if orig_killpg is None:
@@ -79,8 +91,10 @@ class TestKillProcTree:
             signal.SIGKILL = 9  # type: ignore[attr-defined]
         try:
             with patch.dict("sys.modules", {"psutil": None}):
-                with patch("chcode.utils.shell.session.os.name", "posix"), \
-                     patch("chcode.utils.shell.session.os.killpg") as mock_kill:
+                with (
+                    patch("chcode.utils.shell.session.os.name", "posix"),
+                    patch("chcode.utils.shell.session.os.killpg") as mock_kill,
+                ):
                     _kill_proc_tree(mock_proc)
                     mock_kill.assert_called_once()
         finally:
@@ -93,6 +107,7 @@ class TestKillProcTree:
 class TestShellSessionExecute:
     def test_file_not_found_session(self):
         from chcode.utils.shell.session import ShellSession
+
         mock_provider = MagicMock()
         mock_provider.shell_path = "/nonexistent/shell"
         mock_provider.env = {}
@@ -106,12 +121,17 @@ class TestShellSessionExecute:
         mock_provider.cleanup_cwd_file.return_value = None
         sess = ShellSession(mock_provider)
         result, truncated = sess.execute("echo hi")
-        assert result.exit_code != 0 or "not found" in result.stdout.lower() or result.stdout == ""
+        assert (
+            result.exit_code != 0
+            or "not found" in result.stdout.lower()
+            or result.stdout == ""
+        )
         # Verify session executed without raising
         assert result is not None
 
     def test_os_error(self):
         from chcode.utils.shell.session import ShellSession
+
         mock_provider = MagicMock()
         mock_provider.shell_path = "/bin/bash"
         mock_provider.env = {}
@@ -126,7 +146,9 @@ class TestShellSessionExecute:
         mock_provider.read_cwd_file.return_value = None
         mock_provider.cleanup_cwd_file.return_value = None
         sess = ShellSession(mock_provider)
-        with patch("chcode.utils.shell.session.subprocess.Popen", side_effect=OSError("err")):
+        with patch(
+            "chcode.utils.shell.session.subprocess.Popen", side_effect=OSError("err")
+        ):
             result, truncated = sess.execute("echo hi")
             assert "err" in result.stdout or result.exit_code != 0
         # Verify OSError was handled gracefully
@@ -135,6 +157,7 @@ class TestShellSessionExecute:
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
     def test_timeout_handling(self):
         from chcode.utils.shell.session import ShellSession
+
         mock_provider = MagicMock()
         mock_provider.shell_path = "/bin/bash"
         mock_provider.env = {}
@@ -151,13 +174,21 @@ class TestShellSessionExecute:
         sess = ShellSession(mock_provider)
         import subprocess
         from subprocess import TimeoutExpired as TE
+
         mock_proc = MagicMock()
         mock_proc.pid = 12345
         mock_proc.communicate.side_effect = [TE("cmd", 60), TE("kill", 5)]
         mock_proc.kill = MagicMock()
         mock_proc.wait = MagicMock(return_value=-9)
-        with patch("chcode.utils.shell.session.subprocess.Popen", return_value=mock_proc), \
-             patch("chcode.utils.shell.session._kill_proc_tree", side_effect=lambda p: p.kill()):
+        with (
+            patch(
+                "chcode.utils.shell.session.subprocess.Popen", return_value=mock_proc
+            ),
+            patch(
+                "chcode.utils.shell.session._kill_proc_tree",
+                side_effect=lambda p: p.kill(),
+            ),
+        ):
             result, truncated = sess.execute("sleep 999", timeout=60000)
             assert result.timed_out or truncated.truncated
         # Verify timeout was handled and process was killed
@@ -167,6 +198,7 @@ class TestShellSessionExecute:
     def test_timeout_handling_linux(self):
         """Linux: timeout triggers os.killpg on process group."""
         from chcode.utils.shell.session import ShellSession
+
         mock_provider = MagicMock()
         mock_provider.shell_path = "/bin/bash"
         mock_provider.env = {}
@@ -183,13 +215,21 @@ class TestShellSessionExecute:
         sess = ShellSession(mock_provider)
         import subprocess
         from subprocess import TimeoutExpired as TE
+
         mock_proc = MagicMock()
         mock_proc.pid = 12345
         mock_proc.communicate.side_effect = [TE("cmd", 60), TE("kill", 5)]
         mock_proc.kill = MagicMock()
         mock_proc.wait = MagicMock(return_value=-9)
-        with patch("chcode.utils.shell.session.subprocess.Popen", return_value=mock_proc), \
-             patch("chcode.utils.shell.session._kill_proc_tree", side_effect=lambda p: p.kill()):
+        with (
+            patch(
+                "chcode.utils.shell.session.subprocess.Popen", return_value=mock_proc
+            ),
+            patch(
+                "chcode.utils.shell.session._kill_proc_tree",
+                side_effect=lambda p: p.kill(),
+            ),
+        ):
             result, truncated = sess.execute("sleep 999", timeout=60000)
             assert result.timed_out or truncated.truncated
 
@@ -205,8 +245,13 @@ class TestRobustDecodeExhaustedFallback:
         data = b"\x80\x81\x82\x83"
 
         # Make from_bytes return low coherence so we enter the loop
-        with patch("chcode.utils.shell.session.from_bytes") as mock_fb, \
-             patch("chcode.utils.shell.session.locale.getpreferredencoding", return_value="utf-8"):
+        with (
+            patch("chcode.utils.shell.session.from_bytes") as mock_fb,
+            patch(
+                "chcode.utils.shell.session.locale.getpreferredencoding",
+                return_value="utf-8",
+            ),
+        ):
             mock_best = MagicMock()
             mock_best.coherence = 0.1  # below 0.5 threshold
             mock_fb.return_value.best.return_value = mock_best
@@ -281,8 +326,13 @@ class TestRobustDecodeExhaustedFallback:
         # Since we can't mock bytes.decode (immutable type), the only remaining
         # option is to patch codecs.lookup to break latin-1:
 
-        with patch("chcode.utils.shell.session.from_bytes") as mock_fb, \
-             patch("chcode.utils.shell.session.locale.getpreferredencoding", return_value="utf-8"):
+        with (
+            patch("chcode.utils.shell.session.from_bytes") as mock_fb,
+            patch(
+                "chcode.utils.shell.session.locale.getpreferredencoding",
+                return_value="utf-8",
+            ),
+        ):
             mock_best = MagicMock()
             mock_best.coherence = 0.1
             mock_fb.return_value.best.return_value = mock_best
@@ -297,11 +347,14 @@ class TestRobustDecodeExhaustedFallback:
 
                     def strict_failing_decode(input_bytes, errors="strict"):
                         if errors == "strict":
-                            raise UnicodeDecodeError("latin-1", input_bytes, 0, len(input_bytes), "forced")
+                            raise UnicodeDecodeError(
+                                "latin-1", input_bytes, 0, len(input_bytes), "forced"
+                            )
                         # For replace mode (line 135), use original
                         return original_decode(input_bytes, errors)
 
                     import types
+
                     codec_info = types.SimpleNamespace(
                         decode=strict_failing_decode,
                         encode=original_codec.encode,
@@ -343,8 +396,13 @@ class TestKillProcTreePosixOSError:
             signal.SIGKILL = 9  # type: ignore[attr-defined]
         try:
             with patch.dict("sys.modules", {"psutil": None}):
-                with patch("chcode.utils.shell.session.os.name", "posix"), \
-                     patch("chcode.utils.shell.session.os.killpg", side_effect=OSError("No such process")):
+                with (
+                    patch("chcode.utils.shell.session.os.name", "posix"),
+                    patch(
+                        "chcode.utils.shell.session.os.killpg",
+                        side_effect=OSError("No such process"),
+                    ),
+                ):
                     _kill_proc_tree(mock_proc)
                     mock_proc.kill.assert_called_once()
         finally:

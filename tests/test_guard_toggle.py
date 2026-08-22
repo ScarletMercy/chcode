@@ -74,13 +74,17 @@ class TestGuardPersistence:
     def test_set_guard_enabled_writes_to_settings(self):
         with patch("chcode.config._update_setting") as mock_update:
             set_guard_enabled(False)
-            mock_update.assert_called_once_with(guard_enabled=False, disabled_categories=[])
+            mock_update.assert_called_once_with(
+                guard_enabled=False, disabled_categories=[]
+            )
             set_guard_enabled(True)
             assert mock_update.call_args.kwargs["guard_enabled"] is True
 
     def test_load_persisted_state_applies_saved_value(self):
         # 模拟 chagent.json 中已保存 guard_enabled=False
-        with patch("chcode.config._load_setting", return_value={"guard_enabled": False}):
+        with patch(
+            "chcode.config._load_setting", return_value={"guard_enabled": False}
+        ):
             from chcode.utils.shell.guard import _load_persisted_state
 
             _load_persisted_state()
@@ -88,7 +92,9 @@ class TestGuardPersistence:
 
     def test_load_persisted_state_ignores_non_bool(self):
         # 非 bool 值应被忽略，保持默认 True
-        with patch("chcode.config._load_setting", return_value={"guard_enabled": "yes"}):
+        with patch(
+            "chcode.config._load_setting", return_value={"guard_enabled": "yes"}
+        ):
             from chcode.utils.shell.guard import _load_persisted_state
 
             _load_persisted_state()
@@ -111,14 +117,19 @@ class TestGuardPersistence:
             from chcode.utils.shell.guard import ensure_guard_config_written
 
             ensure_guard_config_written()
-            mock_update.assert_called_once_with(guard_enabled=True, disabled_categories=[])
+            mock_update.assert_called_once_with(
+                guard_enabled=True, disabled_categories=[]
+            )
 
     def test_ensure_guard_config_written_does_not_overwrite_existing(self):
         # chagent.json 中两个字段都已存在 → 不写入
         with (
             patch(
                 "chcode.config._load_setting",
-                return_value={"guard_enabled": False, "disabled_categories": ["force_kill"]},
+                return_value={
+                    "guard_enabled": False,
+                    "disabled_categories": ["force_kill"],
+                },
             ),
             patch("chcode.config._update_setting") as mock_update,
         ):

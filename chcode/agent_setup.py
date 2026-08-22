@@ -67,9 +67,7 @@ class ToolStormTracker(TypedDict):
 
 
 class State(AgentState):
-    tool_storm: NotRequired[
-        Annotated[ToolStormTracker | None, lambda _old, new: new]
-    ]
+    tool_storm: NotRequired[Annotated[ToolStormTracker | None, lambda _old, new: new]]
 
 
 INNER_MODEL_CONFIG = {
@@ -160,8 +158,21 @@ async def emit_tool_events(
     tool_name = request.tool_call.get("name", "")
     args = request.tool_call.get("args", {})
     summary = ""
-    for key in ("command", "file_path", "pattern", "query", "url", "question",
-                "task", "filePath", "skill_name", "path", "prompt", "image_path", "section"):
+    for key in (
+        "command",
+        "file_path",
+        "pattern",
+        "query",
+        "url",
+        "question",
+        "task",
+        "filePath",
+        "skill_name",
+        "path",
+        "prompt",
+        "image_path",
+        "section",
+    ):
         if key in args:
             summary = str(args[key])[:80]
             break
@@ -174,7 +185,12 @@ async def emit_tool_events(
             else:
                 summary = str(first)[:80]
 
-    start_evt: dict = {"type": "tool_start", "tool": tool_name, "summary": summary, "ts": time.time()}
+    start_evt: dict = {
+        "type": "tool_start",
+        "tool": tool_name,
+        "summary": summary,
+        "ts": time.time(),
+    }
     if tool_name == "agent":
         sa_type = args.get("subagent_type", "general-purpose")
         sa_desc = args.get("description", "")[:30]
@@ -182,6 +198,7 @@ async def emit_tool_events(
         start_evt["subagent_tag"] = f"{sa_type}: {sa_desc}"
     try:
         from chcode.display import _current_agent_tag
+
         tag = _current_agent_tag.get(None)
     except Exception:
         tag = None
@@ -195,13 +212,22 @@ async def emit_tool_events(
         if isinstance(result, ToolMessage):
             failed = result.status == "error"
         else:
-            msgs = result.update.get("messages", []) if isinstance(result.update, dict) else []
+            msgs = (
+                result.update.get("messages", [])
+                if isinstance(result.update, dict)
+                else []
+            )
             if isinstance(msgs, ToolMessage):
                 msgs = [msgs]
             failed = isinstance(msgs, (list, tuple)) and any(
                 isinstance(m, ToolMessage) and m.status == "error" for m in msgs
             )
-        end_evt: dict = {"type": "tool_end", "tool": tool_name, "success": not failed, "ts": time.time()}
+        end_evt: dict = {
+            "type": "tool_end",
+            "tool": tool_name,
+            "success": not failed,
+            "ts": time.time(),
+        }
         if tool_name == "agent":
             end_evt["subagent_type"] = args.get("subagent_type", "general-purpose")
             end_evt["subagent_tag"] = start_evt.get("subagent_tag", "")
@@ -210,7 +236,12 @@ async def emit_tool_events(
         _ipc_send(end_evt)
         return result
     except Exception:
-        end_evt = {"type": "tool_end", "tool": tool_name, "success": False, "ts": time.time()}
+        end_evt = {
+            "type": "tool_end",
+            "tool": tool_name,
+            "success": False,
+            "ts": time.time(),
+        }
         if tool_name == "agent":
             end_evt["subagent_type"] = args.get("subagent_type", "general-purpose")
             end_evt["subagent_tag"] = start_evt.get("subagent_tag", "")
@@ -242,6 +273,7 @@ async def detect_parallel_agents(
     ai_msg = result.result[0]
     if hasattr(ai_msg, "tool_calls") and ai_msg.tool_calls:
         from chcode import display as _d
+
         agent_count = sum(1 for tc in ai_msg.tool_calls if tc.get("name") == "agent")
         if agent_count >= 2:
             _d._subagent_parallel = True
@@ -264,6 +296,7 @@ async def handle_tool_errors(
 
 class ModelSwitchError(Exception):
     """标记需要切换模型的异常"""
+
     pass
 
 
@@ -304,7 +337,9 @@ async def model_retry_with_backoff(
             if retry_count >= max_retries:
                 fallback = _load_fallback_config()
                 if fallback:
-                    console.print(f"[yellow]{t('agent.switch_to_fallback', count=retry_count)}[/yellow]")
+                    console.print(
+                        f"[yellow]{t('agent.switch_to_fallback', count=retry_count)}[/yellow]"
+                    )
                     raise ModelSwitchError(t("agent.switch_error"))
                 console.print(f"[red]{t('agent.no_fallback_giveup', error=e)}[/red]")
                 raise
@@ -313,10 +348,27 @@ async def model_retry_with_backoff(
             delay = RETRY_DELAYS[delay_idx]
             retry_count += 1
 
-            console.print(f"[yellow]{t('agent.retry_in', count=retry_count, max=max_retries, delay=delay, error=e)}[/yellow]")
+            console.print(
+                f"[yellow]{t('agent.retry_in', count=retry_count, max=max_retries, delay=delay, error=e)}[/yellow]"
+            )
 
             for _ in range(int(delay)):
                 await asyncio.sleep(1)
+
+
+# 工具清单提示（vision 两分支共用 — 文本单一事实源，字节稳定保前缀缓存）
+_BASE_TOOLS_PROMPT = """Tools:
+- bash: execute shell commands and scripts. Stop immediately if the user refuses.
+- read_file: view file content; write_file: create or save files; edit: modify existing files. Always read before write, prefer edit over write_file.
+- update_memory: save durable project knowledge (commands, conventions, prohibitions, pitfalls) to CHCODE.md; keep entries brief and constraint-style.
+- glob: find files by name pattern; grep: search file contents with regex; list_dir: browse directory structure.
+- web_search: search the Internet; web_fetch: fetch and read a URL's content.
+- ask_user: present choices to the user and collect their input or confirmation.
+- todo_write: create and manage a task list for complex multi-step work.
+- load_skill: when a request matches a skill's description, load it first to get detailed instructions."""
+
+# 无原生视觉能力的模型追加的 vision 工具行
+_VISION_TOOL_PROMPT = "- vision: analyze an image or video file using a vision model. Use when the user provides an image/video path or asks about visual content. Supports PNG, JPG, GIF, BMP, WebP, TIFF, MP4, MOV, AVI, MKV, WebM. The user can paste file paths directly in chat."
 
 
 @dynamic_prompt
@@ -329,39 +381,24 @@ async def load_skills(request: ModelRequest) -> str:
 
     native_vision = is_multimodal_model(model_name)
 
+    base_prompt = (
+        f"You are a coding assistant. OS: {os_name}. CWD: {request.runtime.context.working_directory}.\n\n"
+        f"{_BASE_TOOLS_PROMPT}"
+    )
     if native_vision:
-        base_prompt = f"""You are a coding assistant. OS: {os_name}. CWD: {request.runtime.context.working_directory}.
-
-Tools:
-- bash: execute shell commands and scripts. Stop immediately if the user refuses.
-- read_file: view file content; write_file: create or save files; edit: modify existing files. Always read before write, prefer edit over write_file.
-- update_memory: save durable project knowledge (commands, conventions, prohibitions, pitfalls) to CHCODE.md; keep entries brief and constraint-style.
-- glob: find files by name pattern; grep: search file contents with regex; list_dir: browse directory structure.
-- web_search: search the Internet; web_fetch: fetch and read a URL's content.
-- ask_user: present choices to the user and collect their input or confirmation.
-- todo_write: create and manage a task list for complex multi-step work.
-- load_skill: when a request matches a skill's description, load it first to get detailed instructions.
-
- Guidelines:
-- Never create .md/README files unless explicitly asked.
-- You have native vision capability. When the user sends an image or video file path, the image/video is already embedded in the message — analyze it directly. Do NOT call the vision tool."""
+        base_prompt += (
+            "\n\n Guidelines:\n"
+            "- Never create .md/README files unless explicitly asked.\n"
+            "- You have native vision capability. When the user sends an image or video file path, the "
+            "image/video is already embedded in the message — analyze it directly. Do NOT call the vision tool."
+        )
     else:
-        base_prompt = f"""You are a coding assistant. OS: {os_name}. CWD: {request.runtime.context.working_directory}.
-
-Tools:
-- bash: execute shell commands and scripts. Stop immediately if the user refuses.
-- read_file: view file content; write_file: create or save files; edit: modify existing files. Always read before write, prefer edit over write_file.
-- update_memory: save durable project knowledge (commands, conventions, prohibitions, pitfalls) to CHCODE.md; keep entries brief and constraint-style.
-- glob: find files by name pattern; grep: search file contents with regex; list_dir: browse directory structure.
-- web_search: search the Internet; web_fetch: fetch and read a URL's content.
-- ask_user: present choices to the user and collect their input or confirmation.
-- todo_write: create and manage a task list for complex multi-step work.
-- load_skill: when a request matches a skill's description, load it first to get detailed instructions.
-- vision: analyze an image or video file using a vision model. Use when the user provides an image/video path or asks about visual content. Supports PNG, JPG, GIF, BMP, WebP, TIFF, MP4, MOV, AVI, MKV, WebM. The user can paste file paths directly in chat.
-
- Guidelines:
-- Never create .md/README files unless explicitly asked.
-- When the user sends an image or video file path, use vision to understand it before responding."""
+        base_prompt += (
+            f"\n{_VISION_TOOL_PROMPT}\n\n"
+            " Guidelines:\n"
+            "- Never create .md/README files unless explicitly asked.\n"
+            "- When the user sends an image or video file path, use vision to understand it before responding."
+        )
 
     # 动态注入可用子 agent 列表
     yolo = request.runtime.context.yolo
@@ -385,19 +422,23 @@ Project Memory (CHCODE.md):
 
 @wrap_model_call
 async def inject_project_memory(
-    request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
+    request: ModelRequest,
+    handler: Callable[[ModelRequest], ModelResponse],
 ) -> ModelResponse:
     """
-    每次模型调用注入项目记忆（注入/剥离式）：
+    每次模型调用注入项目记忆（注入/剥离式），主/子代理共用：
     - CHCODE.md 冻结块包成 <system-reminder> 元消息前置到消息流最前
       （会话内字节稳定以保前缀缓存）
     - 挂在用户消息 metadata（memory_note）上的外部变更提醒，展开拼进
       该消息 content 尾部 — 状态里只存 metadata，展示层天然不可见；
       发送副本同步剥离该 metadata，避免随 additional_kwargs 序列化
       进 API payload 造成内容重复传输
+    - 子代理消息不携带 memory_note（轮询只在主循环发生），展开对其
+      天然不生效
     """
     workdir = request.runtime.context.working_directory
     reminder = await asyncio.to_thread(build_memory_reminder, workdir)
+
     messages = [HumanMessage(content=reminder)]
     for m in request.messages:
         note = getattr(m, "additional_kwargs", {}).get("memory_note")
@@ -458,10 +499,14 @@ async def tool_result_budget(
                 workplace=workplace,
             )
             new_kwargs = {**msg.additional_kwargs, "_budget_ok": True}
-            messages[i] = msg.model_copy(update={"content": truncated, "additional_kwargs": new_kwargs})
+            messages[i] = msg.model_copy(
+                update={"content": truncated, "additional_kwargs": new_kwargs}
+            )
             changed = True
     if changed:
-        messages = enforce_per_turn_budget(messages, budget=200_000, workplace=workplace)
+        messages = enforce_per_turn_budget(
+            messages, budget=200_000, workplace=workplace
+        )
         return await handler(request.override(messages=messages))
     return await handler(request)
 
@@ -477,27 +522,32 @@ _STORM_DETAIL = {
 @wrap_tool_call
 async def tool_call_storm_block(
     request: ToolCallRequest,
-    handler: Callable[
-        [ToolCallRequest], Awaitable[ToolMessage | Command]
-    ],
+    handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
 ) -> ToolMessage | Command:
     name = request.tool_call.get("name", "")
-    args_key = json.dumps(request.tool_call.get("args", {}), ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    args_key = json.dumps(
+        request.tool_call.get("args", {}),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
     tracker = request.state.get("tool_storm")
 
     # 并行批量工具调用：streak 不确定，执行但重置 tracker
     last_ai_msg = next(
-        (m for m in reversed(request.state.get("messages", []))
-         if isinstance(m, AIMessage)),
+        (
+            m
+            for m in reversed(request.state.get("messages", []))
+            if isinstance(m, AIMessage)
+        ),
         None,
     )
     if last_ai_msg and len(last_ai_msg.tool_calls) > 1:
         result = await handler(request)
         if isinstance(result, Command):
             return result
-        return Command(
-            update={"tool_storm": None, "messages": [result]}
-        )
+        return Command(update={"tool_storm": None, "messages": [result]})
 
     # 判断是否触发阻断（阈值：完全重复 3、同参异果 5、同工具异参 8）
     reason: str | None = None
@@ -523,9 +573,7 @@ async def tool_call_storm_block(
             tool_call_id=request.tool_call["id"],
             status="error",
         )
-        return Command(
-            update={"tool_storm": None, "messages": [message]}
-        )
+        return Command(update={"tool_storm": None, "messages": [message]})
 
     result = await handler(request)
     if isinstance(result, Command):
@@ -541,7 +589,10 @@ async def tool_call_storm_block(
         "args_key": args_key,
         "result_key": json.dumps(
             {"content": result.content, "status": result.status},
-            ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
         ),
     }
     next_tracker: ToolStormTracker = {
@@ -563,9 +614,7 @@ async def tool_call_storm_block(
         elif same_name:
             next_tracker["varying_args_streak"] = tracker["varying_args_streak"] + 1
 
-    return Command(
-        update={"tool_storm": next_tracker, "messages": [result]}
-    )
+    return Command(update={"tool_storm": next_tracker, "messages": [result]})
 
 
 # ─── Agent 构建 ──────────────────────────────────────────
@@ -677,6 +726,7 @@ def update_hitl_config(yolo: bool) -> None:
     if _hitl_middleware is not None:
         _hitl_middleware.interrupt_on = _build_interrupt_on(yolo)
     from chcode.utils.tools import update_agent_tool_desc
+
     update_agent_tool_desc(yolo)
 
 

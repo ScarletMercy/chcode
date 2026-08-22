@@ -197,7 +197,7 @@ class SkillLoader:
         return skills
 
     # 解析skill元数据
-    def _parse_skill_metadata(self, skill_md_path: Path) -> SkillMetadata|None:
+    def _parse_skill_metadata(self, skill_md_path: Path) -> SkillMetadata | None:
         try:
             content = skill_md_path.read_text(encoding="utf-8")
         except Exception:
@@ -223,7 +223,7 @@ class SkillLoader:
             return None
 
     # 从skill字典读取skill完整数据
-    def load_skill(self, skill_name: str) -> SkillContent|None:
+    def load_skill(self, skill_name: str) -> SkillContent | None:
         """
         Level 2: 加载 Skill 完整内容
 
@@ -330,7 +330,9 @@ def scan_all_skills(project_path: Path | None = None) -> list[dict]:
     if project_path:
         project_skills_path = project_path / ".chat" / "skills"
         if project_skills_path.exists():
-            project_skills = _scan_skills_in_path(project_skills_path, "project", loader)
+            project_skills = _scan_skills_in_path(
+                project_skills_path, "project", loader
+            )
             skills.extend(project_skills)
 
     # 扫描全局技能

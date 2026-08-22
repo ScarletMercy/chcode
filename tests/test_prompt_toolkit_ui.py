@@ -5,6 +5,7 @@ Targets lines 864-1027 (_checkbox_with_other_async) and 1035-1193 (_select_with_
 Strategy: Capture KeyBindings, then invoke handlers directly.
 Application is imported locally, so we patch prompt_toolkit.Application.
 """
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -419,7 +420,7 @@ class TestCheckboxHandlers:
         # Find and call space handler - space is just (' ',) tuple
         for binding in captured_kb.bindings:
             # Check if keys tuple contains the space character
-            if len(binding.keys) == 1 and binding.keys[0] == ' ':
+            if len(binding.keys) == 1 and binding.keys[0] == " ":
                 binding.handler(mock_event)
                 break
 
@@ -429,7 +430,7 @@ class TestCheckboxHandlers:
 
         # Call again to uncheck
         for binding in captured_kb.bindings:
-            if len(binding.keys) == 1 and binding.keys[0] == ' ':
+            if len(binding.keys) == 1 and binding.keys[0] == " ":
                 binding.handler(mock_event)
                 break
 
@@ -463,7 +464,7 @@ class TestCheckboxHandlers:
 
         # Find and call space handler - space is just (' ',) tuple
         for binding in captured_kb.bindings:
-            if len(binding.keys) == 1 and binding.keys[0] == ' ':
+            if len(binding.keys) == 1 and binding.keys[0] == " ":
                 binding.handler(mock_event)
                 break
 
@@ -631,7 +632,10 @@ class TestCheckboxHandlers:
 
         # Find and call esc handler
         for binding in captured_kb.bindings:
-            if "escape" in str(binding.keys).lower() or "esc" in str(binding.keys).lower():
+            if (
+                "escape" in str(binding.keys).lower()
+                or "esc" in str(binding.keys).lower()
+            ):
                 binding.handler(mock_event)
                 break
 
@@ -916,7 +920,11 @@ class TestSelectHandlers:
         captured_input_window = None
 
         def capture_app(*args, key_bindings=None, **kwargs):
-            nonlocal captured_kb, captured_control, captured_control_window, captured_input_window
+            nonlocal \
+                captured_kb, \
+                captured_control, \
+                captured_control_window, \
+                captured_input_window
             captured_kb = key_bindings
             layout = kwargs.get("layout")
             if layout:
@@ -1101,7 +1109,10 @@ class TestSelectHandlers:
 
         # Find and call esc handler
         for binding in captured_kb.bindings:
-            if "escape" in str(binding.keys).lower() or "esc" in str(binding.keys).lower():
+            if (
+                "escape" in str(binding.keys).lower()
+                or "esc" in str(binding.keys).lower()
+            ):
                 binding.handler(mock_event)
                 break
 
@@ -1444,7 +1455,7 @@ class TestCheckboxExitingGuards:
         mock_event2 = MagicMock()
         mock_event2.app.layout = MagicMock()
         for binding in captured_kb.bindings:
-            if len(binding.keys) == 1 and binding.keys[0] == ' ':
+            if len(binding.keys) == 1 and binding.keys[0] == " ":
                 binding.handler(mock_event2)
                 break
 
@@ -1519,7 +1530,10 @@ class TestCheckboxExitingGuards:
         mock_event.app.exit = MagicMock()
 
         for binding in captured_kb.bindings:
-            if "escape" in str(binding.keys).lower() or "esc" in str(binding.keys).lower():
+            if (
+                "escape" in str(binding.keys).lower()
+                or "esc" in str(binding.keys).lower()
+            ):
                 binding.handler(mock_event)
                 break
 
@@ -1530,7 +1544,10 @@ class TestCheckboxExitingGuards:
         mock_event2.app.layout = MagicMock()
         mock_event2.app.exit = MagicMock()
         for binding in captured_kb.bindings:
-            if "escape" in str(binding.keys).lower() or "esc" in str(binding.keys).lower():
+            if (
+                "escape" in str(binding.keys).lower()
+                or "esc" in str(binding.keys).lower()
+            ):
                 binding.handler(mock_event2)
                 break
 
@@ -1639,7 +1656,10 @@ class TestCheckboxHandlerExceptions:
         mock_event.app.exit = MagicMock(side_effect=RuntimeError("already exiting"))
 
         for binding in captured_kb.bindings:
-            if "escape" in str(binding.keys).lower() or "esc" in str(binding.keys).lower():
+            if (
+                "escape" in str(binding.keys).lower()
+                or "esc" in str(binding.keys).lower()
+            ):
                 binding.handler(mock_event)
                 break
 
@@ -1957,7 +1977,10 @@ class TestSelectExitingGuards:
         mock_event.app.exit = MagicMock()
 
         for binding in captured_kb.bindings:
-            if "escape" in str(binding.keys).lower() or "esc" in str(binding.keys).lower():
+            if (
+                "escape" in str(binding.keys).lower()
+                or "esc" in str(binding.keys).lower()
+            ):
                 binding.handler(mock_event)
                 break
 
@@ -1968,7 +1991,10 @@ class TestSelectExitingGuards:
         mock_event2.app.layout = MagicMock()
         mock_event2.app.exit = MagicMock()
         for binding in captured_kb.bindings:
-            if "escape" in str(binding.keys).lower() or "esc" in str(binding.keys).lower():
+            if (
+                "escape" in str(binding.keys).lower()
+                or "esc" in str(binding.keys).lower()
+            ):
                 binding.handler(mock_event2)
                 break
 
@@ -2119,7 +2145,10 @@ class TestSelectHandlerExceptions:
         mock_event.app.exit = MagicMock(side_effect=RuntimeError("already exiting"))
 
         for binding in captured_kb.bindings:
-            if "escape" in str(binding.keys).lower() or "esc" in str(binding.keys).lower():
+            if (
+                "escape" in str(binding.keys).lower()
+                or "esc" in str(binding.keys).lower()
+            ):
                 binding.handler(mock_event)
                 break
 

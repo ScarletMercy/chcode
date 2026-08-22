@@ -29,7 +29,10 @@ def is_multimodal_model(model_name: str) -> bool:
     """
     if not model_name:
         return False
-    from chcode.vision_config import get_vision_default_model, get_vision_fallback_models
+    from chcode.vision_config import (
+        get_vision_default_model,
+        get_vision_fallback_models,
+    )
 
     names: list[str] = []
     default = get_vision_default_model()
@@ -51,13 +54,28 @@ def is_multimodal_model(model_name: str) -> bool:
 
 # ─── Supported formats ─────────────────────────────────────────
 
-_IMAGE_EXTS = frozenset({
-    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif",
-})
+_IMAGE_EXTS = frozenset(
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".bmp",
+        ".webp",
+        ".tiff",
+        ".tif",
+    }
+)
 
-_VIDEO_EXTS = frozenset({
-    ".mp4", ".mov", ".avi", ".mkv", ".webm",
-})
+_VIDEO_EXTS = frozenset(
+    {
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".mkv",
+        ".webm",
+    }
+)
 
 _ALL_MEDIA_EXTS = _IMAGE_EXTS | _VIDEO_EXTS
 
@@ -152,20 +170,19 @@ def encode_media_as_base64(
 # ─── Media path extraction ─────────────────────────────────────
 
 _MEDIA_EXT_PATTERN = "|".join(
-    re.escape(ext.lstrip("."))
-    for ext in sorted(_ALL_MEDIA_EXTS)
+    re.escape(ext.lstrip(".")) for ext in sorted(_ALL_MEDIA_EXTS)
 )
 
 _MEDIA_PATH_PATTERN = re.compile(
     r"(?:"
     # Quoted path: "path/to/image.png" or 'path\to\image.jpg'
     # Use [^"']+ to allow spaces inside quoted paths
-    r'(["\'])([^"\']+\.(?:' + _MEDIA_EXT_PATTERN + r'))\1'
+    r'(["\'])([^"\']+\.(?:' + _MEDIA_EXT_PATTERN + r"))\1"
     r"|"
     # Bare path: must start with /, \, ~, ./, ../, or a drive letter (C:)
     # This avoids matching URLs or code references like output.png
     # Note: bare paths cannot contain spaces (use quotes for that)
-    r'((?:[/~\\]|[.]{1,2}[/\\]|[A-Za-z]:[/\\])[^\s]*\.(?:' + _MEDIA_EXT_PATTERN + r'))'
+    r"((?:[/~\\]|[.]{1,2}[/\\]|[A-Za-z]:[/\\])[^\s]*\.(?:" + _MEDIA_EXT_PATTERN + r"))"
     r")",
     re.IGNORECASE,
 )
@@ -194,11 +211,7 @@ def extract_media_paths(text: str, working_directory: Path) -> list[Path]:
         if path_str in seen:
             continue
 
-        if (
-            path.exists()
-            and path.is_file()
-            and path.suffix.lower() in _ALL_MEDIA_EXTS
-        ):
+        if path.exists() and path.is_file() and path.suffix.lower() in _ALL_MEDIA_EXTS:
             seen.add(path_str)
             found.append(path)
 
@@ -229,7 +242,9 @@ def build_multimodal_message(
     replacements: list[tuple[str, str]] = []  # (original_text, marker)
     for media_path in media_paths:
         is_vid = media_path.suffix.lower() in _VIDEO_EXTS
-        marker = f"[video: {media_path.name}]" if is_vid else f"[image: {media_path.name}]"
+        marker = (
+            f"[video: {media_path.name}]" if is_vid else f"[image: {media_path.name}]"
+        )
         matched = False
         # Try quoted and full path representations
         for sep in [f'"{media_path}"', f"'{media_path}'", str(media_path)]:
@@ -253,14 +268,18 @@ def build_multimodal_message(
         data_url = f"data:{mime};base64,{b64}"
 
         if media_path.suffix.lower() in _VIDEO_EXTS:
-            content_blocks.append({
-                "type": "video_url",
-                "video_url": {"url": data_url},
-            })
+            content_blocks.append(
+                {
+                    "type": "video_url",
+                    "video_url": {"url": data_url},
+                }
+            )
         else:
-            content_blocks.append({
-                "type": "image_url",
-                "image_url": {"url": data_url},
-            })
+            content_blocks.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": data_url},
+                }
+            )
 
     return HumanMessage(content=content_blocks)

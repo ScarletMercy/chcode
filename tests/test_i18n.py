@@ -145,7 +145,10 @@ class TestDetectLocaleLanguage:
 
     def test_chinese_locale_name(self):
         """Windows-style full name 'Chinese (Simplified)_China' → 'zh'."""
-        with patch("chcode.i18n._locale.getlocale", return_value=("Chinese (Simplified)_China", "936")):
+        with patch(
+            "chcode.i18n._locale.getlocale",
+            return_value=("Chinese (Simplified)_China", "936"),
+        ):
             with patch("chcode.i18n.os_env_lang", return_value=""):
                 assert detect_locale_language() == "zh"
 
@@ -265,9 +268,7 @@ class TestLoadSaveLanguage:
         import chcode.config as mod
 
         setting_path = mod.SETTING_JSON
-        setting_path.write_text(
-            json.dumps({"language": "fr"}), encoding="utf-8"
-        )
+        setting_path.write_text(json.dumps({"language": "fr"}), encoding="utf-8")
         from chcode.config import load_language
 
         assert load_language() is None
@@ -297,9 +298,11 @@ class TestCmdLang:
         set_language("zh")
         repl = ChatREPL()
 
-        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
-             patch("chcode.chat.render_success"), \
-             patch("chcode.config.save_language") as mock_save:
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.render_success"),
+            patch("chcode.config.save_language") as mock_save,
+        ):
             mock_sel.return_value = "English"
             await repl._cmd_lang("")
 
@@ -314,9 +317,11 @@ class TestCmdLang:
         set_language("en")
         repl = ChatREPL()
 
-        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
-             patch("chcode.chat.render_success"), \
-             patch("chcode.config.save_language") as mock_save:
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.render_success"),
+            patch("chcode.config.save_language") as mock_save,
+        ):
             mock_sel.return_value = "中文 (Chinese)"
             await repl._cmd_lang("")
 
@@ -331,9 +336,11 @@ class TestCmdLang:
         set_language("en")
         repl = ChatREPL()
 
-        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
-             patch("chcode.chat.render_success"), \
-             patch("chcode.config.save_language") as mock_save:
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.render_success"),
+            patch("chcode.config.save_language") as mock_save,
+        ):
             mock_sel.return_value = None
             await repl._cmd_lang("")
 
@@ -347,9 +354,11 @@ class TestCmdLang:
         set_language("zh")
         repl = ChatREPL()
 
-        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
-             patch("chcode.chat.render_success"), \
-             patch("chcode.config.save_language"):
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.render_success"),
+            patch("chcode.config.save_language"),
+        ):
             mock_sel.return_value = "中文 (Chinese)"
             await repl._cmd_lang("")
 
@@ -364,9 +373,11 @@ class TestCmdLang:
         set_language("en")
         repl = ChatREPL()
 
-        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
-             patch("chcode.chat.render_success"), \
-             patch("chcode.config.save_language"):
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.render_success"),
+            patch("chcode.config.save_language"),
+        ):
             mock_sel.return_value = "English"
             await repl._cmd_lang("")
 

@@ -71,7 +71,9 @@ class BashProvider(ShellProvider):
                 candidate = os.path.join(git_bin, "bash.exe")
                 if os.path.isfile(candidate):
                     return candidate
-                candidate = os.path.join(git_bin, "..", "bin", "bash.exe")  # pragma: no cover
+                candidate = os.path.join(
+                    git_bin, "..", "bin", "bash.exe"
+                )  # pragma: no cover
                 if os.path.isfile(candidate):  # pragma: no cover
                     return os.path.normpath(candidate)  # pragma: no cover
             bash_path = shutil.which("bash")  # pragma: no cover

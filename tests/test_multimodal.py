@@ -57,6 +57,7 @@ def temp_video(tmp_path):
 def _isolate_vision_json(tmp_path, monkeypatch):
     """隔离 vision_model.json,避免 is_multimodal_model 读写真实 home 配置。"""
     import chcode.vision_config as vc
+
     monkeypatch.setattr(vc, "VISION_JSON", tmp_path / "vision_model.json")
     vc._vision_json.invalidate()
 
@@ -69,13 +70,22 @@ class TestIsMultimodalModel:
     def _preset_vision_models(self):
         """预置视觉模型到 vision_model.json(default + 2 个 fallback)。"""
         import chcode.vision_config as vc
-        vc.save_vision_json({
-            "default": {"model": "moonshotai/Kimi-K2.5", "api_key": "k"},
-            "fallback": {
-                "Qwen/Qwen3-VL-30B-A3B-Instruct": {"model": "Qwen/Qwen3-VL-30B-A3B-Instruct", "api_key": "k"},
-                "stepfun-ai/Step-3.7-Flash": {"model": "stepfun-ai/Step-3.7-Flash", "api_key": "k"},
-            },
-        })
+
+        vc.save_vision_json(
+            {
+                "default": {"model": "moonshotai/Kimi-K2.5", "api_key": "k"},
+                "fallback": {
+                    "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+                        "model": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+                        "api_key": "k",
+                    },
+                    "stepfun-ai/Step-3.7-Flash": {
+                        "model": "stepfun-ai/Step-3.7-Flash",
+                        "api_key": "k",
+                    },
+                },
+            }
+        )
 
     def test_default_model_full_name(self, _preset_vision_models):
         from chcode.utils.multimodal import is_multimodal_model
@@ -301,7 +311,9 @@ class TestExtractMediaPaths:
         """URLs like https://example.com/image.png should not be matched."""
         from chcode.utils.multimodal import extract_media_paths
 
-        result = extract_media_paths("访问 https://example.com/image.png 查看图片", tmp_path)
+        result = extract_media_paths(
+            "访问 https://example.com/image.png 查看图片", tmp_path
+        )
         assert len(result) == 0
 
     def test_code_reference_not_matched(self, tmp_path):
@@ -400,6 +412,7 @@ class TestBuildMultimodalMessage:
         img1 = dir1 / "test.png"
         img2 = dir2 / "test.png"
         import shutil
+
         shutil.copy(temp_image, img1)
         shutil.copy(temp_image, img2)
 

@@ -104,7 +104,11 @@ class TestRenderFunctions:
             from rich.panel import Panel
 
             panel = next(
-                (c.args[0] for c in mock_console.print.call_args_list if c.args and isinstance(c.args[0], Panel)),
+                (
+                    c.args[0]
+                    for c in mock_console.print.call_args_list
+                    if c.args and isinstance(c.args[0], Panel)
+                ),
                 None,
             )
             assert panel is not None, "should print a Panel"

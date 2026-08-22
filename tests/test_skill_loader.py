@@ -8,7 +8,9 @@ from chcode.utils.skill_loader import (
 )
 
 
-def _create_skill(directory: Path, name: str, description: str = "desc", body: str = "# Instructions"):
+def _create_skill(
+    directory: Path, name: str, description: str = "desc", body: str = "# Instructions"
+):
     skill_dir = directory / name
     skill_dir.mkdir(parents=True, exist_ok=True)
     skill_md = skill_dir / "SKILL.md"
@@ -21,7 +23,9 @@ def _create_skill(directory: Path, name: str, description: str = "desc", body: s
 
 class TestSkillMetadata:
     def test_to_prompt_line(self):
-        m = SkillMetadata(name="test-skill", description="A test", skill_path=Path("/tmp"))
+        m = SkillMetadata(
+            name="test-skill", description="A test", skill_path=Path("/tmp")
+        )
         line = m.to_prompt_line()
         assert "**test-skill**" in line
         assert "A test" in line

@@ -1,4 +1,5 @@
 """Extended tests for chcode/utils/skill_loader.py"""
+
 import os
 import zipfile
 import tarfile
@@ -89,6 +90,7 @@ class TestSkillLoaderCacheValidation:
         d = _write_skill_md(tmp_path, "s1", "d")
         loader.scan_skills(force=True)
         import shutil
+
         shutil.rmtree(d)
         assert loader._is_cache_valid() is False
 
@@ -119,7 +121,9 @@ class TestInstallSkill:
     def test_successful_install(self, tmp_path):
         zip_path = tmp_path / "pkg.zip"
         with zipfile.ZipFile(zip_path, "w") as zf:
-            zf.writestr("myskill/SKILL.md", "---\nname: myskill\ndescription: d\n---\nBody")
+            zf.writestr(
+                "myskill/SKILL.md", "---\nname: myskill\ndescription: d\n---\nBody"
+            )
         install_dir = tmp_path / "installed"
         install_dir.mkdir()
         assert install_skill(str(zip_path), install_dir) is True
@@ -135,7 +139,9 @@ class TestInstallSkill:
     def test_path_traversal_blocked(self, tmp_path):
         zip_path = tmp_path / "evil.zip"
         with zipfile.ZipFile(zip_path, "w") as zf:
-            zf.writestr("../escape/SKILL.md", "---\nname: escape\ndescription: d\n---\nBody")
+            zf.writestr(
+                "../escape/SKILL.md", "---\nname: escape\ndescription: d\n---\nBody"
+            )
         install_dir = tmp_path / "installed"
         install_dir.mkdir()
         assert install_skill(str(zip_path), install_dir) is False
@@ -224,8 +230,10 @@ class TestSkillLoaderCacheOSError:
         loader.scan_skills(force=True)
 
         # Mock exists to return True, but stat raises OSError
-        with patch.object(Path, "exists", return_value=True), \
-             patch.object(Path, "stat", side_effect=OSError("I/O error")):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "stat", side_effect=OSError("I/O error")),
+        ):
             result = loader._is_cache_valid()
             assert result is False
 
@@ -248,7 +256,9 @@ class TestSkillLoaderCacheOSError:
 
             # Create a real path for tmp_path
             real_path = Path(tmp_path)
-            mock_path_cls.side_effect = lambda p: mock_fp if str(p) == fake_path else real_path
+            mock_path_cls.side_effect = lambda p: (
+                mock_fp if str(p) == fake_path else real_path
+            )
 
             result = loader._is_cache_valid()
             # OSError in file stat should return False
@@ -303,7 +313,9 @@ class TestParseSkillMetadataReadError:
         fake_md = tmp_path / "SKILL.md"
         fake_md.write_text("---\nname: test\n---\nbody", encoding="utf-8")
 
-        with patch.object(fake_md.__class__, "read_text", side_effect=PermissionError("denied")):
+        with patch.object(
+            fake_md.__class__, "read_text", side_effect=PermissionError("denied")
+        ):
             result = loader._parse_skill_metadata(fake_md)
             assert result is None
 
@@ -345,8 +357,10 @@ class TestValidateSkillPackageSkillMdMissing:
         with zipfile.ZipFile(zip_path, "w") as zf:
             zf.writestr("myskill/SKILL.md", "---\nname: test\n---\nbody")
 
-        with patch("chcode.utils.skill_loader._find_skill_dir") as mock_find, \
-             patch("pathlib.Path.exists", return_value=False):
+        with (
+            patch("chcode.utils.skill_loader._find_skill_dir") as mock_find,
+            patch("pathlib.Path.exists", return_value=False),
+        ):
             # _find_skill_dir returns a path, but SKILL.md doesn't actually exist there
             mock_find.return_value = tmp_path / "myskill"
             result = validate_skill_package(str(zip_path))
@@ -358,6 +372,7 @@ class TestSkillAgentContextYolo:
 
     def test_default_yolo_false(self):
         from chcode.utils.skill_loader import SkillAgentContext
+
         ctx = SkillAgentContext(
             skill_loader=MagicMock(),
             model_config={},
@@ -367,6 +382,7 @@ class TestSkillAgentContextYolo:
 
     def test_yolo_true(self):
         from chcode.utils.skill_loader import SkillAgentContext
+
         ctx = SkillAgentContext(
             skill_loader=MagicMock(),
             model_config={},

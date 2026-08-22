@@ -286,7 +286,9 @@ def check_command(command: str) -> GuardResult:
         if match is not None:
             category, pattern_id = match
             if category not in _disabled_categories:
-                return GuardResult(blocked=True, category=category, pattern_id=pattern_id)
+                return GuardResult(
+                    blocked=True, category=category, pattern_id=pattern_id
+                )
 
     # 上下文/标志规则
     text = command.strip()
@@ -295,6 +297,8 @@ def check_command(command: str) -> GuardResult:
             continue
         for pattern_id, pattern in rules:
             if pattern.search(text):
-                return GuardResult(blocked=True, category=category, pattern_id=pattern_id)
+                return GuardResult(
+                    blocked=True, category=category, pattern_id=pattern_id
+                )
 
     return GuardResult(blocked=False)

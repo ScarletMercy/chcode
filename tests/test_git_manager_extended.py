@@ -171,7 +171,9 @@ class TestRunErrorCases:
         gm = GitManager(str(tmp_path))
 
         with patch.object(gm, "_run", wraps=gm._run):
-            with patch("subprocess.run", return_value=_mock_run(1, stderr="Error occurred")):
+            with patch(
+                "subprocess.run", return_value=_mock_run(1, stderr="Error occurred")
+            ):
                 result = gm._run(["status"], silent=False)
                 assert result.returncode == 1
 
@@ -529,7 +531,9 @@ class TestRunNonSilentWithStdout:
         """Line 47: result.stdout is truthy, gets printed in non-silent mode."""
         gm = GitManager(str(tmp_path))
 
-        with patch("subprocess.run", return_value=_mock_run(1, stdout="some output", stderr="")):
+        with patch(
+            "subprocess.run", return_value=_mock_run(1, stdout="some output", stderr="")
+        ):
             result = gm._run(["status"], silent=False)
             assert result.returncode == 1
             captured = capsys.readouterr()
@@ -634,5 +638,3 @@ class TestRollbackElseBranch:
 # ============================================================================
 # Cross-session rollback tests (mocked _run)
 # ============================================================================
-
-

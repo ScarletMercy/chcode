@@ -32,15 +32,20 @@ class TestFallbackModels:
 
 
 class TestLoadFallbackConfig:
-    @pytest.mark.skip("Source bug: _load_fallback_config missing global _fallback_models")
+    @pytest.mark.skip(
+        "Source bug: _load_fallback_config missing global _fallback_models"
+    )
     def test_with_models_set(self):
         set_fallback_models([{"model": "fallback-1"}])
         result = _load_fallback_config()
         assert result["model"] == "fallback-1"
 
-    @pytest.mark.skip("Source bug: _load_fallback_config missing global _fallback_models")
+    @pytest.mark.skip(
+        "Source bug: _load_fallback_config missing global _fallback_models"
+    )
     def test_no_models_no_file(self, tmp_path, monkeypatch):
         import chcode.config as config_mod
+
         config_mod._model_json.invalidate()
         set_fallback_models([])
         monkeypatch.setattr(config_mod, "MODEL_JSON", tmp_path / "nope.json")

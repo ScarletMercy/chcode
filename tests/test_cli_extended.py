@@ -1,4 +1,5 @@
 """Extended tests for chcode/cli.py"""
+
 import io
 import os
 import sys
@@ -25,6 +26,7 @@ class TestLangSmithGuard:
         old__stderr__ = sys.__stderr__
         # Call setup which wraps sys.stderr/sys.__stderr__
         from chcode.cli import _setup_langsmith_guard
+
         _setup_langsmith_guard()
         guard = sys.stderr
         original = guard._original
@@ -154,9 +156,7 @@ class TestLangSmithGuard:
         buf = io.StringIO()
         guard._original = buf
         try:
-            ret = guard.write(
-                "langsmith MaxRetryError: api.smith.langchain.com\n"
-            )
+            ret = guard.write("langsmith MaxRetryError: api.smith.langchain.com\n")
             assert ret > 0
             assert buf.getvalue() == ""
             assert "LANGSMITH_TRACING" not in os.environ
@@ -172,9 +172,7 @@ class TestLangSmithGuard:
         buf = io.StringIO()
         guard._original = buf
         try:
-            ret = guard.write(
-                "langsmith ConnectionAbortedError(10053)\n"
-            )
+            ret = guard.write("langsmith ConnectionAbortedError(10053)\n")
             assert ret > 0
             assert buf.getvalue() == ""
             assert "LANGSMITH_TRACING" not in os.environ
@@ -190,9 +188,7 @@ class TestLangSmithGuard:
         buf = io.StringIO()
         guard._original = buf
         try:
-            ret = guard.write(
-                "langsmith ConnectionResetError(10054)\n"
-            )
+            ret = guard.write("langsmith ConnectionResetError(10054)\n")
             assert ret > 0
             assert buf.getvalue() == ""
             assert "LANGSMITH_TRACING" not in os.environ
@@ -252,15 +248,17 @@ class TestMainEntry:
         """Line 131: if __name__ == '__main__': app()."""
         # The __main__ entry just calls app(). Verify it exists.
         from chcode.cli import app
+
         assert app is not None
         # Verify app has a callable method
-        assert hasattr(app, '__call__') or hasattr(app, 'run')
+        assert hasattr(app, "__call__") or hasattr(app, "run")
 
 
 class TestMainCallback:
     def test_no_subcommand_invokes_run_chat(self):
         import asyncio
         from chcode.cli import main, app
+
         mock_ctx = MagicMock()
         mock_ctx.invoked_subcommand = None
         with patch("chcode.cli.asyncio.run") as mock_run:
@@ -274,6 +272,7 @@ class TestMainCallback:
 
     def test_version_flag(self):
         from chcode.cli import main
+
         mock_ctx = MagicMock()
         mock_ctx.invoked_subcommand = None
         with patch("chcode.cli.console") as mock_console:
@@ -289,6 +288,7 @@ class TestMainCallback:
 class TestConfigCommand:
     def test_config_new(self):
         from chcode.cli import config
+
         with patch("chcode.cli.asyncio.run") as mock_run:
             config("new")
             mock_run.assert_called_once()
@@ -297,6 +297,7 @@ class TestConfigCommand:
 
     def test_config_edit(self):
         from chcode.cli import config
+
         with patch("chcode.cli.asyncio.run") as mock_run:
             config("edit")
             mock_run.assert_called_once()
@@ -305,6 +306,7 @@ class TestConfigCommand:
 
     def test_config_switch(self):
         from chcode.cli import config
+
         with patch("chcode.cli.asyncio.run") as mock_run:
             config("switch")
             mock_run.assert_called_once()
@@ -313,6 +315,7 @@ class TestConfigCommand:
 
     def test_config_unknown(self):
         from chcode.cli import config
+
         with patch("chcode.cli.asyncio.run") as mock_run:
             config("unknown")
             mock_run.assert_called_once()
@@ -323,24 +326,28 @@ class TestConfigCommand:
 class TestRunConfig:
     async def test_new_action(self):
         from chcode.cli import _run_config
+
         with patch("chcode.config.configure_new_model", new_callable=AsyncMock) as mock:
             await _run_config("new")
             mock.assert_called_once()
 
     async def test_edit_action(self):
         from chcode.cli import _run_config
+
         with patch("chcode.config.edit_current_model", new_callable=AsyncMock) as mock:
             await _run_config("edit")
             mock.assert_called_once()
 
     async def test_switch_action(self):
         from chcode.cli import _run_config
+
         with patch("chcode.config.switch_model", new_callable=AsyncMock) as mock:
             await _run_config("switch")
             mock.assert_called_once()
 
     async def test_unknown_action(self):
         from chcode.cli import _run_config
+
         with patch("chcode.cli.console") as mock_console:
             await _run_config("bad_action")
             assert mock_console.print.called
@@ -357,7 +364,7 @@ class TestStderrIntegrity:
             "sys.stderr (guard) and sys.__stderr__ should differ"
         )
         # sys.__stderr__ should be a real file-like object, not a guard wrapper
-        assert hasattr(sys.__stderr__, 'fileno'), (
+        assert hasattr(sys.__stderr__, "fileno"), (
             "sys.__stderr__ should be a real file object with fileno()"
         )
         # Verify we can recover sys.stderr from sys.__stderr__
@@ -372,6 +379,7 @@ class TestStderrIntegrity:
     def test_guard_only_wraps_stderr(self):
         """After _setup_langsmith_guard, only sys.stderr is wrapped, never sys.__stderr__."""
         import io
+
         # sys.__stderr__ should support fileno (real file)
         try:
             sys.__stderr__.fileno()
@@ -384,7 +392,7 @@ class TestStderrIntegrity:
         stderr_type = type(sys.__stderr__)
         # The key invariant: sys.__stderr__ must NOT be a _Guard instance
         # We check this by ensuring it lacks the _original attr that _Guard sets
-        assert not hasattr(sys.__stderr__, '_original'), (
+        assert not hasattr(sys.__stderr__, "_original"), (
             "sys.__stderr__ must not be a _Guard wrapper (no _original attr)"
         )
 
@@ -392,6 +400,7 @@ class TestStderrIntegrity:
 class TestRunChat:
     async def test_init_success(self):
         from chcode.cli import _run_chat
+
         mock_repl = MagicMock()
         mock_repl.initialize = AsyncMock(return_value=True)
         mock_repl.run = AsyncMock()
@@ -405,6 +414,7 @@ class TestRunChat:
 
     async def test_init_failure(self):
         from chcode.cli import _run_chat
+
         mock_repl = MagicMock()
         mock_repl.initialize = AsyncMock(return_value=False)
         mock_repl.close = AsyncMock()
@@ -419,11 +429,14 @@ class TestRunChat:
 
     async def test_init_exception(self):
         from chcode.cli import _run_chat
+
         mock_repl = MagicMock()
         mock_repl.initialize = AsyncMock(side_effect=RuntimeError("fail"))
         mock_repl.close = AsyncMock()
-        with patch("chcode.chat.ChatREPL", return_value=mock_repl), \
-             patch("chcode.cli.console") as mock_console:
+        with (
+            patch("chcode.chat.ChatREPL", return_value=mock_repl),
+            patch("chcode.cli.console") as mock_console,
+        ):
             try:
                 await _run_chat(False)
             except (SystemExit, click.exceptions.Exit):

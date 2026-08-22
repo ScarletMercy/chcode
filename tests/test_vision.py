@@ -19,6 +19,7 @@ def mock_runtime():
 @pytest.fixture
 def temp_image_file(tmp_path):
     from PIL import Image
+
     img = Image.new("RGB", (100, 100), color="red")
     img_path = tmp_path / "test.png"
     img.save(img_path)
@@ -32,7 +33,6 @@ def _mock_llm_ainvoke(return_content="OK"):
 
 
 class TestVisionFileValidation:
-
     @pytest.mark.asyncio
     async def test_file_not_found(self, mock_runtime):
         from chcode.utils.tools import vision
@@ -77,6 +77,7 @@ class TestVisionFileValidation:
         # 创建一个真实的 PNG 文件
         img_path = tmp_path / "large.png"
         from PIL import Image
+
         img = Image.new("RGB", (4000, 3000), color="red")
         img.save(img_path, format="PNG")
 
@@ -87,18 +88,26 @@ class TestVisionFileValidation:
 
 
 class TestVisionImageProcessing:
-
     @pytest.mark.asyncio
-    async def test_successful_image_read_and_encode(self, mock_runtime, temp_image_file):
+    async def test_successful_image_read_and_encode(
+        self, mock_runtime, temp_image_file
+    ):
         from chcode.utils.tools import vision
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
-            mock_get_default.return_value = {"model": "test-model", "api_key": "key", "base_url": "http://x.com"}
+            mock_get_default.return_value = {
+                "model": "test-model",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
             mock_get_fb.return_value = []
             mock_llm_cls.return_value = _mock_llm_ainvoke("Image description")
 
@@ -109,16 +118,18 @@ class TestVisionImageProcessing:
 
 
 class TestVisionNoApiKey:
-
     @pytest.mark.asyncio
-    async def test_returns_error_when_no_api_key_and_no_auto_config(self, mock_runtime, temp_image_file):
+    async def test_returns_error_when_no_api_key_and_no_auto_config(
+        self, mock_runtime, temp_image_file
+    ):
         from chcode.utils.tools import vision
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.auto_configure_vision") as mock_auto, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.auto_configure_vision") as mock_auto,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+        ):
             mock_resolve.return_value = temp_image_file
             mock_get_default.return_value = None
             mock_auto.return_value = None
@@ -132,15 +143,22 @@ class TestVisionNoApiKey:
     async def test_auto_configure_succeeds(self, mock_runtime, temp_image_file):
         from chcode.utils.tools import vision
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.vision_config.auto_configure_vision") as mock_auto, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch("chcode.vision_config.auto_configure_vision") as mock_auto,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
             mock_get_default.return_value = None
-            mock_auto.return_value = {"model": "auto-model", "api_key": "key", "base_url": "http://x.com"}
+            mock_auto.return_value = {
+                "model": "auto-model",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
             mock_get_fb.return_value = []
             mock_llm_cls.return_value = _mock_llm_ainvoke("Auto config works")
 
@@ -149,9 +167,10 @@ class TestVisionNoApiKey:
 
 
 class TestVisionFallback:
-
     @pytest.mark.asyncio
-    async def test_continues_to_fallback_on_invoke_error(self, mock_runtime, temp_image_file):
+    async def test_continues_to_fallback_on_invoke_error(
+        self, mock_runtime, temp_image_file
+    ):
         from chcode.utils.tools import vision
 
         mock_llm_fail = MagicMock()
@@ -159,15 +178,26 @@ class TestVisionFallback:
 
         mock_llm_ok = _mock_llm_ainvoke("Fallback worked")
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
-            mock_get_default.return_value = {"model": "default-model", "api_key": "key", "base_url": "http://x.com"}
+            mock_get_default.return_value = {
+                "model": "default-model",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
             mock_get_fb.return_value = [
-                {"model": "fallback-model", "api_key": "key", "base_url": "http://x.com"}
+                {
+                    "model": "fallback-model",
+                    "api_key": "key",
+                    "base_url": "http://x.com",
+                }
             ]
             mock_llm_cls.side_effect = [mock_llm_fail, mock_llm_ok]
 
@@ -183,14 +213,23 @@ class TestVisionFallback:
 
         mock_llm_ok = _mock_llm_ainvoke("Success after empty content")
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
-            mock_get_default.return_value = {"model": "model1", "api_key": "key", "base_url": "http://x.com"}
-            mock_get_fb.return_value = [{"model": "model2", "api_key": "key", "base_url": "http://x.com"}]
+            mock_get_default.return_value = {
+                "model": "model1",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
+            mock_get_fb.return_value = [
+                {"model": "model2", "api_key": "key", "base_url": "http://x.com"}
+            ]
             mock_llm_cls.side_effect = [mock_llm_empty, mock_llm_ok]
 
             result = await vision.coroutine("test.png", runtime=mock_runtime)
@@ -201,25 +240,38 @@ class TestVisionFallback:
         from chcode.utils.tools import vision
 
         mock_llm_timeout = MagicMock()
-        mock_llm_timeout.ainvoke = AsyncMock(side_effect=TimeoutError("Request timed out"))
+        mock_llm_timeout.ainvoke = AsyncMock(
+            side_effect=TimeoutError("Request timed out")
+        )
 
         mock_llm_ok = _mock_llm_ainvoke("Success after timeout")
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
-            mock_get_default.return_value = {"model": "model1", "api_key": "key", "base_url": "http://x.com"}
-            mock_get_fb.return_value = [{"model": "model2", "api_key": "key", "base_url": "http://x.com"}]
+            mock_get_default.return_value = {
+                "model": "model1",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
+            mock_get_fb.return_value = [
+                {"model": "model2", "api_key": "key", "base_url": "http://x.com"}
+            ]
             mock_llm_cls.side_effect = [mock_llm_timeout, mock_llm_ok]
 
             result = await vision.coroutine("test.png", runtime=mock_runtime)
             assert "[OK]" in result
 
     @pytest.mark.asyncio
-    async def test_other_exception_continues_to_fallback(self, mock_runtime, temp_image_file):
+    async def test_other_exception_continues_to_fallback(
+        self, mock_runtime, temp_image_file
+    ):
         from chcode.utils.tools import vision
 
         mock_llm_err = MagicMock()
@@ -227,34 +279,54 @@ class TestVisionFallback:
 
         mock_llm_ok = _mock_llm_ainvoke("Success after exception")
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
-            mock_get_default.return_value = {"model": "model1", "api_key": "key", "base_url": "http://x.com"}
-            mock_get_fb.return_value = [{"model": "model2", "api_key": "key", "base_url": "http://x.com"}]
+            mock_get_default.return_value = {
+                "model": "model1",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
+            mock_get_fb.return_value = [
+                {"model": "model2", "api_key": "key", "base_url": "http://x.com"}
+            ]
             mock_llm_cls.side_effect = [mock_llm_err, mock_llm_ok]
 
             result = await vision.coroutine("test.png", runtime=mock_runtime)
             assert "[OK]" in result
 
     @pytest.mark.asyncio
-    async def test_all_models_fail_returns_final_error(self, mock_runtime, temp_image_file):
+    async def test_all_models_fail_returns_final_error(
+        self, mock_runtime, temp_image_file
+    ):
         from chcode.utils.tools import vision
 
         mock_llm_fail = MagicMock()
         mock_llm_fail.ainvoke = AsyncMock(side_effect=Exception("Server error"))
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
-            mock_get_default.return_value = {"model": "model1", "api_key": "key", "base_url": "http://x.com"}
-            mock_get_fb.return_value = [{"model": "model2", "api_key": "key", "base_url": "http://x.com"}]
+            mock_get_default.return_value = {
+                "model": "model1",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
+            mock_get_fb.return_value = [
+                {"model": "model2", "api_key": "key", "base_url": "http://x.com"}
+            ]
             mock_llm_cls.return_value = mock_llm_fail
 
             result = await vision.coroutine("test.png", runtime=mock_runtime)
@@ -263,7 +335,6 @@ class TestVisionFallback:
 
 
 class TestVisionDeduplication:
-
     @pytest.mark.asyncio
     async def test_deduplicates_model_list(self, mock_runtime, temp_image_file):
         from chcode.utils.tools import vision
@@ -275,18 +346,27 @@ class TestVisionDeduplication:
             invoke_count += 1
             mock_llm = MagicMock()
             if invoke_count <= 2:
-                mock_llm.ainvoke = AsyncMock(side_effect=Exception(f"model {invoke_count} failed"))
+                mock_llm.ainvoke = AsyncMock(
+                    side_effect=Exception(f"model {invoke_count} failed")
+                )
             else:
                 mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="Success"))
             return mock_llm
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
-            mock_get_default.return_value = {"model": "model1", "api_key": "key", "base_url": "http://x.com"}
+            mock_get_default.return_value = {
+                "model": "model1",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
             mock_get_fb.return_value = [
                 {"model": "model1", "api_key": "key", "base_url": "http://x.com"},
                 {"model": "model2", "api_key": "key", "base_url": "http://x.com"},
@@ -298,7 +378,9 @@ class TestVisionDeduplication:
             assert invoke_count == 3
 
     @pytest.mark.asyncio
-    async def test_same_name_cn_and_intl_both_tried(self, mock_runtime, temp_image_file):
+    async def test_same_name_cn_and_intl_both_tried(
+        self, mock_runtime, temp_image_file
+    ):
         """同名国内/国际版视觉模型按 region_key 去重，两个都被尝试（不互相吞）。
 
         对比纯 model 名去重：那会把同名国际版吞掉，只调用 1 次。
@@ -317,21 +399,28 @@ class TestVisionDeduplication:
                 mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
             return mock_llm
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
             # default 用国内版同名模型；fallback 含国际版同名模型
             mock_get_default.return_value = {
-                "model": "VL", "api_key": "cn-key",
+                "model": "VL",
+                "api_key": "cn-key",
                 "base_url": "https://api-inference.modelscope.cn/v1",
             }
             mock_get_fb.return_value = [
-                {"model": "VL", "api_key": "intl-key",
-                 "base_url": "https://api-inference.modelscope.ai/v1",
-                 "metadata": {"region": "intl"}},
+                {
+                    "model": "VL",
+                    "api_key": "intl-key",
+                    "base_url": "https://api-inference.modelscope.ai/v1",
+                    "metadata": {"region": "intl"},
+                },
             ]
             mock_llm_cls.side_effect = make_llm
 
@@ -341,7 +430,6 @@ class TestVisionDeduplication:
 
 
 class TestVisionCustomPrompt:
-
     @pytest.mark.asyncio
     async def test_uses_custom_prompt(self, mock_runtime, temp_image_file):
         from chcode.utils.tools import vision
@@ -354,28 +442,40 @@ class TestVisionCustomPrompt:
             captured_messages = messages
             return AIMessage(content="OK")
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
-            mock_get_default.return_value = {"model": "model", "api_key": "key", "base_url": "http://x.com"}
+            mock_get_default.return_value = {
+                "model": "model",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
             mock_get_fb.return_value = []
 
             mock_llm = MagicMock()
             mock_llm.ainvoke = AsyncMock(side_effect=capture_ainvoke)
             mock_llm_cls.return_value = mock_llm
 
-            await vision.coroutine("test.png", prompt=custom_prompt, runtime=mock_runtime)
+            await vision.coroutine(
+                "test.png", prompt=custom_prompt, runtime=mock_runtime
+            )
 
             msg_content = captured_messages[0].content
-            text_parts = [p for p in msg_content if isinstance(p, dict) and p.get("type") == "text"]
+            text_parts = [
+                p
+                for p in msg_content
+                if isinstance(p, dict) and p.get("type") == "text"
+            ]
             assert text_parts[0]["text"] == custom_prompt
 
 
 class TestVisionResizing:
-
     @pytest.mark.asyncio
     async def test_resizes_large_image(self, mock_runtime, tmp_path):
         from PIL import Image
@@ -396,13 +496,20 @@ class TestVisionResizing:
                 saved_sizes.append(len(data))
                 super().write(data)
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = img_path
-            mock_get_default.return_value = {"model": "model", "api_key": "key", "base_url": "http://x.com"}
+            mock_get_default.return_value = {
+                "model": "model",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
             mock_get_fb.return_value = []
             mock_llm_cls.return_value = _mock_llm_ainvoke("OK")
 
@@ -414,7 +521,6 @@ class TestVisionResizing:
 
 
 class TestVisionPilError:
-
     @pytest.mark.asyncio
     async def test_pil_read_error(self, mock_runtime, tmp_path):
         from PIL import Image
@@ -424,10 +530,11 @@ class TestVisionPilError:
         img_path = tmp_path / "test.png"
         img.save(img_path)
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.auto_configure_vision") as mock_auto:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.auto_configure_vision") as mock_auto,
+        ):
             mock_resolve.return_value = img_path
             mock_get_default.return_value = None
             mock_auto.return_value = None
@@ -440,7 +547,6 @@ class TestVisionPilError:
 
 
 class TestVisionOptionalHyperparameters:
-
     @pytest.mark.asyncio
     async def test_uses_optional_temperature(self, mock_runtime, temp_image_file):
         from chcode.utils.tools import vision
@@ -453,14 +559,19 @@ class TestVisionOptionalHyperparameters:
             mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="OK"))
             return mock_llm
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
             mock_get_default.return_value = {
-                "model": "model", "api_key": "key", "base_url": "http://x.com",
+                "model": "model",
+                "api_key": "key",
+                "base_url": "http://x.com",
                 "temperature": 0.7,
             }
             mock_get_fb.return_value = []
@@ -481,14 +592,19 @@ class TestVisionOptionalHyperparameters:
             mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="OK"))
             return mock_llm
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
             mock_get_default.return_value = {
-                "model": "model", "api_key": "key", "base_url": "http://x.com",
+                "model": "model",
+                "api_key": "key",
+                "base_url": "http://x.com",
                 "top_p": 0.9,
             }
             mock_get_fb.return_value = []
@@ -499,7 +615,6 @@ class TestVisionOptionalHyperparameters:
 
 
 class TestVisionSkipEmptyApiKey:
-
     @pytest.mark.asyncio
     async def test_skips_model_with_no_api_key(self, mock_runtime, temp_image_file):
         from chcode.utils.tools import vision
@@ -511,13 +626,20 @@ class TestVisionSkipEmptyApiKey:
             invoke_count += 1
             return _mock_llm_ainvoke("OK")
 
-        with patch("chcode.utils.tools.resolve_path") as mock_resolve, \
-             patch("chcode.vision_config.get_vision_default_model") as mock_get_default, \
-             patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm_cls:
-
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
             mock_resolve.return_value = temp_image_file
-            mock_get_default.return_value = {"model": "model1", "api_key": "", "base_url": "http://x.com"}
+            mock_get_default.return_value = {
+                "model": "model1",
+                "api_key": "",
+                "base_url": "http://x.com",
+            }
             mock_get_fb.return_value = [
                 {"model": "model2", "api_key": "key", "base_url": "http://x.com"},
             ]

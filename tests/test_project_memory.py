@@ -5,15 +5,17 @@ Tests for chcode/utils/project_memory.py — CHCODE.md 项目记忆系统。
 条目写入（append/replace/新建节/超长拒绝）、update_memory 工具、
 HITL 注册与 load_skills 提示词注入。
 """
+
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from chcode.utils.project_memory import (
     MAX_ENTRY_CHARS,
+    begin_memory_session,
     build_memory_reminder,
     check_memory_changed,
     diff_memory_lines,
@@ -23,6 +25,7 @@ from chcode.utils.project_memory import (
     load_memory_content,
     preview_memory_entry,
     reset_memory_cache,
+    reset_memory_session,
     save_memory_entry,
 )
 
@@ -160,7 +163,9 @@ class TestLoadMemoryContent:
 class TestSaveMemoryEntry:
     def test_append_to_canonical_zh_section(self, tmp_path):
         ensure_project_memory(tmp_path)
-        save_memory_entry(tmp_path, "常用命令", "NEVER use pip; MUST use uv to add deps.")
+        save_memory_entry(
+            tmp_path, "常用命令", "NEVER use pip; MUST use uv to add deps."
+        )
         text = (tmp_path / "CHCODE.md").read_text(encoding="utf-8")
         idx_cmd = text.index("## 常用命令")
         idx_next = text.index("## 编码规范")
@@ -168,7 +173,9 @@ class TestSaveMemoryEntry:
 
     def test_append_en_name_maps_to_zh_section(self, tmp_path):
         ensure_project_memory(tmp_path)
-        save_memory_entry(tmp_path, "Common Commands", "ALWAYS run tests before commit.")
+        save_memory_entry(
+            tmp_path, "Common Commands", "ALWAYS run tests before commit."
+        )
         text = (tmp_path / "CHCODE.md").read_text(encoding="utf-8")
         # 不应新建英文节，条目落入中文节
         assert "## Common Commands" not in text
@@ -194,7 +201,9 @@ class TestSaveMemoryEntry:
 
     def test_append_to_existing_custom_header(self, tmp_path):
         """迁移自 CLAUDE.md 的自定义节头也能命中"""
-        _write(tmp_path / "CHCODE.md", "# Proj\n\n## Guidelines\n\n- rule A\n\n## Other\n")
+        _write(
+            tmp_path / "CHCODE.md", "# Proj\n\n## Guidelines\n\n- rule A\n\n## Other\n"
+        )
         save_memory_entry(tmp_path, "Guidelines", "NEVER push to main directly.")
         text = (tmp_path / "CHCODE.md").read_text(encoding="utf-8")
         idx = text.index("## Guidelines")
@@ -206,12 +215,16 @@ class TestSaveMemoryEntry:
         save_memory_entry(tmp_path, "禁止事项", "NEVER edit generated files.")
         save_memory_entry(tmp_path, "禁止事项", "NEVER commit secrets.")
         text = (tmp_path / "CHCODE.md").read_text(encoding="utf-8")
-        assert text.index("NEVER edit generated files.") < text.index("NEVER commit secrets.")
+        assert text.index("NEVER edit generated files.") < text.index(
+            "NEVER commit secrets."
+        )
 
     def test_replace_section_body(self, tmp_path):
         ensure_project_memory(tmp_path)
         save_memory_entry(tmp_path, "验证流程", "old workflow")
-        save_memory_entry(tmp_path, "验证流程", "MUST run: uv run pytest", mode="replace")
+        save_memory_entry(
+            tmp_path, "验证流程", "MUST run: uv run pytest", mode="replace"
+        )
         content = load_memory_content(tmp_path)
         assert "old workflow" not in content
         assert "MUST run: uv run pytest" in content
@@ -294,6 +307,63 @@ class TestSessionFreeze:
 
 
 # ============================================================================
+# 生命周期门面（begin_memory_session / reset_memory_session）
+# ============================================================================
+
+
+class TestBeginMemorySession:
+    def test_created_seeds_freeze_and_baseline(self, tmp_path):
+        """全新目录：创建模板、冻结块可读、轮询基线已建立"""
+        status = begin_memory_session(tmp_path)
+        assert status == "created"
+        assert (tmp_path / "CHCODE.md").exists()
+        assert get_session_memory(tmp_path) is None  # 纯模板 = 空
+        assert check_memory_changed(tmp_path) is None  # 基线已建立，无提醒
+
+    def test_migrated_from_claude_md(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text("- 使用 uv", encoding="utf-8")
+        assert begin_memory_session(tmp_path) == "migrated"
+        assert "使用 uv" in get_session_memory(tmp_path)
+
+    def test_exists_rereads_external_change(self, tmp_path):
+        """外部改写后重启会话：状态 exists，冻结块反映新内容"""
+        begin_memory_session(tmp_path)
+        assert get_session_memory(tmp_path) is None  # 冻结空模板
+        _write(
+            tmp_path / "CHCODE.md", "# CHCODE.md\n\n## 常用命令\n\n- pytest tests/\n"
+        )
+        assert begin_memory_session(tmp_path) == "exists"
+        assert "pytest tests/" in get_session_memory(tmp_path)
+
+
+class TestResetMemorySession:
+    def test_clears_frozen_block(self, tmp_path):
+        """冻结块失效后重读磁盘新内容"""
+        begin_memory_session(tmp_path)
+        assert get_session_memory(tmp_path) is None  # 首次访问冻结空模板
+        _write(
+            tmp_path / "CHCODE.md", "# CHCODE.md\n\n## 常用命令\n\n- pytest tests/\n"
+        )
+        assert get_session_memory(tmp_path) is None  # 会话内冻结：仍是旧内容
+        reset_memory_session(tmp_path)
+        assert "pytest tests/" in get_session_memory(tmp_path)
+
+    def test_does_not_recreate_deleted_file(self, tmp_path):
+        """不 ensure：用户删掉 CHCODE.md 后不被静默重建模板"""
+        begin_memory_session(tmp_path)
+        (tmp_path / "CHCODE.md").unlink()
+        reset_memory_session(tmp_path)
+        assert not (tmp_path / "CHCODE.md").exists()
+
+    def test_reseeds_polling_baseline(self, tmp_path):
+        """基线重建后，外部变更不再被报告为提醒"""
+        begin_memory_session(tmp_path)
+        _write(tmp_path / "CHCODE.md", "# CHCODE.md\n\n## 常用命令\n\n- changed\n")
+        reset_memory_session(tmp_path)
+        assert check_memory_changed(tmp_path) is None
+
+
+# ============================================================================
 # 外部修改轮询检测（check_memory_changed）
 # ============================================================================
 
@@ -311,9 +381,9 @@ class TestCheckMemoryChanged:
         # 外部编辑
         _write(
             tmp_path / "CHCODE.md",
-            (tmp_path / "CHCODE.md").read_text(encoding="utf-8").replace(
-                "- old rule", "- new rule"
-            ),
+            (tmp_path / "CHCODE.md")
+            .read_text(encoding="utf-8")
+            .replace("- old rule", "- new rule"),
         )
         note = check_memory_changed(tmp_path)
         assert note is not None
@@ -468,7 +538,9 @@ class TestPreviewMemoryEntry:
             preview_memory_entry(tmp_path, "禁止事项", "x" * (MAX_ENTRY_CHARS + 1))
 
     def test_preview_capacity_throttle(self, tmp_path):
-        _write(tmp_path / "CHCODE.md", "# T\n\n## 节\n\n" + ("- " + "y" * 80 + "\n") * 300)
+        _write(
+            tmp_path / "CHCODE.md", "# T\n\n## 节\n\n" + ("- " + "y" * 80 + "\n") * 300
+        )
         with pytest.raises(ValueError, match="capacity"):
             preview_memory_entry(tmp_path, "踩过的坑", "new entry")
 
@@ -620,9 +692,9 @@ class TestInjectProjectMemoryMiddleware:
         # 外部编辑
         _write(
             tmp_path / "CHCODE.md",
-            (tmp_path / "CHCODE.md").read_text(encoding="utf-8").replace(
-                "- old rule", "- new rule"
-            ),
+            (tmp_path / "CHCODE.md")
+            .read_text(encoding="utf-8")
+            .replace("- old rule", "- new rule"),
         )
         request = await self._make_request(tmp_path)
         handler = AsyncMock(return_value="resp")
@@ -649,12 +721,12 @@ class TestInjectProjectMemoryMiddleware:
 
 class TestSubagentMemoryInjection:
     async def test_subagent_gets_frozen_block_only(self, tmp_path):
-        """子代理注入冻结块，但不做轮询（无变更提醒）"""
-        from chcode.agents.runner import _inject_subagent_memory
+        """子代理注入冻结块；其消息流不带 memory_note，展开天然不生效"""
+        from chcode.agent_setup import inject_project_memory
 
         save_memory_entry(tmp_path, "禁止事项", "NEVER commit secrets.")
         check_memory_changed(tmp_path)  # 主代理视角的基线
-        # 外部编辑 —— 子代理不应感知为提醒
+        # 外部编辑 —— 轮询只在主循环发生，子代理消息不携带变更提醒
         _write(
             tmp_path / "CHCODE.md",
             (tmp_path / "CHCODE.md").read_text(encoding="utf-8") + "- extra\n",
@@ -664,7 +736,7 @@ class TestSubagentMemoryInjection:
         request.messages = [HumanMessage(content="sub task")]
         handler = AsyncMock(return_value="resp")
 
-        await _inject_subagent_memory.awrap_model_call(request, handler)
+        await inject_project_memory.awrap_model_call(request, handler)
 
         messages = request.override.call_args.kwargs["messages"]
         assert len(messages) == 2  # 前置块 + 原消息，无变更提醒
@@ -687,15 +759,109 @@ class TestSubagentMemoryInjection:
             return_value=ToolMessage(content="ok", tool_call_id="call_1")
         )
 
-        with patch.object(display_mod, "_subagent_count", 1), \
-             patch.object(display_mod, "_subagent_parallel", False), \
-             patch.object(display_mod, "console") as mock_console:
+        with (
+            patch.object(display_mod, "_subagent_count", 1),
+            patch.object(display_mod, "_subagent_parallel", False),
+            patch.object(display_mod, "console") as mock_console,
+        ):
             await _display_subagent_tools.awrap_tool_call(request, handler)
 
         printed = "".join(str(c) for c in mock_console.print.call_args_list)
         assert "update_memory" in printed
         assert "常用命令" in printed
         handler.assert_awaited_once()
+
+
+class TestSubagentMemoryNotesPassing:
+    """主代理调用子代理时显式传入变更提醒（收集 + 系统提示词拼接）"""
+
+    def test_collect_memory_notes_chronological(self):
+        from chcode.utils.tools import _collect_memory_notes
+
+        note1 = "<system-reminder>Note: first change</system-reminder>"
+        note2 = "<system-reminder>Note: second change</system-reminder>"
+        msgs = [
+            HumanMessage(content="q1", additional_kwargs={"memory_note": note1}),
+            HumanMessage(content="a1"),  # 无 note 的消息原样跳过
+            HumanMessage(content="q2", additional_kwargs={"memory_note": note2}),
+        ]
+        assert _collect_memory_notes(msgs) == [note1, note2]
+
+    def test_collect_memory_notes_empty_safe(self):
+        from chcode.utils.tools import _collect_memory_notes
+
+        assert _collect_memory_notes([]) == []
+        assert _collect_memory_notes([HumanMessage(content="hi")]) == []
+
+    def test_with_memory_notes_appends_in_order(self):
+        from chcode.agents.runner import _with_memory_notes
+
+        base = "You are Explore."
+        assert _with_memory_notes(base, None) == base
+        assert _with_memory_notes(base, []) == base
+        combined = _with_memory_notes(base, ["n1", "n2"])
+        assert combined.startswith(base)
+        assert combined.index("n1") < combined.index("n2")
+
+
+class TestSubagentEndToEndMemory:
+    """端到端：create_agent 真实装配后，子代理模型实际收到记忆上下文。
+
+    既有测试都是直接调中间件函数；本类走完整装配链路（create_agent +
+    全部中间件），只替换模型为记录消息的假实现，防中间件注册/装配
+    改动悄悄断掉注入。
+    """
+
+    async def test_subagent_receives_memory_and_notes(self, tmp_path):
+        from chcode.agents import runner as runner_mod
+        from chcode.agents.definitions import BUILT_IN_AGENTS
+        from chcode.utils.skill_loader import SkillLoader
+
+        save_memory_entry(tmp_path, "禁止事项", "VERIF-MARKER-42")
+
+        captured: list[list] = []
+
+        class FakeModel:
+            def __init__(self, **kwargs):
+                pass
+
+            def bind_tools(self, tools, **kw):
+                return self
+
+            async def ainvoke(self, messages, config=None, **kw):
+                captured.append(list(messages))
+                return AIMessage(content="done")
+
+            async def astream(self, messages, config=None, **kw):
+                captured.append(list(messages))
+                yield AIMessage(content="done")
+
+        agent_def = BUILT_IN_AGENTS["Explore"]
+        with patch.object(runner_mod, "EnhancedChatOpenAI", FakeModel):
+            result, is_error = await runner_mod.run_subagent(
+                prompt="just acknowledge",
+                agent_def=agent_def,
+                model_config={"model": "fake"},
+                working_directory=tmp_path,
+                skill_loader=SkillLoader([tmp_path]),
+                timeout_seconds=300,
+                description="verify",
+                yolo=False,
+                memory_notes=["<system-reminder>VERIF-NOTE-7</system-reminder>"],
+            )
+
+        assert is_error is False
+        assert len(captured) == 1  # 假模型直接终答，单次调用
+        msgs = captured[0]
+        # 系统提示 = agent 定义提示词 + 变更提醒拼在末尾
+        assert msgs[0].content.startswith(agent_def.system_prompt)
+        assert "VERIF-NOTE-7" in msgs[0].content
+        # 冻结块作为会话首条消息（<system-reminder> 包裹，含记忆内容）
+        assert msgs[1].content.startswith("<system-reminder>")
+        assert "# project_memory" in msgs[1].content
+        assert "VERIF-MARKER-42" in msgs[1].content
+        # 任务 prompt 原样透传
+        assert msgs[2].content == "just acknowledge"
 
 
 class TestRenderMemoryPreview:
@@ -771,7 +937,12 @@ class TestAttachMemoryNote:
         from chcode.display import render_conversation
 
         render_conversation(
-            [HumanMessage(content="VISIBLE-Msg", additional_kwargs={"memory_note": "SECRET-NOTE"})]
+            [
+                HumanMessage(
+                    content="VISIBLE-Msg",
+                    additional_kwargs={"memory_note": "SECRET-NOTE"},
+                )
+            ]
         )
         out = capsys.readouterr().out
         assert "VISIBLE-Msg" in out

@@ -55,7 +55,9 @@ class TestExtractReasoning:
 
     def test_specific_field_found(self):
         model = _make_model(reasoning_field="thinking")
-        result = model._extract_reasoning({"thinking": "deep", "reasoning_content": "ignored"})
+        result = model._extract_reasoning(
+            {"thinking": "deep", "reasoning_content": "ignored"}
+        )
         assert result == "deep"
 
     def test_specific_field_not_found(self):
@@ -186,9 +188,12 @@ class TestProcessMessageWithReasoning:
     def test_all_reasoning_fields_removed(self):
         model = _make_model()
         _dict = {
-            "reasoning_content": "rc", "thinking": "th",
-            "reasoning": "re", "thought": "to",
-            "thought_process": "tp", "content": "ans",
+            "reasoning_content": "rc",
+            "thinking": "th",
+            "reasoning": "re",
+            "thought": "to",
+            "thought_process": "tp",
+            "content": "ans",
         }
         result = model._process_message_with_reasoning(_dict)
         for field in model.REASONING_FIELDS:
@@ -243,7 +248,10 @@ class TestCreateChatResult:
             ChatOpenAI, "_create_chat_result", return_value=parent_result
         ):
             result = model._create_chat_result(response)
-            assert result.generations[0].message.additional_kwargs["reasoning"] == "reasoning here"
+            assert (
+                result.generations[0].message.additional_kwargs["reasoning"]
+                == "reasoning here"
+            )
 
     def test_adds_content_blocks(self):
         model = _make_model()
@@ -261,7 +269,9 @@ class TestCreateChatResult:
             ChatOpenAI, "_create_chat_result", return_value=parent_result
         ):
             result = model._create_chat_result(response)
-            blocks = result.generations[0].message.additional_kwargs.get("content_blocks")
+            blocks = result.generations[0].message.additional_kwargs.get(
+                "content_blocks"
+            )
             assert blocks is not None
             assert len(blocks) == 2
             assert blocks[0]["type"] == "thinking"
@@ -284,7 +294,9 @@ class TestCreateChatResult:
         ):
             result = model._create_chat_result(response)
             assert "reasoning" not in result.generations[0].message.additional_kwargs
-            assert "content_blocks" not in result.generations[0].message.additional_kwargs
+            assert (
+                "content_blocks" not in result.generations[0].message.additional_kwargs
+            )
 
     def test_empty_generations(self):
         model = _make_model()
@@ -329,7 +341,10 @@ class TestCreateChatResult:
             ChatOpenAI, "_create_chat_result", return_value=parent_result
         ):
             result = model._create_chat_result(response)
-            assert result.generations[0].message.additional_kwargs["reasoning"] == "block think"
+            assert (
+                result.generations[0].message.additional_kwargs["reasoning"]
+                == "block think"
+            )
 
 
 # ── _make_status_error_from_response ─────────────────────
@@ -338,6 +353,7 @@ class TestCreateChatResult:
 class TestMakeStatusErrorFromResponse:
     def test_processes_reasoning_in_error_body(self):
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
         model = _make_model()
         response = MagicMock()
         body = {
@@ -351,12 +367,15 @@ class TestMakeStatusErrorFromResponse:
             "_make_status_error_from_response",
             return_value=RuntimeError("err"),
         ):
-            result = model._make_status_error_from_response(response, "error", body=body)
+            result = model._make_status_error_from_response(
+                response, "error", body=body
+            )
             # Should not raise and return RuntimeError
             assert isinstance(result, RuntimeError)
 
     def test_no_body_passthrough(self):
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
         model = _make_model()
         response = MagicMock()
 
@@ -371,6 +390,7 @@ class TestMakeStatusErrorFromResponse:
 
     def test_body_no_choices(self):
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
         model = _make_model()
         response = MagicMock()
         body = {"error": "something"}
@@ -380,7 +400,9 @@ class TestMakeStatusErrorFromResponse:
             "_make_status_error_from_response",
             return_value=RuntimeError("err"),
         ):
-            result = model._make_status_error_from_response(response, "error", body=body)
+            result = model._make_status_error_from_response(
+                response, "error", body=body
+            )
             # Should return RuntimeError
             assert isinstance(result, RuntimeError)
 
@@ -391,6 +413,7 @@ class TestMakeStatusErrorFromResponse:
 class TestConvertDictToMessage:
     def test_calls_parent_after_processing(self):
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
         model = _make_model()
         _dict = {"content": "hi", "reasoning_content": "think"}
         msg = AIMessage(content="hi")
@@ -411,9 +434,7 @@ class TestConvertChunkToGenerationChunk:
     def test_extracts_reasoning_content(self):
         model = _make_model()
         chunk = {
-            "choices": [
-                {"delta": {"reasoning_content": "thinking", "content": "text"}}
-            ]
+            "choices": [{"delta": {"reasoning_content": "thinking", "content": "text"}}]
         }
 
         parent_chunk = MagicMock()
@@ -425,9 +446,7 @@ class TestConvertChunkToGenerationChunk:
             "_convert_chunk_to_generation_chunk",
             return_value=parent_chunk,
         ):
-            result = model._convert_chunk_to_generation_chunk(
-                chunk, MagicMock, None
-            )
+            result = model._convert_chunk_to_generation_chunk(chunk, MagicMock, None)
             assert result.message.additional_kwargs.get("reasoning") == "thinking"
             assert "content_blocks" in result.message.additional_kwargs
 
@@ -444,9 +463,7 @@ class TestConvertChunkToGenerationChunk:
             "_convert_chunk_to_generation_chunk",
             return_value=parent_chunk,
         ):
-            result = model._convert_chunk_to_generation_chunk(
-                chunk, MagicMock, None
-            )
+            result = model._convert_chunk_to_generation_chunk(chunk, MagicMock, None)
             assert "reasoning" not in result.message.additional_kwargs
 
     def test_empty_choices(self):
@@ -461,9 +478,7 @@ class TestConvertChunkToGenerationChunk:
             "_convert_chunk_to_generation_chunk",
             return_value=parent_chunk,
         ):
-            result = model._convert_chunk_to_generation_chunk(
-                chunk, MagicMock, None
-            )
+            result = model._convert_chunk_to_generation_chunk(chunk, MagicMock, None)
             # Should not crash and return parent_chunk
             assert result is parent_chunk
 
@@ -479,9 +494,7 @@ class TestConvertChunkToGenerationChunk:
             "_convert_chunk_to_generation_chunk",
             return_value=parent_chunk,
         ):
-            result = model._convert_chunk_to_generation_chunk(
-                chunk, MagicMock, None
-            )
+            result = model._convert_chunk_to_generation_chunk(chunk, MagicMock, None)
             # Should handle missing delta gracefully
             assert result is parent_chunk
 
@@ -498,11 +511,12 @@ class TestConvertChunkToGenerationChunk:
             "_convert_chunk_to_generation_chunk",
             return_value=parent_chunk,
         ):
-            result = model._convert_chunk_to_generation_chunk(
-                chunk, MagicMock, None
-            )
+            result = model._convert_chunk_to_generation_chunk(chunk, MagicMock, None)
             # Non-string reasoning should not be accumulated
-            assert "reasoning" not in result.message.additional_kwargs or result.message.additional_kwargs.get("reasoning") != 123
+            assert (
+                "reasoning" not in result.message.additional_kwargs
+                or result.message.additional_kwargs.get("reasoning") != 123
+            )
 
     def test_initializes_none_additional_kwargs(self):
         model = _make_model()
@@ -517,9 +531,7 @@ class TestConvertChunkToGenerationChunk:
             "_convert_chunk_to_generation_chunk",
             return_value=parent_chunk,
         ):
-            result = model._convert_chunk_to_generation_chunk(
-                chunk, MagicMock, None
-            )
+            result = model._convert_chunk_to_generation_chunk(chunk, MagicMock, None)
             assert result.message.additional_kwargs is not None
 
     def test_accumulates_reasoning(self):
@@ -536,34 +548,34 @@ class TestConvertChunkToGenerationChunk:
             "_convert_chunk_to_generation_chunk",
             return_value=parent_chunk,
         ):
-            result1 = model._convert_chunk_to_generation_chunk(
-                chunk1, MagicMock, None
-            )
+            result1 = model._convert_chunk_to_generation_chunk(chunk1, MagicMock, None)
             # Second chunk
             chunk2 = {"choices": [{"delta": {"reasoning_content": " second"}}]}
             result1.message.additional_kwargs["content_blocks"] = []
 
-            result2 = model._convert_chunk_to_generation_chunk(
-                chunk2, MagicMock, None
+            result2 = model._convert_chunk_to_generation_chunk(chunk2, MagicMock, None)
+            assert "first second" in result2.message.additional_kwargs.get(
+                "reasoning", ""
             )
-            assert "first second" in result2.message.additional_kwargs.get("reasoning", "")
 
     def test_extends_existing_content_blocks(self):
         model = _make_model()
-        chunk = {"choices": [{"delta": {"reasoning_content": "think", "content": "text"}}]}
+        chunk = {
+            "choices": [{"delta": {"reasoning_content": "think", "content": "text"}}]
+        }
 
         parent_chunk = MagicMock()
         parent_chunk.message = MagicMock()
-        parent_chunk.message.additional_kwargs = {"content_blocks": [{"type": "existing"}]}
+        parent_chunk.message.additional_kwargs = {
+            "content_blocks": [{"type": "existing"}]
+        }
 
         with patch.object(
             ChatOpenAI,
             "_convert_chunk_to_generation_chunk",
             return_value=parent_chunk,
         ):
-            result = model._convert_chunk_to_generation_chunk(
-                chunk, MagicMock, None
-            )
+            result = model._convert_chunk_to_generation_chunk(chunk, MagicMock, None)
             blocks = result.message.additional_kwargs["content_blocks"]
             assert len(blocks) == 3  # existing + thinking + text
             assert blocks[0]["type"] == "existing"
@@ -615,18 +627,26 @@ class TestMakeStatusErrorFromResponseWithReasoning:
     def test_processes_choices_in_body(self):
         """Cover lines 269-277: process choices in error body."""
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
         model = _make_model()
         response = MagicMock()
         body = {
             "choices": [
-                {"message": {"reasoning_content": "error reasoning", "content": "error msg"}}
+                {
+                    "message": {
+                        "reasoning_content": "error reasoning",
+                        "content": "error msg",
+                    }
+                }
             ]
         }
 
         # Test that the method processes the body with choices
         # May raise due to super() not having the method, which is acceptable for coverage
         try:
-            result = model._make_status_error_from_response(response, "error", body=body)
+            result = model._make_status_error_from_response(
+                response, "error", body=body
+            )
             # If we get here, the method succeeded
             assert result is not None or True  # Coverage achieved
         except (AttributeError, TypeError):
@@ -636,6 +656,7 @@ class TestMakeStatusErrorFromResponseWithReasoning:
     def test_body_not_dict_passthrough(self):
         """Cover line 269: body is not a dict."""
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
         model = _make_model()
         response = MagicMock()
         body = "not a dict"
@@ -643,7 +664,9 @@ class TestMakeStatusErrorFromResponseWithReasoning:
         # Test with non-dict body - should just pass through
         # May raise due to super() not having the method, which is acceptable for coverage
         try:
-            result = model._make_status_error_from_response(response, "error", body=body)
+            result = model._make_status_error_from_response(
+                response, "error", body=body
+            )
             # If we get here, the method succeeded
             assert result is not None or True  # Coverage achieved
         except (AttributeError, TypeError):
@@ -653,6 +676,7 @@ class TestMakeStatusErrorFromResponseWithReasoning:
     def test_body_no_choices_v2(self):
         """Cover lines 270-277: body without choices key."""
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
         model = _make_model()
         response = MagicMock()
         body = {"error": "something"}
@@ -660,7 +684,9 @@ class TestMakeStatusErrorFromResponseWithReasoning:
         # Test with body that has no choices - should pass through
         # May raise due to super() not having the method, which is acceptable for coverage
         try:
-            result = model._make_status_error_from_response(response, "error", body=body)
+            result = model._make_status_error_from_response(
+                response, "error", body=body
+            )
             # If we get here, the method succeeded
             assert result is not None or True  # Coverage achieved
         except (AttributeError, TypeError):
@@ -674,6 +700,7 @@ class TestConvertDictToMessageFlow:
     def test_processes_dict_before_conversion(self):
         """Cover lines 282-285: dict is processed with reasoning extracted."""
         from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
         model = _make_model()
         _dict = {"reasoning_content": "think", "content": "ans"}
 
@@ -702,9 +729,7 @@ class TestConvertChunkMissingHasattr:
             "_convert_chunk_to_generation_chunk",
             return_value=parent_chunk,
         ):
-            result = model._convert_chunk_to_generation_chunk(
-                chunk, MagicMock, None
-            )
+            result = model._convert_chunk_to_generation_chunk(chunk, MagicMock, None)
             # Should add additional_kwargs attribute
             assert hasattr(result.message, "additional_kwargs")
 

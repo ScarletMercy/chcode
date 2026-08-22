@@ -1,4 +1,5 @@
 """Tests for chcode/prompts.py — select, confirm, checkbox, text, password, select_or_custom, model_config_form."""
+
 from __future__ import annotations
 
 import os
@@ -31,12 +32,18 @@ _SAMPLE_URLS = ["https://api.openai.com/v1", "https://api.deepseek.com/v1"]
 
 class TestSelect:
     async def test_returns_selection(self):
-        with patch("chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value="B"):
+        with patch(
+            "chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value="B"
+        ):
             result = await select("Pick?", ["A", "B"])
         assert result == "B"
 
     async def test_returns_none_on_cancel(self):
-        with patch("chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value=None):
+        with patch(
+            "chcode.prompts.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
             result = await select("Pick?", ["A"])
         assert result is None
 
@@ -46,12 +53,20 @@ class TestSelect:
 
 class TestConfirm:
     async def test_returns_true(self):
-        with patch("chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value=True):
+        with patch(
+            "chcode.prompts.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
             result = await confirm("Sure?")
         assert result is True
 
     async def test_returns_false(self):
-        with patch("chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value=False):
+        with patch(
+            "chcode.prompts.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
             result = await confirm("Sure?", default=False)
         assert result is False
 
@@ -61,12 +76,18 @@ class TestConfirm:
 
 class TestCheckbox:
     async def test_returns_selections(self):
-        with patch("chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value=["A", "C"]):
+        with patch(
+            "chcode.prompts.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=["A", "C"],
+        ):
             result = await checkbox("Pick:", ["A", "B", "C"])
         assert result == ["A", "C"]
 
     async def test_empty_returns_empty_list(self):
-        with patch("chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value=[]):
+        with patch(
+            "chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value=[]
+        ):
             result = await checkbox("Pick:", ["A"])
         assert result == []
 
@@ -76,12 +97,18 @@ class TestCheckbox:
 
 class TestText:
     async def test_returns_input(self):
-        with patch("chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value="hello"):
+        with patch(
+            "chcode.prompts.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value="hello",
+        ):
             result = await text("Name:")
         assert result == "hello"
 
     async def test_returns_empty(self):
-        with patch("chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value=""):
+        with patch(
+            "chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value=""
+        ):
             result = await text("Name:")
         assert result == ""
 
@@ -91,7 +118,11 @@ class TestText:
 
 class TestPassword:
     async def test_returns_password(self):
-        with patch("chcode.prompts.asyncio.to_thread", new_callable=AsyncMock, return_value="secret"):
+        with patch(
+            "chcode.prompts.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value="secret",
+        ):
             result = await password("Enter key:")
         assert result == "secret"
 
@@ -103,26 +134,35 @@ class TestSelectOrCustom:
     async def test_selects_preset(self):
         async def _mock_select(msg, choices, default=None, **kwargs):
             return "https://api.openai.com/v1"
+
         async def _mock_text(msg, default="", **kwargs):
             return "custom"
-        with patch("chcode.prompts.select", _mock_select), \
-             patch("chcode.prompts.text", _mock_text):
+
+        with (
+            patch("chcode.prompts.select", _mock_select),
+            patch("chcode.prompts.text", _mock_text),
+        ):
             result = await select_or_custom("URL:", _SAMPLE_URLS)
         assert result == "https://api.openai.com/v1"
 
     async def test_selects_custom(self):
         async def _mock_select(msg, choices, default=None, **kwargs):
             return "自定义输入..."
+
         async def _mock_text(msg, default="", **kwargs):
             return "https://custom.api/v1"
-        with patch("chcode.prompts.select", _mock_select), \
-             patch("chcode.prompts.text", _mock_text):
+
+        with (
+            patch("chcode.prompts.select", _mock_select),
+            patch("chcode.prompts.text", _mock_text),
+        ):
             result = await select_or_custom("URL:", _SAMPLE_URLS)
         assert result == "https://custom.api/v1"
 
     async def test_cancel_returns_none(self):
         async def _mock_select(msg, choices, default=None, **kwargs):
             return None
+
         with patch("chcode.prompts.select", _mock_select):
             result = await select_or_custom("URL:", _SAMPLE_URLS)
         assert result is None
@@ -145,34 +185,40 @@ class TestSkipSentinel:
 def _mock_select_async(return_value):
     async def _s(msg, choices, default=None, **kwargs):
         return return_value
+
     return _s
 
 
 def _mock_confirm_async(return_value):
     async def _c(msg, default=True, **kwargs):
         return return_value
+
     return _c
 
 
 def _mock_text_async(return_value):
     async def _t(msg, default="", **kwargs):
         return return_value
+
     return _t
 
 
 def _mock_password_async(return_value):
     async def _p(msg, **kwargs):
         return return_value
+
     return _p
 
 
 def _text_route(mapping, fallback="gpt-4"):
     """按 msg 关键字路由 text 返回值(base_url/model 等多 text 调用)。"""
+
     async def _t(msg, default="", **kwargs):
         for key, val in mapping.items():
             if key in msg:
                 return val
         return fallback
+
     return _t
 
 
@@ -184,9 +230,14 @@ class TestModelConfigForm:
             monkeypatch.delenv(var, raising=False)
 
     async def test_new_config_no_hyperparams(self):
-        with patch("chcode.prompts.text", _text_route({"Base URL": "https://api.openai.com/v1"})), \
-             patch("chcode.prompts.password", _mock_password_async("sk-123")), \
-             patch("chcode.prompts.confirm", _mock_confirm_async(False)):
+        with (
+            patch(
+                "chcode.prompts.text",
+                _text_route({"Base URL": "https://api.openai.com/v1"}),
+            ),
+            patch("chcode.prompts.password", _mock_password_async("sk-123")),
+            patch("chcode.prompts.confirm", _mock_confirm_async(False)),
+        ):
             result = await model_config_form(None)
         assert result is not None
         assert result["model"] == "gpt-4"
@@ -200,9 +251,14 @@ class TestModelConfigForm:
         assert result is None
 
     async def test_empty_api_key_returns_none(self):
-        with patch("chcode.prompts.text", _text_route({"Base URL": "https://api.openai.com/v1"})), \
-             patch("chcode.prompts.password", _mock_password_async("")), \
-             patch("chcode.prompts.confirm", _mock_confirm_async(False)):
+        with (
+            patch(
+                "chcode.prompts.text",
+                _text_route({"Base URL": "https://api.openai.com/v1"}),
+            ),
+            patch("chcode.prompts.password", _mock_password_async("")),
+            patch("chcode.prompts.confirm", _mock_confirm_async(False)),
+        ):
             result = await model_config_form(None)
         assert result is None
 
@@ -211,10 +267,16 @@ class TestModelConfigForm:
             if "Temperature" in msg:
                 return "0.7"
             return "4096"
-        with patch("chcode.prompts.text", _text_route({"Base URL": "https://api.openai.com/v1"})), \
-             patch("chcode.prompts.password", _mock_password_async("sk-123")), \
-             patch("chcode.prompts.confirm", _mock_confirm_async(True)), \
-             patch("chcode.prompts.select", _select_hyper):
+
+        with (
+            patch(
+                "chcode.prompts.text",
+                _text_route({"Base URL": "https://api.openai.com/v1"}),
+            ),
+            patch("chcode.prompts.password", _mock_password_async("sk-123")),
+            patch("chcode.prompts.confirm", _mock_confirm_async(True)),
+            patch("chcode.prompts.select", _select_hyper),
+        ):
             result = await model_config_form(None)
         assert result is not None
         assert result["temperature"] == 0.7
@@ -223,35 +285,55 @@ class TestModelConfigForm:
     async def test_skip_hyperparam(self):
         async def _select_skip(msg, choices, default=None, **kwargs):
             return t("prompt.skip")
-        with patch("chcode.prompts.text", _text_route({"Base URL": "https://api.openai.com/v1"})), \
-             patch("chcode.prompts.password", _mock_password_async("sk-123")), \
-             patch("chcode.prompts.confirm", _mock_confirm_async(True)), \
-             patch("chcode.prompts.select", _select_skip):
+
+        with (
+            patch(
+                "chcode.prompts.text",
+                _text_route({"Base URL": "https://api.openai.com/v1"}),
+            ),
+            patch("chcode.prompts.password", _mock_password_async("sk-123")),
+            patch("chcode.prompts.confirm", _mock_confirm_async(True)),
+            patch("chcode.prompts.select", _select_skip),
+        ):
             result = await model_config_form(None)
         assert result is not None
         assert "temperature" not in result or result.get("temperature") is None
 
     async def test_new_config_empty_base_url_returns_none(self):
         """New config empty base_url returns None."""
-        with patch("chcode.prompts.text", _text_route({"Base URL": ""})), \
-             patch("chcode.prompts.password", _mock_password_async("sk-123")):
+        with (
+            patch("chcode.prompts.text", _text_route({"Base URL": ""})),
+            patch("chcode.prompts.password", _mock_password_async("sk-123")),
+        ):
             result = await model_config_form(None)
         assert result is None
 
     async def test_edit_config_empty_base_url_returns_none(self):
         """Edit mode empty base_url returns None."""
-        existing = {"model": "gpt-4", "base_url": "https://api.openai.com/v1", "api_key": "sk-123"}
-        with patch("chcode.prompts.text", _text_route({"Base URL": ""})), \
-             patch("chcode.prompts.select", _mock_select_async("保持当前 Key (****)")):
+        existing = {
+            "model": "gpt-4",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-123",
+        }
+        with (
+            patch("chcode.prompts.text", _text_route({"Base URL": ""})),
+            patch("chcode.prompts.select", _mock_select_async("保持当前 Key (****)")),
+        ):
             result = await model_config_form(existing)
         assert result is None
 
     async def test_edit_mode_keeps_base_url(self):
-        existing = {"model": "gpt-4", "base_url": "https://old.com", "api_key": "sk-old"}
-        with patch("chcode.prompts.text", _text_route({"Base URL": "https://old.com"})), \
-             patch("chcode.prompts.select", _mock_select_async("保持当前 Key (****)")), \
-             patch("chcode.prompts.password", _mock_password_async("sk-old")), \
-             patch("chcode.prompts.confirm", _mock_confirm_async(False)):
+        existing = {
+            "model": "gpt-4",
+            "base_url": "https://old.com",
+            "api_key": "sk-old",
+        }
+        with (
+            patch("chcode.prompts.text", _text_route({"Base URL": "https://old.com"})),
+            patch("chcode.prompts.select", _mock_select_async("保持当前 Key (****)")),
+            patch("chcode.prompts.password", _mock_password_async("sk-old")),
+            patch("chcode.prompts.confirm", _mock_confirm_async(False)),
+        ):
             result = await model_config_form(existing)
         assert result["base_url"] == "https://old.com"
 

@@ -222,7 +222,7 @@ class TestRenderTool:
             # The Panel contains the truncated text
             call_args = mock_console.print.call_args[0][0]
             # Panel's renderable contains the truncated content
-            assert hasattr(call_args, 'renderable') or call_args is not None
+            assert hasattr(call_args, "renderable") or call_args is not None
 
     def test_render_tool_suppressed(self, monkeypatch):
         """Suppressed in parallel mode"""
@@ -320,8 +320,7 @@ class TestRenderConversation:
     def test_render_conversation_ai_with_reasoning(self):
         """AI message with reasoning"""
         msg = AIMessage(
-            content="Response",
-            additional_kwargs={"reasoning": "My thinking process"}
+            content="Response", additional_kwargs={"reasoning": "My thinking process"}
         )
         mock_console = MagicMock()
         with patch("chcode.display.console", mock_console):
@@ -339,10 +338,7 @@ class TestRenderConversation:
 
     def test_render_conversation_hidden(self):
         """Hidden messages are skipped"""
-        msg = HumanMessage(
-            content="Hidden",
-            additional_kwargs={"hide": True}
-        )
+        msg = HumanMessage(content="Hidden", additional_kwargs={"hide": True})
         mock_console = MagicMock()
         with patch("chcode.display.console", mock_console):
             display.render_conversation([msg])
@@ -407,7 +403,7 @@ class TestProgressTracking:
                     "start": time.time(),
                     "timeout": 300,
                     "done": False,
-                    "failed": False
+                    "failed": False,
                 }
             # Should not raise any exception
             display._update_progress()
@@ -424,7 +420,7 @@ class TestProgressTracking:
                     "start": time.time(),
                     "timeout": 300,
                     "done": True,
-                    "failed": False
+                    "failed": False,
                 }
             # Should not raise any exception
             display._update_progress()
@@ -441,7 +437,7 @@ class TestProgressTracking:
                     "start": time.time(),
                     "timeout": 300,
                     "done": False,
-                    "failed": True
+                    "failed": True,
                 }
             # Should not raise any exception
             display._update_progress()
@@ -474,6 +470,7 @@ class TestProgressTracking:
         display._start_progress()
         dummy_task = None
         try:
+
             async def dummy():
                 await asyncio.sleep(1)
 
@@ -536,14 +533,17 @@ class TestFormatTokens:
 
     def test_format_tokens_small(self):
         from chcode.display import _format_tokens
+
         assert _format_tokens(500) == "500"
 
     def test_format_tokens_thousands(self):
         from chcode.display import _format_tokens
+
         assert _format_tokens(123456) == "123.5K"
 
     def test_format_tokens_exact_thousand(self):
         from chcode.display import _format_tokens
+
         assert _format_tokens(1000) == "1.0K"
 
 
@@ -552,25 +552,50 @@ class TestGetContextUsageText:
 
     def test_no_ai_messages_extended(self):
         from chcode.display import get_context_usage_text
+
         result = get_context_usage_text([], 128000)
         assert result == ""
 
     def test_with_usage_metadata(self):
         from chcode.display import get_context_usage_text
-        msg = AIMessage(content="hi", usage_metadata={"input_tokens": 50000, "output_tokens": 100, "total_tokens": 50100})
+
+        msg = AIMessage(
+            content="hi",
+            usage_metadata={
+                "input_tokens": 50000,
+                "output_tokens": 100,
+                "total_tokens": 50100,
+            },
+        )
         result = get_context_usage_text([msg], 128000)
         assert "50.0K" in result
         assert "128.0K" in result
 
     def test_low_usage_style(self):
         from chcode.display import get_context_usage_text
-        msg = AIMessage(content="hi", usage_metadata={"input_tokens": 10000, "output_tokens": 50, "total_tokens": 10050})
+
+        msg = AIMessage(
+            content="hi",
+            usage_metadata={
+                "input_tokens": 10000,
+                "output_tokens": 50,
+                "total_tokens": 10050,
+            },
+        )
         result = get_context_usage_text([msg], 128000)
         assert "[yellow]" in result
 
     def test_high_usage_style(self):
         from chcode.display import get_context_usage_text
-        msg = AIMessage(content="hi", usage_metadata={"input_tokens": 120000, "output_tokens": 5000, "total_tokens": 125000})
+
+        msg = AIMessage(
+            content="hi",
+            usage_metadata={
+                "input_tokens": 120000,
+                "output_tokens": 5000,
+                "total_tokens": 125000,
+            },
+        )
         result = get_context_usage_text([msg], 128000)
         assert "[bold red]" in result
 
@@ -581,6 +606,7 @@ class TestUpdateProgressEdgeCases:
     def test_progress_live_is_none(self):
         """Line 105: Early return when _progress_live is falsy."""
         import chcode.display as display
+
         display._finalize_progress()
         try:
             # Ensure _progress_live is None
@@ -593,6 +619,7 @@ class TestUpdateProgressEdgeCases:
     def test_progress_live_falsy_check(self):
         """Line 105: Check the falsy condition explicitly."""
         import chcode.display as display
+
         display._finalize_progress()
 
         try:

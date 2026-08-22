@@ -35,17 +35,18 @@ _subagent_parallel = False
 # （render_ai_chunk/_flush_unstable/render_ai_start/render_ai_end/force_reset）。
 # 子 agent 走 ainvoke（非流式、独立 agent），不触碰这些状态。若未来引入并行
 # 主 agent 流式输出，需把这些状态重做成实例/上下文局部，否则会竞态。
-_committed_text: str = ""        # 已落版的 stable 文本（单调递增）
-_unstable_text: str = ""         # 当前 unstable 块的文本
-_full_text: str = ""             # 完整累计文本（只增不减），分块基于此
-_live: Live | None = None        # 仅渲染 unstable 块的 Live
-_md_parser = None                # 延迟初始化的 markdown-it 解析器
+_committed_text: str = ""  # 已落版的 stable 文本（单调递增）
+_unstable_text: str = ""  # 当前 unstable 块的文本
+_full_text: str = ""  # 完整累计文本（只增不减），分块基于此
+_live: Live | None = None  # 仅渲染 unstable 块的 Live
+_md_parser = None  # 延迟初始化的 markdown-it 解析器
 
 
 def _get_md_parser():
     global _md_parser
     if _md_parser is None:
         from markdown_it import MarkdownIt
+
         _md_parser = MarkdownIt("commonmark")
     return _md_parser
 
@@ -68,7 +69,9 @@ def _split_stable(text: str) -> tuple[str, str]:
     for idx, tok in enumerate(tokens):
         if tok.level != 0:
             continue
-        if tok.type in ("fence", "hr", "html_block", "code_block") or tok.type.endswith("_open"):
+        if tok.type in ("fence", "hr", "html_block", "code_block") or tok.type.endswith(
+            "_open"
+        ):
             last_open = idx
     if last_open == -1 or tokens[last_open].map is None:
         # 还没形成任何完整块，全是 unstable
@@ -126,6 +129,7 @@ def _starts_with_leading_blank_block(text: str) -> bool:
     if stripped.startswith("`"):
         return True
     return False
+
 
 _current_agent_tag: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "_current_agent_tag", default=None
@@ -186,7 +190,7 @@ def _commit_stable_increment(stable: str, unstable: str) -> None:
     """
     global _committed_text
     if len(stable) > len(_committed_text):
-        new_part = stable[len(_committed_text):]
+        new_part = stable[len(_committed_text) :]
         if new_part.strip():
             console.print(Markdown(new_part.rstrip()))
             if (
@@ -292,7 +296,9 @@ def _start_progress():
     global _progress_live
     if _progress_live is None:
         _live_console = Console(file=console.file)
-        _progress_live = Live("", transient=False, console=_live_console, refresh_per_second=12)
+        _progress_live = Live(
+            "", transient=False, console=_live_console, refresh_per_second=12
+        )
         _progress_live.start()
 
 
@@ -345,7 +351,9 @@ def _start_result_spinner():
     global _progress_live, _progress_task
     if _progress_live is None:
         _live_console = Console(file=console.file)
-        _progress_live = Live("", transient=False, console=_live_console, refresh_per_second=12)
+        _progress_live = Live(
+            "", transient=False, console=_live_console, refresh_per_second=12
+        )
         _progress_live.start()
     if _progress_task is None or _progress_task.done():
         _progress_task = asyncio.ensure_future(_result_spinner_updater())
@@ -370,7 +378,13 @@ def _finalize_progress():
 
 def force_reset_display() -> None:
     """异常退出时强制重置所有显示状态"""
-    global _subagent_count, _subagent_parallel, _live, _committed_text, _unstable_text, _full_text
+    global \
+        _subagent_count, \
+        _subagent_parallel, \
+        _live, \
+        _committed_text, \
+        _unstable_text, \
+        _full_text
     _subagent_count = 0
     _subagent_parallel = False
     if _live is not None:
@@ -455,7 +469,9 @@ def render_welcome() -> None:
     console.print()
     console.print(
         Panel(
-            "[bold]ChCode[/bold] — " + t("display.welcome_title") + "\n"
+            "[bold]ChCode[/bold] — "
+            + t("display.welcome_title")
+            + "\n"
             + t("display.welcome_hint"),
             border_style="cyan",
             padding=(1, 2),
@@ -476,6 +492,7 @@ def render_conversation(messages: list) -> None:
         msg_type = message.type
         content = message.content
         from chcode.utils import get_text_content
+
         content = get_text_content(content)
 
         if msg_type == "human":

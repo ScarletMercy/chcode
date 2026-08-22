@@ -18,6 +18,7 @@ from chcode.display import console
 from chcode.i18n import t
 from chcode.prompts import select, text
 from chcode.utils.frontmatter import parse_frontmatter
+
 # 复用技能管理里「选择安装位置」的公共交互(skill_manager 对本模块是函数内惰性导入,无循环)
 from chcode.utils.skill_manager import select_install_root
 from chcode.utils.skill_loader import install_skill, validate_skill_package
@@ -49,9 +50,7 @@ def _term_score(term: str, field: str) -> int:
     return 0
 
 
-def _relevance_score(
-    query: str, name: str, identifier: str, description: str
-) -> int:
+def _relevance_score(query: str, name: str, identifier: str, description: str) -> int:
     """客户端相关性打分,0 = 不相关(clawhub 服务端不搜索,必须本地过滤)。"""
     terms = [
         term for term in re.split(r"[^a-z0-9\u4e00-\u9fff]+", query.lower()) if term
@@ -137,9 +136,7 @@ async def _search_clawhub(query: str, limit: int) -> tuple[list[dict], str]:
         if not isinstance(slug, str) or not slug:
             continue
         name = (
-            _clean_str(item.get("displayName"))
-            or _clean_str(item.get("name"))
-            or slug
+            _clean_str(item.get("displayName")) or _clean_str(item.get("name")) or slug
         )
         desc = _clean_str(item.get("summary")) or _clean_str(item.get("description"))
         score = _relevance_score(query, name, slug, desc)
@@ -293,7 +290,11 @@ async def _install_from_clawhub(slug: str, target_root: Path) -> tuple[bool, str
                 f"{CLAWHUB_BASE}/skills/{slug}/versions",
                 params={"owner": owner} if owner else None,
             )
-            if isinstance(versions, list) and versions and isinstance(versions[0], dict):
+            if (
+                isinstance(versions, list)
+                and versions
+                and isinstance(versions[0], dict)
+            ):
                 version = versions[0].get("version")
         if not version:
             return False, t("skillhub.err_no_version", slug=slug)
@@ -334,8 +335,10 @@ async def _install_from_clawhub(slug: str, target_root: Path) -> tuple[bool, str
         if not info:
             return False, t("skillhub.err_invalid_package", slug=slug)
         # frontmatter name 会成为目标目录名,必须落在 target_root 内(防路径穿越)
-        if not (target_root / info["name"]).resolve().is_relative_to(
-            target_root.resolve()
+        if (
+            not (target_root / info["name"])
+            .resolve()
+            .is_relative_to(target_root.resolve())
         ):
             return False, t("skillhub.err_invalid_package_name", slug=slug)
         if not install_skill(tmp_path, target_root):

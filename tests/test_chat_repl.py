@@ -14,7 +14,14 @@ import pytest
 from prompt_toolkit.completion import Completion
 from rich.text import Text
 
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage, RemoveMessage, BaseMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    HumanMessage,
+    ToolMessage,
+    RemoveMessage,
+    BaseMessage,
+)
 from langgraph.types import Command
 
 from chcode.chat import (
@@ -33,6 +40,7 @@ from chcode.i18n import t
 # ============================================================================
 # Test SlashCommandCompleter
 # ============================================================================
+
 
 class TestSlashCommandCompleter:
     def test_get_completions_with_slash(self):
@@ -89,6 +97,7 @@ class TestSlashCommandCompleter:
 # Test ChatREPL.__init__
 # ============================================================================
 
+
 class TestChatREPLInit:
     def test_init_default_values(self):
         repl = ChatREPL()
@@ -114,6 +123,7 @@ class TestChatREPLInit:
 # ============================================================================
 # Test ChatREPL.close
 # ============================================================================
+
 
 class TestChatREPLClose:
     @pytest.mark.asyncio
@@ -150,6 +160,7 @@ class TestChatREPLClose:
 # Test ChatREPL.initialize
 # ============================================================================
 
+
 class TestChatREPLInitialize:
     @pytest.mark.asyncio
     async def test_initialize_success(self, tmp_path):
@@ -158,22 +169,42 @@ class TestChatREPLInitialize:
         with patch("chcode.chat.ensure_config_dir"):
             with patch("chcode.chat.Path.cwd", return_value=tmp_path):
                 with patch("chcode.chat.os.chdir"):
-                    with patch("chcode.chat.get_default_model_config", return_value={"model": "gpt-4"}):
-                        with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock) as mock_cp:
+                    with patch(
+                        "chcode.chat.get_default_model_config",
+                        return_value={"model": "gpt-4"},
+                    ):
+                        with patch(
+                            "chcode.chat.create_checkpointer", new_callable=AsyncMock
+                        ) as mock_cp:
                             mock_cp.return_value = Mock()
-                            with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+                            with patch(
+                                "chcode.chat.asyncio.to_thread", new_callable=AsyncMock
+                            ) as mock_thread:
                                 mock_thread.return_value = Mock()
-                                with patch.object(repl, "_init_git", new_callable=AsyncMock):
-                                    with patch("chcode.config.configure_langsmith", new_callable=AsyncMock, return_value={"tracing": False, "project": "", "api_key": ""}):
+                                with patch.object(
+                                    repl, "_init_git", new_callable=AsyncMock
+                                ):
+                                    with patch(
+                                        "chcode.config.configure_langsmith",
+                                        new_callable=AsyncMock,
+                                        return_value={
+                                            "tracing": False,
+                                            "project": "",
+                                            "api_key": "",
+                                        },
+                                    ):
                                         result = await repl.initialize()
 
                                         assert result is True
                                         assert repl.workplace_path == tmp_path
                                         assert repl.model_config == {"model": "gpt-4"}
                                         mock_cp.assert_called_once()
-                                        # to_thread: ensure_project_memory + build_agent
+                                        # to_thread: begin_memory_session + build_agent
                                         assert mock_thread.call_count == 2
-                                        assert mock_thread.call_args_list[1][0][0].__name__ == "build_agent"
+                                        assert (
+                                            mock_thread.call_args_list[1][0][0].__name__
+                                            == "build_agent"
+                                        )
 
     @pytest.mark.asyncio
     async def test_initialize_first_run(self, tmp_path):
@@ -182,18 +213,40 @@ class TestChatREPLInitialize:
         with patch("chcode.chat.ensure_config_dir"):
             with patch("chcode.chat.Path.cwd", return_value=tmp_path):
                 with patch("chcode.chat.os.chdir"):
-                    with patch("chcode.chat.get_default_model_config", return_value=None):
-                        with patch("chcode.chat.first_run_configure", new_callable=AsyncMock) as mock_frc:
+                    with patch(
+                        "chcode.chat.get_default_model_config", return_value=None
+                    ):
+                        with patch(
+                            "chcode.chat.first_run_configure", new_callable=AsyncMock
+                        ) as mock_frc:
                             mock_frc.return_value = {"model": "gpt-3.5"}
-                            with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock) as mock_cp:
+                            with patch(
+                                "chcode.chat.create_checkpointer",
+                                new_callable=AsyncMock,
+                            ) as mock_cp:
                                 mock_cp.return_value = Mock()
-                                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock):
-                                    with patch.object(repl, "_init_git", new_callable=AsyncMock):
-                                        with patch("chcode.config.configure_langsmith", new_callable=AsyncMock, return_value={"tracing": False, "project": "", "api_key": ""}):
+                                with patch(
+                                    "chcode.chat.asyncio.to_thread",
+                                    new_callable=AsyncMock,
+                                ):
+                                    with patch.object(
+                                        repl, "_init_git", new_callable=AsyncMock
+                                    ):
+                                        with patch(
+                                            "chcode.config.configure_langsmith",
+                                            new_callable=AsyncMock,
+                                            return_value={
+                                                "tracing": False,
+                                                "project": "",
+                                                "api_key": "",
+                                            },
+                                        ):
                                             result = await repl.initialize()
 
                                             assert result is True
-                                            assert repl.model_config == {"model": "gpt-3.5"}
+                                            assert repl.model_config == {
+                                                "model": "gpt-3.5"
+                                            }
                                             mock_frc.assert_called_once()
 
     @pytest.mark.asyncio
@@ -203,8 +256,12 @@ class TestChatREPLInitialize:
         with patch("chcode.chat.ensure_config_dir"):
             with patch("chcode.chat.Path.cwd", return_value=tmp_path):
                 with patch("chcode.chat.os.chdir"):
-                    with patch("chcode.chat.get_default_model_config", return_value=None):
-                        with patch("chcode.chat.first_run_configure", new_callable=AsyncMock) as mock_frc:
+                    with patch(
+                        "chcode.chat.get_default_model_config", return_value=None
+                    ):
+                        with patch(
+                            "chcode.chat.first_run_configure", new_callable=AsyncMock
+                        ) as mock_frc:
                             mock_frc.return_value = None
                             result = await repl.initialize()
 
@@ -218,15 +275,34 @@ class TestChatREPLInitialize:
         with patch("chcode.chat.ensure_config_dir"):
             with patch("chcode.chat.Path.cwd", return_value=tmp_path):
                 with patch("chcode.chat.os.chdir"):
-                    with patch("chcode.chat.get_default_model_config", return_value={"model": "gpt-4"}):
-                        with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock):
-                            with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock):
-                                with patch.object(repl, "_init_git", new_callable=AsyncMock):
-                                    with patch("chcode.config.configure_langsmith", new_callable=AsyncMock, return_value={"tracing": False, "project": "", "api_key": ""}):
+                    with patch(
+                        "chcode.chat.get_default_model_config",
+                        return_value={"model": "gpt-4"},
+                    ):
+                        with patch(
+                            "chcode.chat.create_checkpointer", new_callable=AsyncMock
+                        ):
+                            with patch(
+                                "chcode.chat.asyncio.to_thread", new_callable=AsyncMock
+                            ):
+                                with patch.object(
+                                    repl, "_init_git", new_callable=AsyncMock
+                                ):
+                                    with patch(
+                                        "chcode.config.configure_langsmith",
+                                        new_callable=AsyncMock,
+                                        return_value={
+                                            "tracing": False,
+                                            "project": "",
+                                            "api_key": "",
+                                        },
+                                    ):
                                         await repl.initialize()
 
                                         assert (tmp_path / ".chat").exists()
-                                        assert (tmp_path / ".chat" / "sessions").exists()
+                                        assert (
+                                            tmp_path / ".chat" / "sessions"
+                                        ).exists()
                                         assert (tmp_path / ".chat" / "skills").exists()
 
 
@@ -234,13 +310,16 @@ class TestChatREPLInitialize:
 # Test ChatREPL._init_git
 # ============================================================================
 
+
 class TestChatREPLInitGit:
     @pytest.mark.asyncio
     async def test_init_git_available(self, tmp_path):
         repl = ChatREPL()
         repl.workplace_path = tmp_path
 
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+        with patch(
+            "chcode.chat.asyncio.to_thread", new_callable=AsyncMock
+        ) as mock_thread:
             mock_thread.return_value = (True, "ok", "2.0.0")
             with patch("chcode.chat.GitManager") as mock_gm:
                 mock_repo = Mock()
@@ -256,7 +335,9 @@ class TestChatREPLInitGit:
         repl = ChatREPL()
         repl.workplace_path = tmp_path
 
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+        with patch(
+            "chcode.chat.asyncio.to_thread", new_callable=AsyncMock
+        ) as mock_thread:
             mock_thread.return_value = (False, "not found", None)
 
             await repl._init_git()
@@ -269,7 +350,9 @@ class TestChatREPLInitGit:
         repl = ChatREPL()
         repl.workplace_path = tmp_path
 
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+        with patch(
+            "chcode.chat.asyncio.to_thread", new_callable=AsyncMock
+        ) as mock_thread:
             mock_thread.side_effect = [(True, "ok", "2.0.0"), None, None]
             with patch("chcode.chat.GitManager") as mock_gm:
                 mock_repo = Mock()
@@ -299,6 +382,7 @@ class TestChatREPLInitGit:
 # ============================================================================
 # Test ChatREPL._get_input
 # ============================================================================
+
 
 def _make_safe_container_mock():
     """Create a mock container that terminates _find_buffer_window traversal."""
@@ -379,7 +463,10 @@ class TestChatREPLGetInput:
         mock_session.default_buffer.text = ""
 
         with patch("chcode.chat.PromptSession", return_value=mock_session):
-            with patch("chcode.chat.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
+            with patch(
+                "chcode.chat.shutil.get_terminal_size",
+                return_value=MagicMock(columns=80),
+            ):
                 await repl._get_input()
                 session1 = repl._prompt_session
                 await repl._get_input()
@@ -390,6 +477,7 @@ class TestChatREPLGetInput:
 # ============================================================================
 # Test ChatREPL._handle_command
 # ============================================================================
+
 
 class TestChatREPLHandleCommand:
     @pytest.mark.asyncio
@@ -452,6 +540,7 @@ class TestChatREPLHandleCommand:
 # Test ChatREPL slash command handlers
 # ============================================================================
 
+
 class TestChatREPLSlashCommands:
     @pytest.mark.asyncio
     async def test_cmd_new(self):
@@ -471,7 +560,9 @@ class TestChatREPLSlashCommands:
         repl = ChatREPL()
         repl.model_config = {}
 
-        with patch("chcode.chat.configure_new_model", new_callable=AsyncMock) as mock_cfg:
+        with patch(
+            "chcode.chat.configure_new_model", new_callable=AsyncMock
+        ) as mock_cfg:
             mock_cfg.return_value = {"model": "gpt-4"}
             with patch("chcode.agent_setup.update_summarization_model"):
                 await repl._cmd_model("new")
@@ -483,7 +574,9 @@ class TestChatREPLSlashCommands:
         repl = ChatREPL()
         repl.model_config = {}
 
-        with patch("chcode.chat.edit_current_model", new_callable=AsyncMock) as mock_edit:
+        with patch(
+            "chcode.chat.edit_current_model", new_callable=AsyncMock
+        ) as mock_edit:
             mock_edit.return_value = {"model": "gpt-3.5"}
             with patch("chcode.agent_setup.update_summarization_model"):
                 await repl._cmd_model("edit")
@@ -509,7 +602,9 @@ class TestChatREPLSlashCommands:
 
         with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
             mock_sel.return_value = "新建模型 (/model new)"
-            with patch("chcode.chat.configure_new_model", new_callable=AsyncMock) as mock_cfg:
+            with patch(
+                "chcode.chat.configure_new_model", new_callable=AsyncMock
+            ) as mock_cfg:
                 mock_cfg.return_value = {"model": "new"}
                 with patch("chcode.agent_setup.update_summarization_model"):
                     await repl._cmd_model("")
@@ -532,7 +627,9 @@ class TestChatREPLSlashCommands:
         repl = ChatREPL()
         repl.model_config = {}
 
-        with patch("chcode.chat.configure_new_model", new_callable=AsyncMock) as mock_cfg:
+        with patch(
+            "chcode.chat.configure_new_model", new_callable=AsyncMock
+        ) as mock_cfg:
             mock_cfg.return_value = None
             with patch("chcode.agent_setup.update_summarization_model"):
                 await repl._cmd_model("new")
@@ -543,8 +640,10 @@ class TestChatREPLSlashCommands:
     async def test_cmd_langsmith_enable_no_key(self):
         repl = ChatREPL()
 
-        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
-             patch("chcode.chat.console.print") as mock_print:
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.console.print") as mock_print,
+        ):
             mock_sel.return_value = "开启追踪"
             await repl._cmd_langsmith("")
 
@@ -559,9 +658,11 @@ class TestChatREPLSlashCommands:
 
         with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
             mock_sel.return_value = "开启追踪"
-            with patch("chcode.chat.render_success") as mock_success, \
-                 patch("chcode.config._persist_env"), \
-                 patch("chcode.config._update_setting"):
+            with (
+                patch("chcode.chat.render_success") as mock_success,
+                patch("chcode.config._persist_env"),
+                patch("chcode.config._update_setting"),
+            ):
                 await repl._cmd_langsmith("")
 
                 assert repl.langsmith_tracing is True
@@ -575,9 +676,11 @@ class TestChatREPLSlashCommands:
 
         with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
             mock_sel.return_value = "关闭追踪"
-            with patch("chcode.chat.render_success") as mock_success, \
-                 patch("chcode.config._persist_env"), \
-                 patch("chcode.config._update_setting"):
+            with (
+                patch("chcode.chat.render_success") as mock_success,
+                patch("chcode.config._persist_env"),
+                patch("chcode.config._update_setting"),
+            ):
                 await repl._cmd_langsmith("")
 
                 assert repl.langsmith_tracing is False
@@ -597,7 +700,10 @@ class TestChatREPLSlashCommands:
 
     @pytest.mark.asyncio
     async def test_cmd_danger_select_all(self):
-        from chcode.utils.shell.guard import get_disabled_categories, is_category_enabled
+        from chcode.utils.shell.guard import (
+            get_disabled_categories,
+            is_category_enabled,
+        )
 
         repl = ChatREPL()
 
@@ -621,7 +727,10 @@ class TestChatREPLSlashCommands:
 
     @pytest.mark.asyncio
     async def test_cmd_danger_deselect_recursive_delete(self):
-        from chcode.utils.shell.guard import get_disabled_categories, is_category_enabled
+        from chcode.utils.shell.guard import (
+            get_disabled_categories,
+            is_category_enabled,
+        )
 
         repl = ChatREPL()
 
@@ -646,6 +755,7 @@ class TestChatREPLSlashCommands:
                 assert get_disabled_categories() == {"recursive_delete"}
         finally:
             from chcode.utils.shell.guard import set_category_enabled
+
             set_category_enabled("recursive_delete", True)
 
     @pytest.mark.asyncio
@@ -672,13 +782,17 @@ class TestChatREPLSlashCommands:
         repl = ChatREPL()
         repl.langsmith_project = "old-project"
 
-        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
-             patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt:
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt,
+        ):
             mock_sel.return_value = "修改项目名称"
             mock_txt.return_value = "new-project"
-            with patch("chcode.chat.render_success"), \
-                 patch("chcode.config._persist_env"), \
-                 patch("chcode.config._update_setting"):
+            with (
+                patch("chcode.chat.render_success"),
+                patch("chcode.config._persist_env"),
+                patch("chcode.config._update_setting"),
+            ):
                 await repl._cmd_langsmith("")
                 assert repl.langsmith_project == "new-project"
 
@@ -686,13 +800,17 @@ class TestChatREPLSlashCommands:
     async def test_cmd_langsmith_edit_key(self):
         repl = ChatREPL()
 
-        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
-             patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt:
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt,
+        ):
             mock_sel.return_value = "修改 API Key"
             mock_txt.return_value = "lsv2_new_key_here"
-            with patch("chcode.chat.render_success"), \
-                 patch("chcode.config._persist_env"), \
-                 patch("chcode.config._update_setting"):
+            with (
+                patch("chcode.chat.render_success"),
+                patch("chcode.config._persist_env"),
+                patch("chcode.config._update_setting"),
+            ):
                 await repl._cmd_langsmith("")
                 assert repl.langsmith_api_key == "lsv2_new_key_here"
 
@@ -701,8 +819,10 @@ class TestChatREPLSlashCommands:
         repl = ChatREPL()
         repl.langsmith_api_key = "old_key"
 
-        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
-             patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt:
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt,
+        ):
             mock_sel.return_value = "修改 API Key"
             mock_txt.return_value = ""
             await repl._cmd_langsmith("")
@@ -714,14 +834,18 @@ class TestChatREPLSlashCommands:
         repl = ChatREPL()
         repl.langsmith_api_key = "short"
 
-        with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel, \
-             patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt, \
-             patch("chcode.chat.console.print") as mock_print:
+        with (
+            patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel,
+            patch("chcode.chat.text", new_callable=AsyncMock) as mock_txt,
+            patch("chcode.chat.console.print") as mock_print,
+        ):
             mock_sel.return_value = "修改项目名称"
             mock_txt.return_value = "proj"
-            with patch("chcode.chat.render_success"), \
-                 patch("chcode.config._persist_env"), \
-                 patch("chcode.config._update_setting"):
+            with (
+                patch("chcode.chat.render_success"),
+                patch("chcode.config._persist_env"),
+                patch("chcode.config._update_setting"),
+            ):
                 await repl._cmd_langsmith("")
                 # 验证状态显示时 Key 脱敏为 ***
                 printed = [str(c) for c in mock_print.call_args_list]
@@ -734,9 +858,11 @@ class TestChatREPLSlashCommands:
         repl.langsmith_project = "test-proj"
         repl.langsmith_api_key = "test-key"
 
-        with patch.dict(os.environ, {}, clear=True), \
-             patch("chcode.config._persist_env"), \
-             patch("chcode.config._update_setting"):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("chcode.config._persist_env"),
+            patch("chcode.config._update_setting"),
+        ):
             repl._sync_langsmith_env()
             assert os.environ["LANGSMITH_TRACING"] == "true"
             assert os.environ["LANGSMITH_PROJECT"] == "test-proj"
@@ -747,9 +873,11 @@ class TestChatREPLSlashCommands:
         repl = ChatREPL()
         repl.langsmith_tracing = False
 
-        with patch.dict(os.environ, {}, clear=True), \
-             patch("chcode.config._persist_env"), \
-             patch("chcode.config._update_setting"):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("chcode.config._persist_env"),
+            patch("chcode.config._update_setting"),
+        ):
             repl._sync_langsmith_env()
             assert os.environ["LANGSMITH_TRACING"] == "false"
 
@@ -785,7 +913,9 @@ class TestChatREPLSlashCommands:
         repl.checkpointer = Mock()
         repl.agent = Mock()
 
-        with patch.object(repl.session_mgr, "list_sessions", new_callable=AsyncMock) as mock_ls:
+        with patch.object(
+            repl.session_mgr, "list_sessions", new_callable=AsyncMock
+        ) as mock_ls:
             mock_ls.return_value = []
             with patch("chcode.chat.render_warning") as mock_warn:
                 await repl._cmd_history("")
@@ -832,10 +962,14 @@ class TestChatREPLSlashCommands:
     async def test_cmd_homepage(self):
         repl = ChatREPL()
 
-        with patch("webbrowser.open") as mock_open, \
-             patch("chcode.chat.render_success") as mock_success:
+        with (
+            patch("webbrowser.open") as mock_open,
+            patch("chcode.chat.render_success") as mock_success,
+        ):
             await repl._cmd_homepage("")
-            mock_success.assert_called_once_with("正在打开: https://github.com/ScarletMercy/chcode")
+            mock_success.assert_called_once_with(
+                "正在打开: https://github.com/ScarletMercy/chcode"
+            )
             mock_open.assert_called_once_with("https://github.com/ScarletMercy/chcode")
 
     @pytest.mark.asyncio
@@ -850,6 +984,7 @@ class TestChatREPLSlashCommands:
 # Test ChatREPL._cmd_git
 # ============================================================================
 
+
 class TestChatREPLCmdGit:
     @pytest.mark.asyncio
     async def test_cmd_git_no_manager_available(self):
@@ -859,9 +994,15 @@ class TestChatREPLCmdGit:
         async def mock_init_git():
             repl.git_manager = Mock()
 
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, return_value=(True, "ok", "2.0.0")), \
-             patch.object(repl, "_init_git", side_effect=mock_init_git), \
-             patch("chcode.chat.render_success") as mock_success:
+        with (
+            patch(
+                "chcode.chat.asyncio.to_thread",
+                new_callable=AsyncMock,
+                return_value=(True, "ok", "2.0.0"),
+            ),
+            patch.object(repl, "_init_git", side_effect=mock_init_git),
+            patch("chcode.chat.render_success") as mock_success,
+        ):
             await repl._cmd_git("")
             mock_success.assert_called()
 
@@ -870,7 +1011,9 @@ class TestChatREPLCmdGit:
         repl = ChatREPL()
         repl.git_manager = None
 
-        with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+        with patch(
+            "chcode.chat.asyncio.to_thread", new_callable=AsyncMock
+        ) as mock_thread:
             mock_thread.return_value = (False, "not installed", None)
             with patch("chcode.chat.render_error") as mock_err:
                 await repl._cmd_git("")
@@ -892,6 +1035,7 @@ class TestChatREPLCmdGit:
 # ============================================================================
 # Test ChatREPL._cmd_search
 # ============================================================================
+
 
 class TestChatREPLCmdSearch:
     @pytest.mark.asyncio
@@ -932,7 +1076,9 @@ class TestChatREPLCmdSearch:
                 with patch("chcode.chat.text", new_callable=AsyncMock) as mock_text:
                     mock_text.return_value = "new-key-123"
                     with patch("chcode.config.save_tavily_api_key") as mock_save:
-                        with patch("chcode.utils.tools.update_tavily_api_key") as mock_upd:
+                        with patch(
+                            "chcode.utils.tools.update_tavily_api_key"
+                        ) as mock_upd:
                             with patch("chcode.chat.render_success"):
                                 await repl._cmd_search("")
 
@@ -971,6 +1117,7 @@ class TestChatREPLCmdSearch:
 # Test ChatREPL._cmd_workdir
 # ============================================================================
 
+
 class TestChatREPLCmdWorkdir:
     @pytest.mark.asyncio
     async def test_cmd_workdir_no_selection(self):
@@ -978,7 +1125,9 @@ class TestChatREPLCmdWorkdir:
         repl.model_config = {"model": "gpt-4"}
 
         with patch("chcode.chat.load_workplace", return_value=None):
-            with patch("chcode.chat.select_or_custom", new_callable=AsyncMock) as mock_sel:
+            with patch(
+                "chcode.chat.select_or_custom", new_callable=AsyncMock
+            ) as mock_sel:
                 mock_sel.return_value = ""
                 result = await repl._cmd_workdir("")
                 assert result is None  # Should return early when cancelled
@@ -989,7 +1138,9 @@ class TestChatREPLCmdWorkdir:
         repl.model_config = {"model": "gpt-4"}
 
         with patch("chcode.chat.load_workplace", return_value=None):
-            with patch("chcode.chat.select_or_custom", new_callable=AsyncMock) as mock_sel:
+            with patch(
+                "chcode.chat.select_or_custom", new_callable=AsyncMock
+            ) as mock_sel:
                 mock_sel.return_value = "/nonexistent/path"
                 with patch("chcode.chat.Path") as mock_path_cls:
                     mock_new_path = MagicMock()
@@ -1006,7 +1157,9 @@ class TestChatREPLCmdWorkdir:
         repl.yolo = False
 
         with patch("chcode.chat.load_workplace", return_value=None):
-            with patch("chcode.chat.select_or_custom", new_callable=AsyncMock) as mock_sel:
+            with patch(
+                "chcode.chat.select_or_custom", new_callable=AsyncMock
+            ) as mock_sel:
                 mock_sel.return_value = str(tmp_path)
                 with patch("chcode.chat.os.chdir"):
                     with patch("chcode.chat.save_workplace"):
@@ -1014,11 +1167,19 @@ class TestChatREPLCmdWorkdir:
                             mock_sm_inst = Mock()
                             mock_sm_inst.sessions_dir = tmp_path / ".chat" / "sessions"
                             mock_sm.return_value = mock_sm_inst
-                            with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock) as mock_cp:
+                            with patch(
+                                "chcode.chat.create_checkpointer",
+                                new_callable=AsyncMock,
+                            ) as mock_cp:
                                 mock_cp.return_value = Mock()
-                                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+                                with patch(
+                                    "chcode.chat.asyncio.to_thread",
+                                    new_callable=AsyncMock,
+                                ) as mock_thread:
                                     mock_thread.return_value = Mock()
-                                    with patch.object(repl, "_init_git", new_callable=AsyncMock):
+                                    with patch.object(
+                                        repl, "_init_git", new_callable=AsyncMock
+                                    ):
                                         with patch("chcode.chat.render_success"):
                                             await repl._cmd_workdir("")
 
@@ -1032,7 +1193,9 @@ class TestChatREPLCmdWorkdir:
         repl.yolo = False
 
         with patch("chcode.chat.load_workplace", return_value=tmp_path):
-            with patch("chcode.chat.select_or_custom", new_callable=AsyncMock) as mock_sel:
+            with patch(
+                "chcode.chat.select_or_custom", new_callable=AsyncMock
+            ) as mock_sel:
                 mock_sel.return_value = str(tmp_path)
                 with patch("chcode.chat.os.chdir"):
                     with patch("chcode.chat.save_workplace"):
@@ -1040,10 +1203,20 @@ class TestChatREPLCmdWorkdir:
                             mock_sm_inst = Mock()
                             mock_sm_inst.sessions_dir = tmp_path / ".chat" / "sessions"
                             mock_sm.return_value = mock_sm_inst
-                            with patch("chcode.chat.create_checkpointer", new_callable=AsyncMock):
-                                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock):
-                                    with patch.object(repl, "_init_git", new_callable=AsyncMock):
-                                        with patch("chcode.chat.render_success") as mock_ok:
+                            with patch(
+                                "chcode.chat.create_checkpointer",
+                                new_callable=AsyncMock,
+                            ):
+                                with patch(
+                                    "chcode.chat.asyncio.to_thread",
+                                    new_callable=AsyncMock,
+                                ):
+                                    with patch.object(
+                                        repl, "_init_git", new_callable=AsyncMock
+                                    ):
+                                        with patch(
+                                            "chcode.chat.render_success"
+                                        ) as mock_ok:
                                             await repl._cmd_workdir("")
                                             mock_ok.assert_called_once()
 
@@ -1051,6 +1224,7 @@ class TestChatREPLCmdWorkdir:
 # ============================================================================
 # Test ChatREPL._cmd_compress
 # ============================================================================
+
 
 class TestChatREPLCmdCompress:
     @pytest.mark.asyncio
@@ -1092,7 +1266,9 @@ class TestChatREPLCmdCompress:
         with patch("chcode.chat.confirm", new_callable=AsyncMock) as mock_conf:
             mock_conf.return_value = True
             with patch("chcode.chat.render_info"):
-                with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm:
+                with patch(
+                    "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+                ) as mock_llm:
                     mock_inst = Mock()
                     mock_inst.invoke = Mock()
                     mock_resp = Mock()
@@ -1100,9 +1276,13 @@ class TestChatREPLCmdCompress:
                     mock_resp.content = mock_resp.content.strip()
                     mock_inst.invoke.return_value = mock_resp
                     mock_llm.return_value = mock_inst
-                    with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+                    with patch(
+                        "chcode.chat.asyncio.to_thread", new_callable=AsyncMock
+                    ) as mock_thread:
                         mock_thread.return_value = mock_resp
-                        with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
+                        with patch.object(
+                            repl, "_load_conversation", new_callable=AsyncMock
+                        ):
                             with patch("chcode.chat.render_success"):
                                 await repl._cmd_compress("")
 
@@ -1136,7 +1316,10 @@ class TestChatREPLCmdCompress:
         multimodal_msg = HumanMessage(
             content=[
                 {"type": "text", "text": "[image: test.png] 描述这张图"},
-                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "data:image/png;base64,AAAA"},
+                },
             ],
             id="1",
         )
@@ -1159,12 +1342,20 @@ class TestChatREPLCmdCompress:
 
         with patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True):
             with patch("chcode.chat.render_info"):
-                with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_llm:
+                with patch(
+                    "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+                ) as mock_llm:
                     mock_inst = Mock()
                     mock_inst.invoke = Mock(side_effect=capture_invoke)
                     mock_llm.return_value = mock_inst
-                    with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock, side_effect=capture_invoke):
-                        with patch.object(repl, "_load_conversation", new_callable=AsyncMock):
+                    with patch(
+                        "chcode.chat.asyncio.to_thread",
+                        new_callable=AsyncMock,
+                        side_effect=capture_invoke,
+                    ):
+                        with patch.object(
+                            repl, "_load_conversation", new_callable=AsyncMock
+                        ):
                             with patch("chcode.chat.render_success"):
                                 await repl._cmd_compress("")
 
@@ -1173,8 +1364,9 @@ class TestChatREPLCmdCompress:
             if isinstance(msg.content, list):
                 for block in msg.content:
                     if isinstance(block, dict):
-                        assert block["type"] not in ("image_url", "video_url"), \
+                        assert block["type"] not in ("image_url", "video_url"), (
                             f"多模态块未被过滤: {block['type']}"
+                        )
         # 验证原始消息未被修改（content 仍包含 image_url）
         assert multimodal_msg.content[1]["type"] == "image_url"
 
@@ -1182,6 +1374,7 @@ class TestChatREPLCmdCompress:
 # ============================================================================
 # Test ChatREPL._cmd_messages
 # ============================================================================
+
 
 class TestChatREPLCmdMessages:
     @pytest.mark.asyncio
@@ -1236,11 +1429,19 @@ class TestChatREPLCmdMessages:
         repl.agent.aupdate_state = AsyncMock()
         repl.session_mgr = Mock()
 
-        with patch("chcode.chat.select", new_callable=AsyncMock, return_value="删除消息"), \
-             patch("chcode.chat.checkbox", new_callable=AsyncMock, return_value=["[1] test"]), \
-             patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True), \
-             patch.object(repl, "_delete_messages", new_callable=AsyncMock) as mock_del, \
-             patch("chcode.chat.render_success"):
+        with (
+            patch(
+                "chcode.chat.select", new_callable=AsyncMock, return_value="删除消息"
+            ),
+            patch(
+                "chcode.chat.checkbox",
+                new_callable=AsyncMock,
+                return_value=["[1] test"],
+            ),
+            patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True),
+            patch.object(repl, "_delete_messages", new_callable=AsyncMock) as mock_del,
+            patch("chcode.chat.render_success"),
+        ):
             await repl._cmd_messages("")
             mock_del.assert_called_once()
 
@@ -1256,9 +1457,19 @@ class TestChatREPLCmdMessages:
         repl.session_mgr = Mock()
 
         # select("删除消息") -> checkbox -> confirm(False) -> loops to select(None) -> return
-        with patch("chcode.chat.select", new_callable=AsyncMock, side_effect=["删除消息", None]), \
-             patch("chcode.chat.checkbox", new_callable=AsyncMock, return_value=["[1] test"]), \
-             patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.chat.select",
+                new_callable=AsyncMock,
+                side_effect=["删除消息", None],
+            ),
+            patch(
+                "chcode.chat.checkbox",
+                new_callable=AsyncMock,
+                return_value=["[1] test"],
+            ),
+            patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             result = await repl._cmd_messages("")
             assert result is None  # Should return via cancel on second select
 
@@ -1274,8 +1485,14 @@ class TestChatREPLCmdMessages:
         repl.session_mgr = Mock()
 
         # select("编辑消息") -> select("[1] test") -> render_warning -> continue -> select(None) -> return
-        with patch("chcode.chat.select", new_callable=AsyncMock, side_effect=["编辑消息", "[1] test", None]) as mock_sel, \
-             patch("chcode.chat.render_warning") as mock_warn:
+        with (
+            patch(
+                "chcode.chat.select",
+                new_callable=AsyncMock,
+                side_effect=["编辑消息", "[1] test", None],
+            ) as mock_sel,
+            patch("chcode.chat.render_warning") as mock_warn,
+        ):
             await repl._cmd_messages("")
             mock_warn.assert_called_once()
 
@@ -1292,11 +1509,17 @@ class TestChatREPLCmdMessages:
         repl.session_mgr = Mock()
 
         # select("编辑消息") -> select("[1] test") -> confirm(True) -> delete + return
-        with patch("chcode.chat.select", new_callable=AsyncMock, side_effect=["编辑消息", "[1] test"]), \
-             patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.chat.load_workplace", return_value=None), \
-             patch.object(repl, "_delete_messages", new_callable=AsyncMock), \
-             patch("chcode.chat.render_success"):
+        with (
+            patch(
+                "chcode.chat.select",
+                new_callable=AsyncMock,
+                side_effect=["编辑消息", "[1] test"],
+            ),
+            patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True),
+            patch("chcode.chat.load_workplace", return_value=None),
+            patch.object(repl, "_delete_messages", new_callable=AsyncMock),
+            patch("chcode.chat.render_success"),
+        ):
             await repl._cmd_messages("")
             assert repl._edit_buffer == "test"
 
@@ -1312,8 +1535,14 @@ class TestChatREPLCmdMessages:
         repl.session_mgr = Mock()
 
         # select("分叉消息") -> select("[1] test") -> confirm(False) -> continue -> select(None) -> return
-        with patch("chcode.chat.select", new_callable=AsyncMock, side_effect=["分叉消息", "[1] test", None]), \
-             patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.chat.select",
+                new_callable=AsyncMock,
+                side_effect=["分叉消息", "[1] test", None],
+            ),
+            patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             result = await repl._cmd_messages("")
             assert result is None  # Should return via cancel on third select
 
@@ -1329,10 +1558,18 @@ class TestChatREPLCmdMessages:
         repl.session_mgr = Mock()
 
         # select("分叉消息") -> select("[1] test") -> confirm(True) -> select_or_custom("") -> continue -> select(None) -> return
-        with patch("chcode.chat.select", new_callable=AsyncMock, side_effect=["分叉消息", "[1] test", None]), \
-             patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.chat.load_workplace", return_value=None), \
-             patch("chcode.chat.select_or_custom", new_callable=AsyncMock, return_value=""):
+        with (
+            patch(
+                "chcode.chat.select",
+                new_callable=AsyncMock,
+                side_effect=["分叉消息", "[1] test", None],
+            ),
+            patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True),
+            patch("chcode.chat.load_workplace", return_value=None),
+            patch(
+                "chcode.chat.select_or_custom", new_callable=AsyncMock, return_value=""
+            ),
+        ):
             result = await repl._cmd_messages("")
             assert result is None  # Should return via cancel on third select
 
@@ -1340,6 +1577,7 @@ class TestChatREPLCmdMessages:
 # ============================================================================
 # Test ChatREPL._cmd_history
 # ============================================================================
+
 
 class TestChatREPLCmdHistory:
     @pytest.mark.asyncio
@@ -1349,11 +1587,27 @@ class TestChatREPLCmdHistory:
         repl.checkpointer = Mock()
         repl.agent = Mock()
 
-        with patch.object(repl.session_mgr, "list_sessions", new_callable=AsyncMock, return_value=["thread1"]), \
-             patch.object(repl.session_mgr, "get_display_names", new_callable=AsyncMock, return_value={"thread1": "Session 1"}), \
-             patch("chcode.chat.select", new_callable=AsyncMock, side_effect=["Session 1  (thread1)", "加载此会话"]), \
-             patch.object(repl.session_mgr, "set_thread"), \
-             patch.object(repl, "_load_conversation", new_callable=AsyncMock):
+        with (
+            patch.object(
+                repl.session_mgr,
+                "list_sessions",
+                new_callable=AsyncMock,
+                return_value=["thread1"],
+            ),
+            patch.object(
+                repl.session_mgr,
+                "get_display_names",
+                new_callable=AsyncMock,
+                return_value={"thread1": "Session 1"},
+            ),
+            patch(
+                "chcode.chat.select",
+                new_callable=AsyncMock,
+                side_effect=["Session 1  (thread1)", "加载此会话"],
+            ),
+            patch.object(repl.session_mgr, "set_thread"),
+            patch.object(repl, "_load_conversation", new_callable=AsyncMock),
+        ):
             await repl._cmd_history("")
             repl.session_mgr.set_thread.assert_called_once_with("thread1")
 
@@ -1365,12 +1619,28 @@ class TestChatREPLCmdHistory:
         repl.agent = Mock()
         repl.session_mgr._load_names = Mock(return_value={"thread1": "Old Name"})
 
-        with patch.object(repl.session_mgr, "list_sessions", new_callable=AsyncMock, return_value=["thread1"]), \
-             patch.object(repl.session_mgr, "get_display_names", new_callable=AsyncMock, return_value={"thread1": "Session 1"}), \
-             patch("chcode.chat.select", new_callable=AsyncMock, side_effect=["Session 1  (thread1)", "重命名此会话"]), \
-             patch("chcode.chat.text", new_callable=AsyncMock, return_value="New Name"), \
-             patch.object(repl.session_mgr, "rename_session"), \
-             patch("chcode.chat.render_success"):
+        with (
+            patch.object(
+                repl.session_mgr,
+                "list_sessions",
+                new_callable=AsyncMock,
+                return_value=["thread1"],
+            ),
+            patch.object(
+                repl.session_mgr,
+                "get_display_names",
+                new_callable=AsyncMock,
+                return_value={"thread1": "Session 1"},
+            ),
+            patch(
+                "chcode.chat.select",
+                new_callable=AsyncMock,
+                side_effect=["Session 1  (thread1)", "重命名此会话"],
+            ),
+            patch("chcode.chat.text", new_callable=AsyncMock, return_value="New Name"),
+            patch.object(repl.session_mgr, "rename_session"),
+            patch("chcode.chat.render_success"),
+        ):
             await repl._cmd_history("")
             repl.session_mgr.rename_session.assert_called_once()
 
@@ -1382,13 +1652,31 @@ class TestChatREPLCmdHistory:
         repl.agent = Mock()
         repl.session_mgr.thread_id = "thread1"
 
-        with patch.object(repl.session_mgr, "list_sessions", new_callable=AsyncMock, return_value=["thread1"]), \
-             patch.object(repl.session_mgr, "get_display_names", new_callable=AsyncMock, return_value={"thread1": "Session 1"}), \
-             patch("chcode.chat.select", new_callable=AsyncMock, side_effect=["Session 1  (thread1)", "删除此会话"]), \
-             patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True), \
-             patch.object(repl.session_mgr, "delete_session", new_callable=AsyncMock) as mock_del, \
-             patch.object(repl, "_cmd_new", new_callable=AsyncMock), \
-             patch("chcode.chat.render_success"):
+        with (
+            patch.object(
+                repl.session_mgr,
+                "list_sessions",
+                new_callable=AsyncMock,
+                return_value=["thread1"],
+            ),
+            patch.object(
+                repl.session_mgr,
+                "get_display_names",
+                new_callable=AsyncMock,
+                return_value={"thread1": "Session 1"},
+            ),
+            patch(
+                "chcode.chat.select",
+                new_callable=AsyncMock,
+                side_effect=["Session 1  (thread1)", "删除此会话"],
+            ),
+            patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True),
+            patch.object(
+                repl.session_mgr, "delete_session", new_callable=AsyncMock
+            ) as mock_del,
+            patch.object(repl, "_cmd_new", new_callable=AsyncMock),
+            patch("chcode.chat.render_success"),
+        ):
             await repl._cmd_history("")
             mock_del.assert_called_once()
 
@@ -1399,9 +1687,13 @@ class TestChatREPLCmdHistory:
         repl.checkpointer = Mock()
         repl.agent = Mock()
 
-        with patch.object(repl.session_mgr, "list_sessions", new_callable=AsyncMock) as mock_ls:
+        with patch.object(
+            repl.session_mgr, "list_sessions", new_callable=AsyncMock
+        ) as mock_ls:
             mock_ls.return_value = ["thread1"]
-            with patch.object(repl.session_mgr, "get_display_names", new_callable=AsyncMock) as mock_gdn:
+            with patch.object(
+                repl.session_mgr, "get_display_names", new_callable=AsyncMock
+            ) as mock_gdn:
                 mock_gdn.return_value = {"thread1": "Session 1"}
                 with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
                     mock_sel.return_value = "返回"
@@ -1415,13 +1707,19 @@ class TestChatREPLCmdHistory:
         repl.checkpointer = Mock()
         repl.agent = Mock()
 
-        with patch.object(repl.session_mgr, "list_sessions", new_callable=AsyncMock) as mock_ls:
+        with patch.object(
+            repl.session_mgr, "list_sessions", new_callable=AsyncMock
+        ) as mock_ls:
             mock_ls.return_value = ["thread1"]
-            with patch.object(repl.session_mgr, "get_display_names", new_callable=AsyncMock) as mock_gdn:
+            with patch.object(
+                repl.session_mgr, "get_display_names", new_callable=AsyncMock
+            ) as mock_gdn:
                 mock_gdn.return_value = {"thread1": "Session 1"}
                 with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
                     mock_sel.return_value = "Session 1  (thread1)"
-                    with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel2:
+                    with patch(
+                        "chcode.chat.select", new_callable=AsyncMock
+                    ) as mock_sel2:
                         mock_sel2.return_value = "返回"
                         result = await repl._cmd_history("")
                         assert result is None  # Should return
@@ -1430,6 +1728,7 @@ class TestChatREPLCmdHistory:
 # ============================================================================
 # Test ChatREPL._delete_messages
 # ============================================================================
+
 
 class TestChatREPLDeleteMessages:
     @pytest.mark.asyncio
@@ -1473,6 +1772,7 @@ class TestChatREPLDeleteMessages:
 # ============================================================================
 # Test ChatREPL._copy_dir
 # ============================================================================
+
 
 class TestChatREPLCopyDir:
     def test_copy_dir_files(self, tmp_path):
@@ -1533,6 +1833,7 @@ class TestChatREPLCopyDir:
 
         import io
         import sys
+
         old_stdout = sys.stdout
         sys.stdout = io.StringIO()
 
@@ -1547,6 +1848,7 @@ class TestChatREPLCopyDir:
 # ============================================================================
 # Test ChatREPL._load_conversation
 # ============================================================================
+
 
 class TestChatREPLLoadConversation:
     @pytest.mark.asyncio
@@ -1592,6 +1894,7 @@ class TestChatREPLLoadConversation:
 # Test ChatREPL._post_process
 # ============================================================================
 
+
 class TestChatREPLPostProcess:
     @pytest.mark.asyncio
     async def test_post_process_success(self):
@@ -1610,7 +1913,9 @@ class TestChatREPLPostProcess:
         repl.git_manager.add_commit = Mock(return_value=True)
 
         with patch("chcode.chat.get_context_usage_text", return_value="1000/128000"):
-            with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+            with patch(
+                "chcode.chat.asyncio.to_thread", new_callable=AsyncMock
+            ) as mock_thread:
                 mock_thread.return_value = True
                 await repl._post_process()
 
@@ -1649,7 +1954,9 @@ class TestChatREPLPostProcess:
         repl.model_config = {"model": "gpt-4", "metadata": {"context_length": 50000}}
         repl.git = False
 
-        with patch("chcode.chat.get_context_usage_text", return_value="ok") as mock_usage:
+        with patch(
+            "chcode.chat.get_context_usage_text", return_value="ok"
+        ) as mock_usage:
             await repl._post_process()
 
             # max_ctx 取自 metadata.context_length
@@ -1672,7 +1979,9 @@ class TestChatREPLPostProcess:
         repl.model_config = {"model": "gpt-4"}
         repl.git = False
 
-        with patch("chcode.chat.get_context_usage_text", return_value="ok") as mock_usage:
+        with patch(
+            "chcode.chat.get_context_usage_text", return_value="ok"
+        ) as mock_usage:
             await repl._post_process()
             assert mock_usage.call_args.args[-1] == _DEFAULT_CONTEXT_WINDOW
 
@@ -1694,6 +2003,7 @@ class TestChatREPLPostProcess:
 # Test ChatREPL._collect_decisions_async
 # ============================================================================
 
+
 class TestChatREPLCollectDecisions:
     @pytest.mark.asyncio
     async def test_collect_decisions_approve(self):
@@ -1702,10 +2012,14 @@ class TestChatREPLCollectDecisions:
 
         interrupt_chunk = {
             "__interrupt__": [
-                Mock(value={
-                    "action_requests": [{"name": "bash", "args": {"command": "ls"}}],
-                    "review_configs": []
-                })
+                Mock(
+                    value={
+                        "action_requests": [
+                            {"name": "bash", "args": {"command": "ls"}}
+                        ],
+                        "review_configs": [],
+                    }
+                )
             ]
         }
 
@@ -1723,10 +2037,14 @@ class TestChatREPLCollectDecisions:
 
         interrupt_chunk = {
             "__interrupt__": [
-                Mock(value={
-                    "action_requests": [{"name": "bash", "args": {"command": "ls"}}],
-                    "review_configs": []
-                })
+                Mock(
+                    value={
+                        "action_requests": [
+                            {"name": "bash", "args": {"command": "ls"}}
+                        ],
+                        "review_configs": [],
+                    }
+                )
             ]
         }
 
@@ -1745,10 +2063,14 @@ class TestChatREPLCollectDecisions:
 
         interrupt_chunk = {
             "__interrupt__": [
-                Mock(value={
-                    "action_requests": [{"name": "bash", "args": {"command": "ls"}}],
-                    "review_configs": []
-                })
+                Mock(
+                    value={
+                        "action_requests": [
+                            {"name": "bash", "args": {"command": "ls"}}
+                        ],
+                        "review_configs": [],
+                    }
+                )
             ]
         }
 
@@ -1764,10 +2086,14 @@ class TestChatREPLCollectDecisions:
 
         interrupt_chunk = {
             "__interrupt__": [
-                Mock(value={
-                    "action_requests": [{"name": "bash", "args": {"command": "ls"}}],
-                    "review_configs": []
-                })
+                Mock(
+                    value={
+                        "action_requests": [
+                            {"name": "bash", "args": {"command": "ls"}}
+                        ],
+                        "review_configs": [],
+                    }
+                )
             ]
         }
 
@@ -1785,13 +2111,20 @@ class TestChatREPLCollectDecisions:
 
         interrupt_chunk = {
             "__interrupt__": [
-                Mock(value={
-                    "action_requests": [{
-                        "name": "write_file",
-                        "args": {"file_path": "/path/to/file", "content": "content"}
-                    }],
-                    "review_configs": []
-                })
+                Mock(
+                    value={
+                        "action_requests": [
+                            {
+                                "name": "write_file",
+                                "args": {
+                                    "file_path": "/path/to/file",
+                                    "content": "content",
+                                },
+                            }
+                        ],
+                        "review_configs": [],
+                    }
+                )
             ]
         }
 
@@ -1812,17 +2145,21 @@ class TestChatREPLCollectDecisions:
 
         interrupt_chunk = {
             "__interrupt__": [
-                Mock(value={
-                    "action_requests": [{
-                        "name": "edit",
-                        "args": {
-                            "file_path": str(test_file),
-                            "old_string": "line2",
-                            "new_string": "new_line"
-                        }
-                    }],
-                    "review_configs": []
-                })
+                Mock(
+                    value={
+                        "action_requests": [
+                            {
+                                "name": "edit",
+                                "args": {
+                                    "file_path": str(test_file),
+                                    "old_string": "line2",
+                                    "new_string": "new_line",
+                                },
+                            }
+                        ],
+                        "review_configs": [],
+                    }
+                )
             ]
         }
 
@@ -1842,21 +2179,26 @@ class TestChatREPLCollectDecisions:
         repl.workplace_path = tmp_path
 
         from chcode.utils.project_memory import save_memory_entry
+
         save_memory_entry(tmp_path, "常用命令", "old rule")
 
         interrupt_chunk = {
             "__interrupt__": [
-                Mock(value={
-                    "action_requests": [{
-                        "name": "update_memory",
-                        "args": {
-                            "section": "常用命令",
-                            "content": "new rule",
-                            "mode": "append",
-                        }
-                    }],
-                    "review_configs": []
-                })
+                Mock(
+                    value={
+                        "action_requests": [
+                            {
+                                "name": "update_memory",
+                                "args": {
+                                    "section": "常用命令",
+                                    "content": "new rule",
+                                    "mode": "append",
+                                },
+                            }
+                        ],
+                        "review_configs": [],
+                    }
+                )
             ]
         }
 
@@ -1879,6 +2221,7 @@ class TestChatREPLCollectDecisions:
 # Test ChatREPL.run
 # ============================================================================
 
+
 class TestChatREPLRun:
     @pytest.mark.asyncio
     async def test_run_normal_input(self):
@@ -1887,11 +2230,15 @@ class TestChatREPLRun:
         with patch("chcode.chat.render_welcome"):
             with patch.object(repl, "_get_input", new_callable=AsyncMock) as mock_input:
                 mock_input.return_value = "hello"
-                with patch.object(repl, "_process_input", new_callable=AsyncMock) as mock_proc:
+                with patch.object(
+                    repl, "_process_input", new_callable=AsyncMock
+                ) as mock_proc:
                     with patch.dict(os.environ, {"LANGSMITH_TRACING": "false"}):
                         # Should run once then loop
                         mock_input.side_effect = ["hello", EOFError()]
-                        with patch.object(repl, "_handle_command", new_callable=AsyncMock):
+                        with patch.object(
+                            repl, "_handle_command", new_callable=AsyncMock
+                        ):
                             try:
                                 await repl.run()
                             except EOFError:
@@ -1906,7 +2253,9 @@ class TestChatREPLRun:
         with patch("chcode.chat.render_welcome"):
             with patch.object(repl, "_get_input", new_callable=AsyncMock) as mock_input:
                 mock_input.side_effect = ["", "   ", EOFError()]
-                with patch.object(repl, "_process_input", new_callable=AsyncMock) as mock_proc:
+                with patch.object(
+                    repl, "_process_input", new_callable=AsyncMock
+                ) as mock_proc:
                     try:
                         await repl.run()
                     except EOFError:
@@ -1924,7 +2273,9 @@ class TestChatREPLRun:
         with patch("chcode.chat.render_welcome"):
             with patch.object(repl, "_get_input", new_callable=AsyncMock) as mock_input:
                 mock_input.side_effect = ["/help", EOFError()]
-                with patch.object(repl, "_handle_command", new_callable=AsyncMock) as mock_cmd:
+                with patch.object(
+                    repl, "_handle_command", new_callable=AsyncMock
+                ) as mock_cmd:
                     try:
                         await repl.run()
                     except EOFError:
@@ -1939,7 +2290,9 @@ class TestChatREPLRun:
 
         with patch("chcode.chat.render_welcome"):
             with patch("chcode.chat.console.print"):
-                with patch.object(repl, "_get_input", new_callable=AsyncMock) as mock_input:
+                with patch.object(
+                    repl, "_get_input", new_callable=AsyncMock
+                ) as mock_input:
                     mock_input.side_effect = [KeyboardInterrupt()]
                     await repl.run()
                     # Should exit loop cleanly when not processing
@@ -1952,7 +2305,9 @@ class TestChatREPLRun:
 
         with patch("chcode.chat.render_welcome"):
             with patch("chcode.chat.console.print"):
-                with patch.object(repl, "_get_input", new_callable=AsyncMock) as mock_input:
+                with patch.object(
+                    repl, "_get_input", new_callable=AsyncMock
+                ) as mock_input:
                     mock_input.side_effect = [KeyboardInterrupt(), EOFError()]
                     await repl.run()
 
@@ -1980,8 +2335,12 @@ class TestChatREPLRun:
         with patch("chcode.chat.render_welcome"):
             with patch.object(repl, "_get_input", new_callable=AsyncMock) as mock_input:
                 mock_input.side_effect = ["test", EOFError()]
-                with patch.object(repl, "_process_input", new_callable=AsyncMock) as mock_proc:
-                    with patch.dict(os.environ, {"LANGSMITH_TRACING": "true"}, clear=False):
+                with patch.object(
+                    repl, "_process_input", new_callable=AsyncMock
+                ) as mock_proc:
+                    with patch.dict(
+                        os.environ, {"LANGSMITH_TRACING": "true"}, clear=False
+                    ):
                         try:
                             await repl.run()
                         except EOFError:
@@ -1993,6 +2352,7 @@ class TestChatREPLRun:
 # ============================================================================
 # Test ChatREPL._process_input
 # ============================================================================
+
 
 class TestChatREPLProcessInput:
     @pytest.mark.asyncio
@@ -2034,7 +2394,21 @@ class TestChatREPLProcessInput:
         async def mock_astream(*args, **kwargs):
             if call_count[0] == 0:
                 yield "messages", [AIMessageChunk(content="Hello")]
-                yield "updates", {"__interrupt__": [Mock(value={"action_requests": [{"name": "bash", "args": {"command": "ls"}}], "review_configs": []})]}
+                yield (
+                    "updates",
+                    {
+                        "__interrupt__": [
+                            Mock(
+                                value={
+                                    "action_requests": [
+                                        {"name": "bash", "args": {"command": "ls"}}
+                                    ],
+                                    "review_configs": [],
+                                }
+                            )
+                        ]
+                    },
+                )
             call_count[0] += 1
 
         repl.agent.astream = mock_astream
@@ -2043,7 +2417,9 @@ class TestChatREPLProcessInput:
         with patch("chcode.chat.render_ai_start"):
             with patch("chcode.chat.render_ai_chunk"):
                 with patch("chcode.chat.render_ai_end"):
-                    with patch("chcode.chat.select", new_callable=AsyncMock) as mock_sel:
+                    with patch(
+                        "chcode.chat.select", new_callable=AsyncMock
+                    ) as mock_sel:
                         mock_sel.return_value = "approve (批准)"
                         with patch("chcode.chat.asyncio.create_task"):
                             await repl._process_input("test")
@@ -2063,6 +2439,7 @@ class TestChatREPLProcessInput:
         repl.agent.astream = mock_astream
         # _handle_cancel 需要 aget_state，当前组有 HumanMessage 无 AIMessage 会回填输入框
         from langchain_core.messages import HumanMessage
+
         repl.agent.aget_state = AsyncMock(
             return_value=Mock(values={"messages": [HumanMessage("test", id="h1")]})
         )
@@ -2086,6 +2463,7 @@ class TestChatREPLProcessInput:
 
         async def mock_astream(*args, **kwargs):
             import openai
+
             raise openai.APIError("API error")
 
         repl.agent.astream = mock_astream
@@ -2211,7 +2589,9 @@ class TestChatREPLProcessInput:
                     with patch("chcode.chat.render_ai_end"):
                         with patch("chcode.chat.asyncio.create_task"):
                             await repl._process_input("test")
-                            assert repl._processing is False  # Processing should complete
+                            assert (
+                                repl._processing is False
+                            )  # Processing should complete
 
     @pytest.mark.asyncio
     async def test_process_input_model_switch_error(self):
@@ -2238,9 +2618,13 @@ class TestChatREPLProcessInput:
 
         repl.agent.astream = mock_astream
 
-        with patch("chcode.chat.get_fallback_model", return_value={"model": "fallback"}):
+        with patch(
+            "chcode.chat.get_fallback_model", return_value={"model": "fallback"}
+        ):
             with patch("chcode.chat.advance_fallback"):
-                with patch("chcode.chat.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+                with patch(
+                    "chcode.chat.asyncio.to_thread", new_callable=AsyncMock
+                ) as mock_thread:
                     mock_thread.return_value = Mock()
                     with patch("chcode.display.console.print"):
                         with patch("chcode.chat.asyncio.create_task"):
@@ -2304,6 +2688,7 @@ class TestChatREPLProcessInput:
 # Test _rich_to_html helper
 # ============================================================================
 
+
 class TestRichToHtml:
     def test_plain_text(self):
         assert _rich_to_html("hello world") == "hello world"
@@ -2350,6 +2735,7 @@ class TestRichToHtml:
 # Test find_and_slice_from_end helper
 # ============================================================================
 
+
 class TestFindAndSliceFromEnd:
     def test_found_at_end(self):
         items = [Mock(type="a"), Mock(type="b"), Mock(type="c")]
@@ -2382,6 +2768,7 @@ class TestFindAndSliceFromEnd:
 # ============================================================================
 # Test _group_messages_by_turn helper
 # ============================================================================
+
 
 class TestGroupMessagesByTurn:
     def test_single_human_message(self):
@@ -2430,6 +2817,7 @@ class TestGroupMessagesByTurn:
 # Test _get_group_display helper
 # ============================================================================
 
+
 class TestGetGroupDisplay:
     def test_with_human_message(self):
         group = [Mock(type="human", content="Hello world")]
@@ -2470,6 +2858,7 @@ class TestGetGroupDisplay:
 # ============================================================================
 # Test _collect_ids_from_group helper
 # ============================================================================
+
 
 class TestCollectIdsFromGroup:
     def test_collect_from_first_group(self):

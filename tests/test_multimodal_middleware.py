@@ -24,18 +24,23 @@ def _preset_vision_models(tmp_path, monkeypatch):
     (Kimi-K2.5/Qwen3.5-397B)并隔离,避免读写真实 home(CI 干净环境会 otherwise 失败)。
     """
     import chcode.vision_config as vc
+
     monkeypatch.setattr(vc, "VISION_JSON", tmp_path / "vision_model.json")
     vc._vision_json.invalidate()
-    vc.save_vision_json({
-        "default": {"model": "moonshotai/Kimi-K2.5", "api_key": "k"},
-        "fallback": {
-            "Qwen/Qwen3.5-397B-A17B": {"model": "Qwen/Qwen3.5-397B-A17B", "api_key": "k"},
-        },
-    })
+    vc.save_vision_json(
+        {
+            "default": {"model": "moonshotai/Kimi-K2.5", "api_key": "k"},
+            "fallback": {
+                "Qwen/Qwen3.5-397B-A17B": {
+                    "model": "Qwen/Qwen3.5-397B-A17B",
+                    "api_key": "k",
+                },
+            },
+        }
+    )
 
 
 class TestFilterVisionTool:
-
     async def test_blocks_vision_for_multimodal_model(self):
         """When model is multimodal, vision tool call should be blocked."""
         from chcode.agent_setup import filter_vision_tool

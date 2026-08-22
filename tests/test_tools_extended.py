@@ -2,6 +2,7 @@
 Extended tests for chcode/utils/tools.py — targeting uncovered lines.
 Focuses on file operations, config loading, string operations, simple conditionals.
 """
+
 import json
 import os
 import time
@@ -70,8 +71,10 @@ class TestBashTimeout:
         mock_sess = MagicMock()
         mock_sess.provider_name = "bash"
         mock_sess.execute = MagicMock(return_value=(result, truncated))
-        with patch("chcode.utils.tools._get_shell_session", return_value=mock_sess), \
-             patch("chcode.utils.tools.render_tool_call"):
+        with (
+            patch("chcode.utils.tools._get_shell_session", return_value=mock_sess),
+            patch("chcode.utils.tools.render_tool_call"),
+        ):
             out = await bash.coroutine("sleep 999", runtime=rt, timeout=10)
         assert "timed out" in out
         assert "10s" in out
@@ -88,8 +91,10 @@ class TestBashTimeout:
         mock_sess = MagicMock()
         mock_sess.provider_name = "bash"
         mock_sess.execute = MagicMock(return_value=(result, truncated))
-        with patch("chcode.utils.tools._get_shell_session", return_value=mock_sess), \
-             patch("chcode.utils.tools.render_tool_call"):
+        with (
+            patch("chcode.utils.tools._get_shell_session", return_value=mock_sess),
+            patch("chcode.utils.tools.render_tool_call"),
+        ):
             out = await bash.coroutine("echo hi", runtime=rt, timeout=10000)
         # Should not crash; session.execute was called
         mock_sess.execute.assert_called_once()
@@ -123,8 +128,10 @@ class TestReadFileExtended:
         f = tmp_path / "e.txt"
         f.write_text("ok", encoding="utf-8")
         rt = _make_runtime(working_directory=tmp_path, thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("aiofiles.open", side_effect=OSError("disk error")):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("aiofiles.open", side_effect=OSError("disk error")),
+        ):
             out = await read_file.coroutine(str(f), runtime=rt)
         assert "[FAILED]" in out
         assert "disk error" in out
@@ -147,8 +154,10 @@ class TestGlobExtended:
         external_file.touch()
 
         # Patch glob to return a mix of relative and absolute paths
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch.object(Path, "glob") as mock_glob:
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch.object(Path, "glob") as mock_glob,
+        ):
             # Return one file inside cwd and one outside
             mock_glob.return_value = [tmp_path / "a.py", external_file]
             out = await glob.coroutine("*.py", runtime=rt)
@@ -200,8 +209,10 @@ class TestGrepExtended:
         def failing_stat(self):
             raise OSError("permission denied")
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch.object(Path, "stat", failing_stat):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch.object(Path, "stat", failing_stat),
+        ):
             out = await grep.coroutine("match", str(f), rt)
         assert "No matches" in out
 
@@ -321,8 +332,10 @@ class TestGrepExtended:
                 raise PermissionError("denied")
             return original_open(path, *args, **kwargs)
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("builtins.open", permission_open):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("builtins.open", permission_open),
+        ):
             out = await grep.coroutine("content", str(tmp_path), rt)
         # Should not crash; the locked file is silently skipped
         assert "grep:" in out
@@ -350,8 +363,10 @@ class TestEditExtended:
         f = tmp_path / "e.txt"
         f.write_text("hello\n", encoding="utf-8")
         rt = _make_runtime(working_directory=tmp_path, thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("aiofiles.open", side_effect=OSError("read error")):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("aiofiles.open", side_effect=OSError("read error")),
+        ):
             out = await edit.coroutine(str(f), "hello", "bye", rt)
         assert "[FAILED]" in out
         assert "read error" in out
@@ -386,8 +401,10 @@ class TestListDirExtended:
             return original_stat(self, **kwargs)
 
         rt = _make_runtime(working_directory=tmp_path, thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch.object(Path, "stat", patched_stat):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch.object(Path, "stat", patched_stat),
+        ):
             out = await list_dir.coroutine(str(tmp_path), runtime=rt)
         assert "[OK]" in out
         # The file should still appear in the listing despite stat failure
@@ -497,8 +514,10 @@ class TestWebFetchExtended:
         mock_client.get = AsyncMock(return_value=mock_resp)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client),
+        ):
             out = await web_fetch.coroutine("https://example.com")
         # Should have converted HTML
         assert "Title" in out["result"]
@@ -517,8 +536,10 @@ class TestWebFetchExtended:
         mock_client.get = AsyncMock(return_value=mock_resp)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client),
+        ):
             out = await web_fetch.coroutine("https://example.com/data.txt")
         assert "plain text" in out["result"]
 
@@ -537,8 +558,10 @@ class TestWebFetchExtended:
         mock_client.get = AsyncMock(return_value=mock_resp)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client),
+        ):
             out = await web_fetch.coroutine("https://example.com/big")
         assert "truncated" in out["result"]
 
@@ -550,8 +573,10 @@ class TestWebFetchExtended:
         mock_client.get = AsyncMock(side_effect=ValueError("unexpected"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client),
+        ):
             out = await web_fetch.coroutine("https://example.com")
         assert "Error fetching URL" in out["result"]
 
@@ -567,9 +592,17 @@ class TestAskUserExtended:
         from chcode.utils.tools import ask_user
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=None):
-            out = await ask_user.coroutine("pick?", options=["A", "B"], is_multiple=True)
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools._interactive_list_async",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            out = await ask_user.coroutine(
+                "pick?", options=["A", "B"], is_multiple=True
+            )
         assert "\u7528\u6237\u53d6\u6d88" in out  # Chinese for "user cancelled"
 
     async def test_select_exception(self):
@@ -577,8 +610,14 @@ class TestAskUserExtended:
         from chcode.utils.tools import ask_user
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=RuntimeError("boom")):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools._interactive_list_async",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
             out = await ask_user.coroutine("pick?", options=["A"])
         assert "fail" in out.lower() or "boom" in out
 
@@ -587,8 +626,14 @@ class TestAskUserExtended:
         from chcode.utils.tools import ask_user
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=RuntimeError("boom")):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools._interactive_list_async",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
             out = await ask_user.coroutine("pick?", options=["A"], is_multiple=True)
         assert "fail" in out.lower() or "boom" in out
 
@@ -597,28 +642,44 @@ class TestAskMultiQuestionsExtended:
     async def test_checkbox_cancel_per_question(self):
         """Lines 1302-1303: _interactive_list returns None for a multi-select question."""
         qs = [{"question": "pick?", "options": ["A", "B"], "is_multiple": True}]
-        with patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=None):
+        with patch(
+            "chcode.utils.tools._interactive_list_async",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
             out = await _ask_multi_questions(qs)
         assert "\u7528\u6237\u53d6\u6d88" in out  # Chinese for "user cancelled"
 
     async def test_select_cancel_per_question(self):
         """Lines 1308-1309: _interactive_list returns None for a single-select question."""
         qs = [{"question": "pick?", "options": ["A", "B"]}]
-        with patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=None):
+        with patch(
+            "chcode.utils.tools._interactive_list_async",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
             out = await _ask_multi_questions(qs)
         assert "\u7528\u6237\u53d6\u6d88" in out  # Chinese for "user cancelled"
 
     async def test_checkbox_exception_per_question(self):
         """Lines 1313-1314: Exception in checkbox question."""
         qs = [{"question": "pick?", "options": ["A"], "is_multiple": True}]
-        with patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=RuntimeError("err")):
+        with patch(
+            "chcode.utils.tools._interactive_list_async",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("err"),
+        ):
             out = await _ask_multi_questions(qs)
         assert "fail" in out.lower() or "err" in out
 
     async def test_select_exception_per_question(self):
         """Lines 1313-1314: Exception in select question."""
         qs = [{"question": "pick?", "options": ["A"]}]
-        with patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=RuntimeError("err")):
+        with patch(
+            "chcode.utils.tools._interactive_list_async",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("err"),
+        ):
             out = await _ask_multi_questions(qs)
         assert "fail" in out.lower() or "err" in out
 
@@ -628,8 +689,18 @@ class TestAskMultiQuestionsExtended:
             {"question": "name?", "options": []},
             {"question": "pick?", "options": ["A", "B"]},
         ]
-        with patch("chcode.utils.tools.asyncio.to_thread", new_callable=AsyncMock, return_value="Alice"), \
-             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value="B"):
+        with (
+            patch(
+                "chcode.utils.tools.asyncio.to_thread",
+                new_callable=AsyncMock,
+                return_value="Alice",
+            ),
+            patch(
+                "chcode.utils.tools._interactive_list_async",
+                new_callable=AsyncMock,
+                return_value="B",
+            ),
+        ):
             out = await _ask_multi_questions(qs)
         assert "Alice" in out
         assert "B" in out
@@ -649,7 +720,11 @@ class TestAskMultiQuestionsExtended:
                 return None  # cancel first
             return "Bob"
 
-        with patch("chcode.utils.tools.asyncio.to_thread", new_callable=AsyncMock, side_effect=mock_thread):
+        with patch(
+            "chcode.utils.tools.asyncio.to_thread",
+            new_callable=AsyncMock,
+            side_effect=mock_thread,
+        ):
             out = await _ask_multi_questions(qs)
         assert "\u7528\u6237\u53d6\u6d88" in out  # Chinese for "user cancelled"
         assert "Bob" in out
@@ -682,19 +757,28 @@ class TestAgentParallelAndFailure:
         mock_progress_task = AsyncMock()
         mock_progress_task.done = MagicMock(return_value=False)
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.agents.loader.load_agents", return_value={"Explore": mock_def}), \
-             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value=("done", False)) as mock_run, \
-             patch("chcode.display._subagent_count_lock"), \
-             patch("chcode.display._agent_progress_lock"), \
-             patch("chcode.display._current_agent_tag"), \
-             patch("chcode.display._start_progress"), \
-             patch("chcode.display._progress_task", mock_progress_task), \
-             patch("chcode.display._progress_updater", return_value=AsyncMock()), \
-             patch("chcode.display._update_progress"), \
-             patch("chcode.display._finalize_progress"), \
-             patch("chcode.display.console"):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.agents.loader.load_agents", return_value={"Explore": mock_def}
+            ),
+            patch(
+                "chcode.agents.runner.run_subagent",
+                new_callable=AsyncMock,
+                return_value=("done", False),
+            ) as mock_run,
+            patch("chcode.display._subagent_count_lock"),
+            patch("chcode.display._agent_progress_lock"),
+            patch("chcode.display._current_agent_tag"),
+            patch("chcode.display._start_progress"),
+            patch("chcode.display._progress_task", mock_progress_task),
+            patch("chcode.display._progress_updater", return_value=AsyncMock()),
+            patch("chcode.display._update_progress"),
+            patch("chcode.display._finalize_progress"),
+            patch("chcode.display.console"),
+        ):
             import chcode.display as _display
+
             # Simulate first agent already running
             _display._subagent_count = 1
             _display._subagent_parallel = False
@@ -724,18 +808,27 @@ class TestAgentParallelAndFailure:
             model_config={"model": "gpt-4"},
         )
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.agents.loader.load_agents", return_value={"Explore": mock_def}), \
-             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value=("Task timed out after 300s", True)) as mock_run, \
-             patch("chcode.display._subagent_count_lock"), \
-             patch("chcode.display._agent_progress_lock"), \
-             patch("chcode.display._current_agent_tag"), \
-             patch("chcode.display._start_progress"), \
-             patch("chcode.display._progress_updater", return_value=AsyncMock()), \
-             patch("chcode.display._update_progress"), \
-             patch("chcode.display._finalize_progress"), \
-             patch("chcode.display.console"):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.agents.loader.load_agents", return_value={"Explore": mock_def}
+            ),
+            patch(
+                "chcode.agents.runner.run_subagent",
+                new_callable=AsyncMock,
+                return_value=("Task timed out after 300s", True),
+            ) as mock_run,
+            patch("chcode.display._subagent_count_lock"),
+            patch("chcode.display._agent_progress_lock"),
+            patch("chcode.display._current_agent_tag"),
+            patch("chcode.display._start_progress"),
+            patch("chcode.display._progress_updater", return_value=AsyncMock()),
+            patch("chcode.display._update_progress"),
+            patch("chcode.display._finalize_progress"),
+            patch("chcode.display.console"),
+        ):
             import chcode.display as _display
+
             _display._subagent_count = 0
             _display._subagent_parallel = False
             _display._agent_progress = {}
@@ -763,18 +856,27 @@ class TestAgentParallelAndFailure:
             model_config={"model": "gpt-4"},
         )
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.agents.loader.load_agents", return_value={"Explore": mock_def}), \
-             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value=("error: something went wrong", True)), \
-             patch("chcode.display._subagent_count_lock"), \
-             patch("chcode.display._agent_progress_lock"), \
-             patch("chcode.display._current_agent_tag"), \
-             patch("chcode.display._start_progress"), \
-             patch("chcode.display._progress_updater", return_value=AsyncMock()), \
-             patch("chcode.display._update_progress"), \
-             patch("chcode.display._finalize_progress"), \
-             patch("chcode.display.console"):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.agents.loader.load_agents", return_value={"Explore": mock_def}
+            ),
+            patch(
+                "chcode.agents.runner.run_subagent",
+                new_callable=AsyncMock,
+                return_value=("error: something went wrong", True),
+            ),
+            patch("chcode.display._subagent_count_lock"),
+            patch("chcode.display._agent_progress_lock"),
+            patch("chcode.display._current_agent_tag"),
+            patch("chcode.display._start_progress"),
+            patch("chcode.display._progress_updater", return_value=AsyncMock()),
+            patch("chcode.display._update_progress"),
+            patch("chcode.display._finalize_progress"),
+            patch("chcode.display.console"),
+        ):
             import chcode.display as _display
+
             _display._subagent_count = 0
             _display._subagent_parallel = False
             _display._agent_progress = {}
@@ -804,8 +906,10 @@ class TestBashInterpretation:
         mock_sess = MagicMock()
         mock_sess.provider_name = "bash"
         mock_sess.execute = MagicMock(return_value=(result, truncated))
-        with patch("chcode.utils.tools._get_shell_session", return_value=mock_sess), \
-             patch("chcode.utils.tools.render_tool_call"):
+        with (
+            patch("chcode.utils.tools._get_shell_session", return_value=mock_sess),
+            patch("chcode.utils.tools.render_tool_call"),
+        ):
             out = await bash.coroutine("grep pattern file.txt", runtime=rt)
         assert "[OK]" in out
         assert "No matches found" in out
@@ -815,17 +919,17 @@ class TestBashInterpretation:
         from chcode.utils.tools import bash
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
-        result = ShellResult(
-            stdout="output line", exit_code=0, stderr="warning msg"
-        )
+        result = ShellResult(stdout="output line", exit_code=0, stderr="warning msg")
         truncated = MagicMock()
         truncated.content = "output line"
         truncated.truncated = False
         mock_sess = MagicMock()
         mock_sess.provider_name = "bash"
         mock_sess.execute = MagicMock(return_value=(result, truncated))
-        with patch("chcode.utils.tools._get_shell_session", return_value=mock_sess), \
-             patch("chcode.utils.tools.render_tool_call"):
+        with (
+            patch("chcode.utils.tools._get_shell_session", return_value=mock_sess),
+            patch("chcode.utils.tools.render_tool_call"),
+        ):
             out = await bash.coroutine("cmd", runtime=rt)
         assert "output line" in out
         assert "--- stderr ---" in out
@@ -843,8 +947,10 @@ class TestBashInterpretation:
         mock_sess = MagicMock()
         mock_sess.provider_name = "bash"
         mock_sess.execute = MagicMock(return_value=(result, truncated))
-        with patch("chcode.utils.tools._get_shell_session", return_value=mock_sess), \
-             patch("chcode.utils.tools.render_tool_call"):
+        with (
+            patch("chcode.utils.tools._get_shell_session", return_value=mock_sess),
+            patch("chcode.utils.tools.render_tool_call"),
+        ):
             out = await bash.coroutine("cmd", runtime=rt)
         assert "--- stderr ---" in out
         assert "error msg" in out
@@ -861,8 +967,10 @@ class TestBashInterpretation:
         mock_sess = MagicMock()
         mock_sess.provider_name = "bash"
         mock_sess.execute = MagicMock(return_value=(result, truncated))
-        with patch("chcode.utils.tools._get_shell_session", return_value=mock_sess), \
-             patch("chcode.utils.tools.render_tool_call"):
+        with (
+            patch("chcode.utils.tools._get_shell_session", return_value=mock_sess),
+            patch("chcode.utils.tools.render_tool_call"),
+        ):
             out = await bash.coroutine("cmd", runtime=rt)
         assert "truncated output..." in out
         assert "full output" not in out
@@ -907,8 +1015,10 @@ class TestBashWorkdir:
         mock_sess = MagicMock()
         mock_sess.provider_name = "bash"
         mock_sess.execute = MagicMock(return_value=(result, truncated))
-        with patch("chcode.utils.tools._get_shell_session", return_value=mock_sess), \
-             patch("chcode.utils.tools.render_tool_call"):
+        with (
+            patch("chcode.utils.tools._get_shell_session", return_value=mock_sess),
+            patch("chcode.utils.tools.render_tool_call"),
+        ):
             out = await bash.coroutine("echo hi", runtime=rt, workdir="/custom")
         # workdir should be passed to session.execute
         call_kwargs = mock_sess.execute.call_args
@@ -1080,8 +1190,10 @@ class TestWebSearchNoClient:
         from chcode.utils.tools import web_search
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.get_tavily_client", return_value=None):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("chcode.utils.tools.get_tavily_client", return_value=None),
+        ):
             out = await web_search.coroutine("query", runtime=rt)
         assert "Tavily API Key 未配置" in out
 
@@ -1136,8 +1248,10 @@ class TestWebFetchErrors:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client),
+        ):
             out = await web_fetch.coroutine("http://example.com")
         # Should have made request with https://
         assert "https://example.com" in mock_client.get.call_args[0][0]
@@ -1157,8 +1271,10 @@ class TestWebFetchErrors:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client),
+        ):
             out = await web_fetch.coroutine("https://example.com/doc.pdf")
         assert "Binary content" in out["result"]
         assert "application/pdf" in out["result"]
@@ -1173,8 +1289,10 @@ class TestWebFetchErrors:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client),
+        ):
             out = await web_fetch.coroutine("https://example.com")
         assert "Timeout" in out["code_text"]
         assert "timed out" in out["result"]
@@ -1189,8 +1307,10 @@ class TestWebFetchErrors:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("chcode.utils.tools.httpx.AsyncClient", return_value=mock_client),
+        ):
             out = await web_fetch.coroutine("https://example.com")
         assert "Error" in out["code_text"]
 
@@ -1211,7 +1331,9 @@ class TestCheckboxWithOtherAsync:
 
         with patch("chcode.utils.tools.console"):
             with patch("prompt_toolkit.Application", return_value=mock_app):
-                result = await _checkbox_with_other_async("Choose?", ["opt1", "opt2", "opt3"])
+                result = await _checkbox_with_other_async(
+                    "Choose?", ["opt1", "opt2", "opt3"]
+                )
 
         assert result == ["opt1", "opt2"]
 
@@ -1283,7 +1405,9 @@ class TestSelectWithOtherAsync:
 
         with patch("chcode.utils.tools.console"):
             with patch("prompt_toolkit.Application", return_value=mock_app):
-                result = await _select_with_other_async("Pick one?", ["opt1", "opt2", "opt3"])
+                result = await _select_with_other_async(
+                    "Pick one?", ["opt1", "opt2", "opt3"]
+                )
 
         assert result == "opt2"
 
@@ -1464,6 +1588,7 @@ class TestTodoWrite:
         with patch("chcode.utils.tools.render_tool_call"):
             with patch("chcode.utils.tools.console"):
                 from chcode.utils.tools import todo_write
+
                 await todo_write.coroutine(
                     [TodoItem(content="task1")],
                     runtime=rt,
@@ -1488,6 +1613,7 @@ class TestTodoWrite:
             with patch("chcode.utils.tools.console"):
                 with patch("chcode.utils.tools.os.remove") as mock_remove:
                     from chcode.utils.tools import todo_write
+
                     await todo_write.coroutine([], runtime=rt)
 
         mock_remove.assert_called_once()
@@ -1503,8 +1629,11 @@ class TestTodoWrite:
 
         with patch("chcode.utils.tools.render_tool_call"):
             with patch("chcode.utils.tools.console"):
-                with patch("chcode.utils.tools._save_todos", new_callable=AsyncMock) as mock_save:
+                with patch(
+                    "chcode.utils.tools._save_todos", new_callable=AsyncMock
+                ) as mock_save:
                     from chcode.utils.tools import todo_write
+
                     await todo_write.coroutine(
                         [TodoItem(content="task1")],
                         runtime=rt,
@@ -1528,6 +1657,7 @@ class TestTodoWrite:
             with patch("chcode.utils.tools.console"):
                 with patch("chcode.utils.tools._save_todos", new_callable=AsyncMock):
                     from chcode.utils.tools import todo_write
+
                     output = await todo_write.coroutine(
                         [
                             TodoItem(content="pending", status="pending"),
@@ -1552,6 +1682,7 @@ class TestTodoWrite:
             with patch("chcode.utils.tools.console"):
                 with patch("chcode.utils.tools._save_todos", new_callable=AsyncMock):
                     from chcode.utils.tools import todo_write
+
                     output = await todo_write.coroutine(
                         [
                             TodoItem(content="done1", status="completed"),
@@ -1575,6 +1706,7 @@ class TestTodoWrite:
             with patch("chcode.utils.tools.console"):
                 with patch("chcode.utils.tools.os.path.isfile", return_value=False):
                     from chcode.utils.tools import todo_write
+
                     output = await todo_write.coroutine([], runtime=rt)
 
         assert "Todo list cleared" in output
@@ -1592,6 +1724,7 @@ class TestTodoWrite:
             with patch("chcode.utils.tools.console"):
                 with patch("chcode.utils.tools._save_todos", new_callable=AsyncMock):
                     from chcode.utils.tools import todo_write
+
                     output = await todo_write.coroutine(
                         [
                             TodoItem(content="a", status="pending"),
@@ -1620,6 +1753,7 @@ class TestTodoWrite:
         with patch("chcode.utils.tools.render_tool_call"):
             with patch("chcode.utils.tools.console"):
                 from chcode.utils.tools import todo_write
+
                 await todo_write.coroutine(
                     [
                         TodoItem(content="task1", status="pending", priority="high"),
@@ -1780,9 +1914,13 @@ class TestCreateShellSession:
         mock_session = MagicMock()
         mock_session.cwd = "/w"
 
-        with patch("platform.system", return_value="Windows"), \
-             patch("chcode.utils.tools.BashProvider", return_value=mock_provider), \
-             patch("chcode.utils.tools.ShellSession", return_value=mock_session) as mock_shell:
+        with (
+            patch("platform.system", return_value="Windows"),
+            patch("chcode.utils.tools.BashProvider", return_value=mock_provider),
+            patch(
+                "chcode.utils.tools.ShellSession", return_value=mock_session
+            ) as mock_shell,
+        ):
             result = mod._create_shell_session("/w")
             assert result is mock_session
             mock_shell.assert_called_once_with(mock_provider)
@@ -1798,10 +1936,14 @@ class TestCreateShellSession:
         mock_session = MagicMock()
         mock_session.cwd = "/w"
 
-        with patch("platform.system", return_value="Windows"), \
-             patch("chcode.utils.tools.BashProvider", return_value=mock_bash), \
-             patch("chcode.utils.tools.PowerShellProvider", return_value=mock_ps), \
-             patch("chcode.utils.tools.ShellSession", return_value=mock_session) as mock_shell:
+        with (
+            patch("platform.system", return_value="Windows"),
+            patch("chcode.utils.tools.BashProvider", return_value=mock_bash),
+            patch("chcode.utils.tools.PowerShellProvider", return_value=mock_ps),
+            patch(
+                "chcode.utils.tools.ShellSession", return_value=mock_session
+            ) as mock_shell,
+        ):
             result = mod._create_shell_session("/w")
             assert result is mock_session
             mock_shell.assert_called_once_with(mock_ps)
@@ -1815,9 +1957,13 @@ class TestCreateShellSession:
         mock_session = MagicMock()
         mock_session.cwd = "/w"
 
-        with patch("platform.system", return_value="Linux"), \
-             patch("chcode.utils.tools.BashProvider", return_value=mock_provider), \
-             patch("chcode.utils.tools.ShellSession", return_value=mock_session) as mock_shell:
+        with (
+            patch("platform.system", return_value="Linux"),
+            patch("chcode.utils.tools.BashProvider", return_value=mock_provider),
+            patch(
+                "chcode.utils.tools.ShellSession", return_value=mock_session
+            ) as mock_shell,
+        ):
             result = mod._create_shell_session("/w")
             assert result is mock_session
             mock_shell.assert_called_once_with(mock_provider)
@@ -1848,7 +1994,9 @@ class TestGetShellSession:
         mock_session = MagicMock()
         mod._shell_sessions = {}
 
-        with patch("chcode.utils.tools._create_shell_session", return_value=mock_session):
+        with patch(
+            "chcode.utils.tools._create_shell_session", return_value=mock_session
+        ):
             result = mod._get_shell_session("/w")
             assert result is mock_session
             assert mod._shell_sessions["/w"] is mock_session
@@ -1876,8 +2024,10 @@ class TestBashNoShell:
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
 
-        with patch("chcode.utils.tools._get_shell_session", return_value=None), \
-             patch("chcode.utils.tools.render_tool_call"):
+        with (
+            patch("chcode.utils.tools._get_shell_session", return_value=None),
+            patch("chcode.utils.tools.render_tool_call"),
+        ):
             out = await bash.coroutine("cmd", runtime=rt)
 
         assert "No shell available" in out
@@ -1953,7 +2103,9 @@ class TestWriteFile:
         rt = _make_runtime(working_directory=tmp_path, thread_id="t1")
 
         with patch("chcode.utils.tools.render_tool_call"):
-            out = await write_file.coroutine("subdir/nested/file.txt", "content", runtime=rt)
+            out = await write_file.coroutine(
+                "subdir/nested/file.txt", "content", runtime=rt
+            )
 
         assert (tmp_path / "subdir" / "nested" / "file.txt").exists()
         assert "[OK]" in out
@@ -1977,8 +2129,10 @@ class TestWriteFile:
 
         rt = _make_runtime(working_directory=tmp_path, thread_id="t1")
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("aiofiles.open", side_effect=OSError("disk full")):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("aiofiles.open", side_effect=OSError("disk full")),
+        ):
             out = await write_file.coroutine("test.txt", "content", runtime=rt)
 
         assert "[FAILED]" in out
@@ -2009,8 +2163,10 @@ class TestGlobErrors:
 
         rt = _make_runtime(working_directory=tmp_path, thread_id="t1")
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch.object(Path, "glob", side_effect=RuntimeError("glob error")):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch.object(Path, "glob", side_effect=RuntimeError("glob error")),
+        ):
             out = await glob.coroutine("*.py", runtime=rt)
 
         assert "[FAILED]" in out
@@ -2039,8 +2195,10 @@ class TestGrepOSError:
                 raise OSError("Device not ready")
             return original_stat(self)
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch.object(Path, "stat", oserror_stat):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch.object(Path, "stat", oserror_stat),
+        ):
             out = await grep.coroutine("content", str(f), rt)
         # Should handle gracefully - file is skipped
         assert "grep:" in out
@@ -2067,8 +2225,10 @@ class TestGrepValueError:
                 raise ValueError("path is not in subpath")
             return original_relative_to(self, other)
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch.object(Path, "relative_to", failing_relative_to):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch.object(Path, "relative_to", failing_relative_to),
+        ):
             out = await grep.coroutine("target", str(tmp_path), rt)
         # Should handle gracefully, use absolute path
         assert "grep:" in out
@@ -2103,8 +2263,14 @@ class TestAskUserMultiQuestion:
 
         questions = [{"question": "Q1", "options": ["A", "B"]}]
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._ask_multi_questions", new_callable=AsyncMock, return_value="multi result"):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools._ask_multi_questions",
+                new_callable=AsyncMock,
+                return_value="multi result",
+            ),
+        ):
             # Use ainvoke to call the tool
             result = await ask_user.ainvoke(
                 {"question": "Single?", "options": ["X", "Y"], "questions": questions}
@@ -2117,8 +2283,14 @@ class TestAskUserNoOptions:
         """Lines 1246-1249: When options is None/empty, use text input."""
         from chcode.utils.tools import ask_user
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.asyncio.to_thread", new_callable=AsyncMock, return_value="free text"):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools.asyncio.to_thread",
+                new_callable=AsyncMock,
+                return_value="free text",
+            ),
+        ):
             result = await ask_user.ainvoke({"question": "Type something:"})
         assert "free text" in result
 
@@ -2126,8 +2298,14 @@ class TestAskUserNoOptions:
         """Lines 1247-1248: Text input returns None (user cancels)."""
         from chcode.utils.tools import ask_user
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.asyncio.to_thread", new_callable=AsyncMock, return_value=None):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools.asyncio.to_thread",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
             result = await ask_user.ainvoke({"question": "Type:"})
         assert "用户取消" in result
 
@@ -2137,8 +2315,14 @@ class TestAskUserCheckboxEmpty:
         """Line 1256: Empty selection from checkbox returns 'user_answer:\\n'."""
         from chcode.utils.tools import ask_user
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=[]):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools._interactive_list_async",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
             result = await ask_user.ainvoke(
                 {"question": "Pick?", "options": ["A", "B"], "is_multiple": True}
             )
@@ -2151,8 +2335,14 @@ class TestAskUserSelectExceptions:
         """Lines 1259-1262: Exception in _select_with_other_async."""
         from chcode.utils.tools import ask_user
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=ValueError("UI error")):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools._interactive_list_async",
+                new_callable=AsyncMock,
+                side_effect=ValueError("UI error"),
+            ),
+        ):
             result = await ask_user.ainvoke({"question": "Pick?", "options": ["A"]})
         assert "失败" in result or "UI error" in result
 
@@ -2160,8 +2350,14 @@ class TestAskUserSelectExceptions:
         """Lines 1259-1262: Exception in _checkbox_with_other_async."""
         from chcode.utils.tools import ask_user
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, side_effect=RuntimeError("Check error")):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools._interactive_list_async",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("Check error"),
+            ),
+        ):
             result = await ask_user.ainvoke(
                 {"question": "Pick?", "options": ["A", "B"], "is_multiple": True}
             )
@@ -2175,8 +2371,14 @@ class TestAskMultiQuestionsCheckbox:
 
         qs = [{"question": "Pick?", "options": ["A", "B", "C"], "is_multiple": True}]
 
-        with patch("chcode.utils.tools.console"), \
-             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=["A", "C"]):
+        with (
+            patch("chcode.utils.tools.console"),
+            patch(
+                "chcode.utils.tools._interactive_list_async",
+                new_callable=AsyncMock,
+                return_value=["A", "C"],
+            ),
+        ):
             out = await _ask_multi_questions(qs)
         assert "A, C" in out
 
@@ -2197,8 +2399,13 @@ class TestAgentUnknownType:
             model_config={"model": "gpt-4"},
         )
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.agents.loader.load_agents", return_value={"Explore": MagicMock()}):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.agents.loader.load_agents",
+                return_value={"Explore": MagicMock()},
+            ),
+        ):
             out = await agent.coroutine("task", subagent_type="UnknownType", runtime=rt)
         assert "Unknown agent type" in out
         assert "UnknownType" in out
@@ -2220,9 +2427,11 @@ class TestCreateShellSessionNoProviders:
         mock_ps = MagicMock()
         mock_ps.is_available = False
 
-        with patch("platform.system", return_value="Windows"), \
-             patch("chcode.utils.tools.BashProvider", return_value=mock_bash), \
-             patch("chcode.utils.tools.PowerShellProvider", return_value=mock_ps):
+        with (
+            patch("platform.system", return_value="Windows"),
+            patch("chcode.utils.tools.BashProvider", return_value=mock_bash),
+            patch("chcode.utils.tools.PowerShellProvider", return_value=mock_ps),
+        ):
             result = mod._create_shell_session("/w")
             assert result is None
 
@@ -2233,8 +2442,10 @@ class TestCreateShellSessionNoProviders:
         mock_provider = MagicMock()
         mock_provider.is_available = False
 
-        with patch("platform.system", return_value="Linux"), \
-             patch("chcode.utils.tools.BashProvider", return_value=mock_provider):
+        with (
+            patch("platform.system", return_value="Linux"),
+            patch("chcode.utils.tools.BashProvider", return_value=mock_provider),
+        ):
             result = mod._create_shell_session("/w")
             assert result is None
 
@@ -2250,12 +2461,20 @@ class TestWebSearchWithClient:
         from chcode.utils.tools import web_search
 
         mock_client = MagicMock()
-        search_result = {"results": [{"title": "test", "url": "http://x.com", "content": "result"}]}
+        search_result = {
+            "results": [{"title": "test", "url": "http://x.com", "content": "result"}]
+        }
 
         rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools.get_tavily_client", return_value=mock_client), \
-             patch("chcode.utils.tools.asyncio.to_thread", new_callable=AsyncMock, return_value=search_result) as mock_to_thread:
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch("chcode.utils.tools.get_tavily_client", return_value=mock_client),
+            patch(
+                "chcode.utils.tools.asyncio.to_thread",
+                new_callable=AsyncMock,
+                return_value=search_result,
+            ) as mock_to_thread,
+        ):
             out = await web_search.coroutine("test query", runtime=rt)
 
         assert "results" in out
@@ -2275,8 +2494,14 @@ class TestAskUserSelectCancel:
         """Lines 1259-1261: _select_with_other_async returns None -> cancel message."""
         from chcode.utils.tools import ask_user
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value=None):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools._interactive_list_async",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
             out = await ask_user.coroutine("pick?", options=["A", "B"])
         assert "\u7528\u6237\u53d6\u6d88" in out  # Chinese for "user cancelled"
 
@@ -2310,19 +2535,28 @@ class TestAgentParallelProgressTask:
         async def mock_updater():
             pass
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.agents.loader.load_agents", return_value={"Explore": mock_def}), \
-             patch("chcode.agents.runner.run_subagent", new_callable=AsyncMock, return_value=("done", False)), \
-             patch("chcode.display._subagent_count_lock"), \
-             patch("chcode.display._agent_progress_lock"), \
-             patch("chcode.display._current_agent_tag"), \
-             patch("chcode.display._start_progress"), \
-             patch("chcode.display._progress_updater", return_value=mock_updater), \
-             patch("chcode.display._update_progress"), \
-             patch("chcode.display._finalize_progress"), \
-             patch("chcode.display.console"), \
-             patch("chcode.display.asyncio.ensure_future") as mock_ensure_future:
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.agents.loader.load_agents", return_value={"Explore": mock_def}
+            ),
+            patch(
+                "chcode.agents.runner.run_subagent",
+                new_callable=AsyncMock,
+                return_value=("done", False),
+            ),
+            patch("chcode.display._subagent_count_lock"),
+            patch("chcode.display._agent_progress_lock"),
+            patch("chcode.display._current_agent_tag"),
+            patch("chcode.display._start_progress"),
+            patch("chcode.display._progress_updater", return_value=mock_updater),
+            patch("chcode.display._update_progress"),
+            patch("chcode.display._finalize_progress"),
+            patch("chcode.display.console"),
+            patch("chcode.display.asyncio.ensure_future") as mock_ensure_future,
+        ):
             import chcode.display as _display
+
             # Simulate first agent already running, no progress task yet
             _display._subagent_count = 1
             _display._subagent_parallel = False
@@ -2349,6 +2583,7 @@ class TestGrepOSErrorOnStat:
         """Lines 513-514: file_path.stat() raises OSError, callback returns."""
         import os as _os
         from chcode.utils.tools import grep
+
         rt = _make_runtime(working_directory=tmp_path, thread_id="t1")
         f = tmp_path / "test.py"
         f.write_text("hello", encoding="utf-8")
@@ -2365,8 +2600,10 @@ class TestGrepOSErrorOnStat:
             # Second call is from _search_file's file_path.stat() — raise OSError
             raise OSError("Permission denied")
 
-        with patch("os.stat", side_effect=selective_stat), \
-             patch("chcode.utils.tools.render_tool_call"):
+        with (
+            patch("os.stat", side_effect=selective_stat),
+            patch("chcode.utils.tools.render_tool_call"),
+        ):
             out = await grep.coroutine("hello", path=str(f), runtime=rt)
         assert isinstance(out, str)
 
@@ -2380,6 +2617,7 @@ class TestLsOver100Entries:
     async def test_ls_truncates_at_100(self, tmp_path):
         """Line 682: when entries > 100, shows truncation message."""
         from chcode.utils.tools import list_dir
+
         rt = _make_runtime(working_directory=tmp_path, thread_id="t1")
         dir_path = tmp_path / "bigdir"
         dir_path.mkdir()
@@ -2465,10 +2703,20 @@ class TestAskUserSingleSelect:
         """Lines 1257-1261: is_multiple=False uses _select_with_other_async."""
         from chcode.utils.tools import ask_user
 
-        with patch("chcode.utils.tools.render_tool_call"), \
-             patch("chcode.utils.tools._interactive_list_async", new_callable=AsyncMock, return_value="Option A"):
+        with (
+            patch("chcode.utils.tools.render_tool_call"),
+            patch(
+                "chcode.utils.tools._interactive_list_async",
+                new_callable=AsyncMock,
+                return_value="Option A",
+            ),
+        ):
             result = await ask_user.ainvoke(
-                {"question": "Pick one", "options": ["A", "B", "C"], "is_multiple": False}
+                {
+                    "question": "Pick one",
+                    "options": ["A", "B", "C"],
+                    "is_multiple": False,
+                }
             )
         assert "Option A" in result
 
@@ -2478,6 +2726,7 @@ class TestUpdateAgentToolDesc:
 
     def test_normal_mode_desc(self):
         from chcode.utils.tools import agent, update_agent_tool_desc
+
         update_agent_tool_desc(False)
         assert "general-purpose" not in agent.__doc__
         assert "Explore" in agent.__doc__
@@ -2485,6 +2734,7 @@ class TestUpdateAgentToolDesc:
 
     def test_yolo_mode_desc(self):
         from chcode.utils.tools import agent, update_agent_tool_desc
+
         update_agent_tool_desc(True)
         assert "general-purpose" in agent.__doc__
         assert "Explore" in agent.__doc__
@@ -2492,6 +2742,7 @@ class TestUpdateAgentToolDesc:
 
     def test_toggle_back_and_forth(self):
         from chcode.utils.tools import agent, update_agent_tool_desc
+
         update_agent_tool_desc(True)
         assert "general-purpose" in agent.__doc__
         update_agent_tool_desc(False)

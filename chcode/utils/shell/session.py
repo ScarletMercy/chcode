@@ -78,7 +78,10 @@ class ShellSession:
             )
         except FileNotFoundError:
             return (
-                ShellResult(exit_code=127, stderr=f"Shell not found: {self._provider.shell_path}"),
+                ShellResult(
+                    exit_code=127,
+                    stderr=f"Shell not found: {self._provider.shell_path}",
+                ),
                 truncate_output(""),
             )
         except OSError as e:

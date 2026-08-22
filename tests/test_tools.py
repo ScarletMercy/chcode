@@ -59,6 +59,7 @@ class TestResolvePath:
 
     def test_absolute_path(self, tmp_path: Path):
         import os
+
         drive = os.path.splitdrive(os.getcwd())[0]
         abs_path = Path(f"{drive}/some/absolute/path.txt")
         result = resolve_path(str(abs_path), tmp_path)

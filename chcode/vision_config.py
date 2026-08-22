@@ -25,7 +25,11 @@ from chcode.prompts import (
     password,
     text,
 )
-from chcode.utils.json_utils import CachedJsonFile, build_default_fallback_config, region_key
+from chcode.utils.json_utils import (
+    CachedJsonFile,
+    build_default_fallback_config,
+    region_key,
+)
 from chcode.utils.text_utils import mask_api_key
 
 VISION_JSON = CONFIG_DIR / "vision_model.json"
@@ -43,7 +47,13 @@ _VISION_MODEL_NAMES = [
 ]
 
 VISION_MODEL_PRESETS = [
-    {"model": name, "base_url": MODELSCOPE_BASE_URL, "temperature": 1.0, "top_p": 0.95, "stream_usage": True}
+    {
+        "model": name,
+        "base_url": MODELSCOPE_BASE_URL,
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "stream_usage": True,
+    }
     for name in _VISION_MODEL_NAMES
 ]
 
@@ -51,8 +61,11 @@ VISION_MODEL_PRESETS = [
 # （存于 metadata，不透传 API），用于在 fallback 列表中与同名国内版模型区分
 # （国际版条目显示 (国际版) 后缀）。与文本侧 MODELSCOPE_INTL_PRESETS 对齐。
 VISION_MODEL_INTL_PRESETS = [
-    {**preset, "base_url": MODELSCOPE_INTL_BASE_URL,
-     "metadata": {**(preset.get("metadata") or {}), "region": "intl"}}
+    {
+        **preset,
+        "base_url": MODELSCOPE_INTL_BASE_URL,
+        "metadata": {**(preset.get("metadata") or {}), "region": "intl"},
+    }
     for preset in VISION_MODEL_PRESETS
 ]
 
@@ -146,6 +159,7 @@ def auto_configure_vision() -> dict | None:
     # 只跟随主模型 default 所属家族；default 非魔搭时回退到首个可用家族
     try:
         from chcode.config import load_model_json
+
         main_default_base = (load_model_json().get("default") or {}).get("base_url", "")
     except Exception:
         main_default_base = ""
@@ -179,7 +193,10 @@ def auto_configure_vision() -> dict | None:
             # 已在 fallback 或是当前默认 → 跳过
             if fb_key in existing_fallback:
                 continue
-            if existing_default.get("model") == model_name and existing_default.get("api_key") == api_key:
+            if (
+                existing_default.get("model") == model_name
+                and existing_default.get("api_key") == api_key
+            ):
                 continue
             existing_fallback[fb_key] = cfg
             changed = True
@@ -202,7 +219,15 @@ def auto_configure_vision() -> dict | None:
 # 视觉相关字段白名单（与消费侧 tools.py 视觉请求所读字段对齐）。
 # 含 metadata：携带 region 标记，使 region_key 能区分同名国内/国际版模型；
 # metadata 不会透传到视觉 API（tools.py 显式提取 model/base_url/api_key 等字段）。
-_VISION_FIELDS = ("model", "base_url", "api_key", "temperature", "top_p", "stream_usage", "metadata")
+_VISION_FIELDS = (
+    "model",
+    "base_url",
+    "api_key",
+    "temperature",
+    "top_p",
+    "stream_usage",
+    "metadata",
+)
 
 
 def _vision_equal(existing: dict, vision_cfg: dict) -> bool:
@@ -283,12 +308,24 @@ async def configure_vision_interactive() -> dict | None:
     if has_config:
         action = await select(
             t("vision.menu"),
-            [t("vision.view"), t("vision.new_model"), t("vision.modelscope_quick"), t("vision.modelscope_quick_intl"), t("vision.switch"), back_label],
+            [
+                t("vision.view"),
+                t("vision.new_model"),
+                t("vision.modelscope_quick"),
+                t("vision.modelscope_quick_intl"),
+                t("vision.switch"),
+                back_label,
+            ],
         )
     else:
         action = await select(
             t("vision.unconfigured_ask"),
-            [t("vision.configure"), t("vision.configure_intl"), t("vision.new_model"), back_label],
+            [
+                t("vision.configure"),
+                t("vision.configure_intl"),
+                t("vision.new_model"),
+                back_label,
+            ],
         )
 
     if action is None or action == back_label:
@@ -328,7 +365,9 @@ async def _configure_vision_wizard(*, intl: bool = False) -> dict | None:
 
     # 选 default + 测试连接（测用户选的 default，它将作为默认，必须可用），
     # 失败可在 _test_vision_with_retry 内重试/重新输入/放弃。与文本侧对齐。
-    default_choice = await select(t("vision.select_default"), preset_names, default=preset_names[0])
+    default_choice = await select(
+        t("vision.select_default"), preset_names, default=preset_names[0]
+    )
     if default_choice is None:
         return None
     default_idx = preset_names.index(default_choice)
@@ -355,7 +394,9 @@ async def _configure_vision_wizard(*, intl: bool = False) -> dict | None:
     fallback = config["fallback"]
     console.print(f"[green]{t('vision.config_done', model=default_choice)}[/green]")
     fallback_names = ", ".join(fallback.keys())
-    console.print(f"[dim]{t('vision.fallback_count', count=len(fallback), names=fallback_names)}[/dim]")
+    console.print(
+        f"[dim]{t('vision.fallback_count', count=len(fallback), names=fallback_names)}[/dim]"
+    )
 
     return config["default"]
 
@@ -417,7 +458,9 @@ def _display_vision_config(config: dict) -> None:
         console.print(f"[yellow]{t('vision.not_configured')}[/yellow]")
         return
 
-    console.print(f"[bold]{t('vision.default_label')}[/bold] {default.get('model', t('vision.unknown'))}")
+    console.print(
+        f"[bold]{t('vision.default_label')}[/bold] {default.get('model', t('vision.unknown'))}"
+    )
 
     if fallback:
         table = Table(title=t("vision.fallback_table_title"))
@@ -506,9 +549,7 @@ async def _collect_vision_apikey() -> str | None:
     return env_key
 
 
-async def _test_vision_with_retry(
-    api_key: str, test_presets: list[dict]
-) -> str | None:
+async def _test_vision_with_retry(api_key: str, test_presets: list[dict]) -> str | None:
     """测试视觉连接，全失败弹"重试/重新输入/放弃"菜单。
 
     依次用 api_key 测试 test_presets 中的预设（任一通过即成功）。全失败时弹菜单：
@@ -546,8 +587,17 @@ async def _test_vision_with_retry(
 
 async def _configure_vision_custom() -> dict | None:
     """新建自定义视觉模型：收集 model/base_url/api_key -> 图片连接测试 -> add_vision_model。"""
-    from chcode.config import _ask_conn_retry_action, _ask_context_length, _add_to_model_fallback
-    from chcode.prompts import _ask_hyperparam, _SKIP, TEMPERATURE_PRESETS, TOP_P_PRESETS
+    from chcode.config import (
+        _ask_conn_retry_action,
+        _ask_context_length,
+        _add_to_model_fallback,
+    )
+    from chcode.prompts import (
+        _ask_hyperparam,
+        _SKIP,
+        TEMPERATURE_PRESETS,
+        TOP_P_PRESETS,
+    )
 
     async def _collect() -> dict | None:
         """收集表单（model/base_url/api_key/可选超参），取消返回 None。"""
@@ -622,13 +672,16 @@ async def _configure_vision_custom() -> dict | None:
             continue
         return None  # 放弃 或 用户取消菜单
 
-
     role = add_vision_model(config)
     model_name = config["model"]
     if role == "default":
-        console.print(f"[green]{t('vision.custom_added_default', model=model_name)}[/green]")
+        console.print(
+            f"[green]{t('vision.custom_added_default', model=model_name)}[/green]"
+        )
     elif role == "fallback":
-        console.print(f"[green]{t('vision.custom_added_fallback', model=model_name)}[/green]")
+        console.print(
+            f"[green]{t('vision.custom_added_fallback', model=model_name)}[/green]"
+        )
     else:
         console.print(f"[yellow]{t('model.vision_duplicate')}[/yellow]")
 
@@ -690,5 +743,7 @@ async def _configure_vision_modelscope(*, intl: bool = False) -> dict | None:
 
     # 仅报告 fallback（config_done 是"设默认"语义，本流程不动 default，不适用）
     fallback_names = ", ".join(fallback.keys())
-    console.print(f"[dim]{t('vision.fallback_count', count=len(fallback), names=fallback_names)}[/dim]")
+    console.print(
+        f"[dim]{t('vision.fallback_count', count=len(fallback), names=fallback_names)}[/dim]"
+    )
     return default

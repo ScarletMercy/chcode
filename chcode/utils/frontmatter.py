@@ -28,5 +28,5 @@ def parse_frontmatter(content: str) -> FrontMatterResult | None:
         return None
     if not isinstance(fm, dict):
         return None
-    body = content[m.end():].strip()
+    body = content[m.end() :].strip()
     return FrontMatterResult(frontmatter=fm, body=body)

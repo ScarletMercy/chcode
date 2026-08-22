@@ -18,9 +18,9 @@ from langchain.tools.tool_node import ToolCallRequest
 from langgraph.types import Command
 from rich.text import Text
 
+from chcode.agent_setup import inject_project_memory
 from chcode.agents.definitions import AgentDefinition
 from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
-from chcode.utils.project_memory import build_memory_reminder
 from chcode.utils.skill_loader import SkillLoader, SkillAgentContext
 from chcode.utils.tool_result_pipeline import (
     clean_tool_output,
@@ -41,9 +41,21 @@ async def _display_subagent_tools(
         tool_name = request.tool_call.get("name", "")
         args = request.tool_call.get("args", {})
         summary = ""
-        for key in ("command", "file_path", "pattern", "query", "url", "question",
-                    "task", "filePath", "skill_name", "path", "prompt", "image_path",
-                    "section"):
+        for key in (
+            "command",
+            "file_path",
+            "pattern",
+            "query",
+            "url",
+            "question",
+            "task",
+            "filePath",
+            "skill_name",
+            "path",
+            "prompt",
+            "image_path",
+            "section",
+        ):
             if key in args:
                 summary = str(args[key])[:80]
                 break
@@ -54,10 +66,26 @@ async def _display_subagent_tools(
 
 
 _BLOCKED_PREFIXES = (
-    "mkdir", "touch", "rm ", "rm -", "cp ", "mv ", "rmdir",
-    "chmod", "chown", "dd ", "mkfs", "format ", "del ",
-    "git add", "git commit", "git push", "git checkout",
-    "npm install", "pip install", "pip3 install",
+    "mkdir",
+    "touch",
+    "rm ",
+    "rm -",
+    "cp ",
+    "mv ",
+    "rmdir",
+    "chmod",
+    "chown",
+    "dd ",
+    "mkfs",
+    "format ",
+    "del ",
+    "git add",
+    "git commit",
+    "git push",
+    "git checkout",
+    "npm install",
+    "pip install",
+    "pip3 install",
 )
 
 _BLOCKED_TOKENS = (
@@ -113,10 +141,14 @@ async def _tool_result_budget(
                 workplace=workplace,
             )
             new_kwargs = {**msg.additional_kwargs, "_budget_ok": True}
-            messages[i] = msg.model_copy(update={"content": truncated, "additional_kwargs": new_kwargs})
+            messages[i] = msg.model_copy(
+                update={"content": truncated, "additional_kwargs": new_kwargs}
+            )
             changed = True
     if changed:
-        messages = enforce_per_turn_budget(messages, budget=200_000, workplace=workplace)
+        messages = enforce_per_turn_budget(
+            messages, budget=200_000, workplace=workplace
+        )
         return await handler(request.override(messages=messages))
     return await handler(request)
 
@@ -126,28 +158,15 @@ async def _subagent_system_prompt(request: ModelRequest) -> str:
     return request.runtime.context.extra.get("system_prompt", "")
 
 
-@wrap_model_call
-async def _inject_subagent_memory(
-    request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
-) -> ModelResponse:
-    """子代理也前置 CHCODE.md 记忆块。
-
-    只注入会话冻结块、不做 mtime 轮询，避免与主代理的变更基线竞争。
-    """
-    workdir = request.runtime.context.working_directory
-    reminder = await asyncio.to_thread(build_memory_reminder, workdir)
-    messages = list(request.messages)
-    messages.insert(0, HumanMessage(content=reminder))
-    return await handler(request.override(messages=messages))
-
-
 def _resolve_tools(
     agent_def: AgentDefinition,
     all_tools: list,
 ) -> list:
     result = []
     for tool in all_tools:
-        name = getattr(tool, "name", None) or getattr(getattr(tool, "func", None), "__name__", "")
+        name = getattr(tool, "name", None) or getattr(
+            getattr(tool, "func", None), "__name__", ""
+        )
         if name == "agent":
             continue
         if name in agent_def.disallowed_tools:
@@ -156,6 +175,23 @@ def _resolve_tools(
             continue
         result.append(tool)
     return result
+
+
+def _with_memory_notes(system_prompt: str, memory_notes: list[str] | None) -> str:
+    """系统提示词末尾拼上主会话的 CHCODE.md 变更提醒（非空才拼）。
+
+    提醒由主代理调用 agent 工具时从自身消息状态收集、显式传入 ——
+    子代理消息流不带 memory_note，冻结块又不随外部编辑刷新，这些
+    提醒是子代理感知"项目记忆已过期"的唯一渠道。
+    """
+    if not memory_notes:
+        return system_prompt
+    return (
+        f"{system_prompt}\n\n"
+        "Update: CHCODE.md was modified outside chcode during this session, "
+        "so the project-memory context in this conversation may be outdated. "
+        "Relevant changes:\n\n" + "\n\n".join(memory_notes)
+    )
 
 
 async def run_subagent(
@@ -167,6 +203,7 @@ async def run_subagent(
     timeout_seconds: int = 300,
     description: str = "",
     yolo: bool = False,
+    memory_notes: list[str] | None = None,
 ) -> tuple[str, bool]:
     timeout_seconds = max(timeout_seconds, 300)
     from chcode.utils.tools import ALL_TOOLS
@@ -184,7 +221,9 @@ async def run_subagent(
         working_directory=working_directory,
         model_config=cfg,
         yolo=yolo,
-        extra={"system_prompt": agent_def.system_prompt},
+        extra={
+            "system_prompt": _with_memory_notes(agent_def.system_prompt, memory_notes)
+        },
     )
 
     from chcode.agent_setup import handle_tool_errors, emit_tool_events
@@ -195,7 +234,7 @@ async def run_subagent(
         handle_tool_errors,
         _tool_result_budget,
         _subagent_system_prompt,
-        _inject_subagent_memory,
+        inject_project_memory,
     ]
 
     if agent_def.read_only:
@@ -229,6 +268,7 @@ async def run_subagent(
         return f"Agent {agent_def.agent_type} error: {e}", True
 
     from chcode.utils import get_text_content
+
     messages = result.get("messages", [])
     for msg in reversed(messages):
         if msg.type == "ai" and msg.content:

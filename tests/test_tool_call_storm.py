@@ -25,7 +25,9 @@ from chcode.agent_setup import (
 
 def _dump(value) -> str:
     """与中间件内部 json.dumps 规范化保持一致的辅助函数。"""
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    )
 
 
 # ─── helpers ──────────────────────────────────────────────
@@ -62,9 +64,7 @@ async def _call_guard(
     content: str,
 ) -> tuple[Command, AsyncMock]:
     """通过中间件执行一次工具调用，并把返回的 tracker 写回 state。"""
-    handler = AsyncMock(
-        return_value=ToolMessage(content=content, tool_call_id="call")
-    )
+    handler = AsyncMock(return_value=ToolMessage(content=content, tool_call_id="call"))
     request = SimpleNamespace(
         state=state,
         tool_call={"name": name, "args": args, "id": "call"},
@@ -117,9 +117,7 @@ def test_tool_storm_state_is_optional():
     )
     schema = agent.get_input_schema()
 
-    value = schema.model_validate(
-        {"messages": [HumanMessage(content="hello")]}
-    )
+    value = schema.model_validate({"messages": [HumanMessage(content="hello")]})
 
     assert value is not None
 
@@ -210,15 +208,11 @@ async def test_call_is_blocked_once_streak_hits_the_limit(mode, warmups):
     state: dict = {}
     for index in range(warmups):
         name, args, content = _repeated_call(index, mode=mode)
-        _, handler = await _call_guard(
-            state, name=name, args=args, content=content
-        )
+        _, handler = await _call_guard(state, name=name, args=args, content=content)
         handler.assert_awaited_once()
 
     name, args, content = _repeated_call(warmups, mode=mode)
-    blocked, handler = await _call_guard(
-        state, name=name, args=args, content=content
-    )
+    blocked, handler = await _call_guard(state, name=name, args=args, content=content)
 
     handler.assert_not_awaited()
     assert _blocked_message(blocked).status == "error"
@@ -235,16 +229,12 @@ async def test_call_is_allowed_one_step_before_the_limit(mode, warmups):
     state: dict = {}
     for index in range(warmups):
         name, args, content = _repeated_call(index, mode=mode)
-        _, handler = await _call_guard(
-            state, name=name, args=args, content=content
-        )
+        _, handler = await _call_guard(state, name=name, args=args, content=content)
         handler.assert_awaited_once()
 
     # 再来一次——应该仍然放行（还没到阈值）
     name, args, content = _repeated_call(warmups, mode=mode)
-    result, handler = await _call_guard(
-        state, name=name, args=args, content=content
-    )
+    result, handler = await _call_guard(state, name=name, args=args, content=content)
 
     handler.assert_awaited_once()
     # 放行返回的 messages 里是正常 ToolMessage（非 error）
@@ -473,7 +463,11 @@ async def test_parallel_native_command_is_not_blocked_or_rewritten():
 )
 async def test_blocked_message_is_chinese_guidance(reason, hint, tracker):
     """阻断时返回的 error ToolMessage content 含正确的中文提示。"""
-    args = {"file_path": "new.py"} if reason == "varying_args" else {"file_path": "same.py"}
+    args = (
+        {"file_path": "new.py"}
+        if reason == "varying_args"
+        else {"file_path": "same.py"}
+    )
     request = _make_request(
         {"messages": [], "tool_storm": tracker},
         name="read_file",
@@ -634,14 +628,10 @@ async def test_real_agent_graph_blocks_fourth_identical_tool_call():
         state_schema=State,
     )
 
-    result = await agent.ainvoke(
-        {"messages": [HumanMessage(content="run the lookup")]}
-    )
+    result = await agent.ainvoke({"messages": [HumanMessage(content="run the lookup")]})
 
     tool_messages = [
-        message
-        for message in result["messages"]
-        if isinstance(message, ToolMessage)
+        message for message in result["messages"] if isinstance(message, ToolMessage)
     ]
     assert executions == 3
     assert len(tool_messages) == 4

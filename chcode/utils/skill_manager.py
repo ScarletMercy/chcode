@@ -120,9 +120,7 @@ async def _show_skill_detail(skill: dict) -> None:
 
 async def _delete_skill(skill: dict) -> None:
     """删除技能"""
-    ok = await confirm(
-        t("skill.delete_confirm", name=skill["name"]), default=False
-    )
+    ok = await confirm(t("skill.delete_confirm", name=skill["name"]), default=False)
     if not ok:
         return
 
@@ -180,8 +178,10 @@ async def _install_skill(workplace_path: Path) -> None:
         return
 
     # frontmatter name 会成为目标目录名,必须落在安装目录内(防路径穿越)
-    if not (install_path / skill_info["name"]).resolve().is_relative_to(
-        install_path.resolve()
+    if (
+        not (install_path / skill_info["name"])
+        .resolve()
+        .is_relative_to(install_path.resolve())
     ):
         console.print(
             f"[red]{t('skillhub.err_invalid_package_name', slug=skill_info['name'])}[/red]"

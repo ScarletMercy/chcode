@@ -80,6 +80,7 @@ class SessionManager:
         cfg = {"configurable": {"thread_id": thread_id}}
         try:
             from chcode.utils import get_text_content
+
             state = await agent.aget_state(cfg)
             messages = state.values.get("messages", [])
             for msg in messages:

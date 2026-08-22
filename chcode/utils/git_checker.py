@@ -4,12 +4,13 @@
 Git可用性检查工具
 用于判断系统中Git是否可用
 """
+
 import subprocess
 
 from chcode.i18n import t
 
 
-def check_git_availability() -> tuple[bool, str, str|None]:
+def check_git_availability() -> tuple[bool, str, str | None]:
     """
     检查Git是否可用
 
@@ -24,11 +25,13 @@ def check_git_availability() -> tuple[bool, str, str|None]:
             timeout=10,
         )
 
-        if result.returncode == 0: #  0 表示命令执行成功
+        if result.returncode == 0:  #  0 表示命令执行成功
             version_info = result.stdout.strip()
             return True, t("git.available"), version_info
-        else: # 非0值表示执行失败
-            error_msg = result.stderr.strip() if result.stderr else t("git.unknown_error")
+        else:  # 非0值表示执行失败
+            error_msg = (
+                result.stderr.strip() if result.stderr else t("git.unknown_error")
+            )
             return False, t("git.cmd_failed", error=error_msg), None
 
     except FileNotFoundError:

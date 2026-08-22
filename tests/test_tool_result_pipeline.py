@@ -191,9 +191,13 @@ class TestCollectToolMessagesByTurn:
         """Lines 138-142: Multiple AI+Tool pairs create separate turns."""
         from langchain_core.messages import AIMessage, ToolMessage
 
-        ai1 = AIMessage(content="", tool_calls=[{"id": "tc1", "name": "bash", "args": {}}])
+        ai1 = AIMessage(
+            content="", tool_calls=[{"id": "tc1", "name": "bash", "args": {}}]
+        )
         tool1 = ToolMessage(content="out1", tool_call_id="tc1", name="bash")
-        ai2 = AIMessage(content="", tool_calls=[{"id": "tc2", "name": "grep", "args": {}}])
+        ai2 = AIMessage(
+            content="", tool_calls=[{"id": "tc2", "name": "grep", "args": {}}]
+        )
         tool2 = ToolMessage(content="out2", tool_call_id="tc2", name="grep")
 
         turns = _collect_tool_messages_by_turn([ai1, tool1, ai2, tool2])
@@ -282,10 +286,16 @@ class TestEnforceBudgetFrozenSize:
 
         # Create messages where some will be selected and some won't
         small_msg = ToolMessage(content="x", tool_call_id="tc_small", name="bash")
-        large_msg = ToolMessage(content="x" * 300000, tool_call_id="tc_large", name="bash")
+        large_msg = ToolMessage(
+            content="x" * 300000, tool_call_id="tc_large", name="bash"
+        )
 
-        ai1 = AIMessage(content="", tool_calls=[{"id": "tc_small", "name": "bash", "args": {}}])
-        ai2 = AIMessage(content="", tool_calls=[{"id": "tc_large", "name": "bash", "args": {}}])
+        ai1 = AIMessage(
+            content="", tool_calls=[{"id": "tc_small", "name": "bash", "args": {}}]
+        )
+        ai2 = AIMessage(
+            content="", tool_calls=[{"id": "tc_large", "name": "bash", "args": {}}]
+        )
 
         msgs = [ai1, small_msg, ai2, large_msg]
         result = enforce_per_turn_budget(

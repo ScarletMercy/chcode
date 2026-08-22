@@ -20,7 +20,7 @@ from chcode.prompts import select, confirm, model_config_form, text
 from chcode.utils.json_utils import CachedJsonFile, region_key
 from chcode.utils.text_utils import mask_api_key
 
-HOMEPAGE_URL = "https://github.com/ScarletMercy/chcode" # 项目github地址
+HOMEPAGE_URL = "https://github.com/ScarletMercy/chcode"  # 项目github地址
 CONFIG_DIR = Path.home() / ".chat"
 MODEL_JSON = CONFIG_DIR / "model.json"
 SETTING_JSON = CONFIG_DIR / "chagent.json"
@@ -37,19 +37,33 @@ ENV_TO_CONFIG: dict[str, dict[str, str | list[str]]] = {
     "DEEPSEEK_API_KEY": {
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com/v1",
-        "models": ["deepseek-v4-flash","deepseek-v4-pro","deepseek-r1-0528","deepseek-v3.2"],
+        "models": [
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-r1-0528",
+            "deepseek-v3.2",
+        ],
     },
-    "MINIMAX_TOKEN_PLAN_KEY":{
-        "name":"MiniMaxToken",
-        "base_url":"https://api.minimaxi.com/v1",
-        "models":["MiniMax-M2.7","MiniMax-M2.5","MiniMax-M2.1","MiniMax-M2","MiniMax-M2.7-highspeed","MiniMax-M2.5-highspeed","MiniMax-M2.1-highspeed"]
+    "MINIMAX_TOKEN_PLAN_KEY": {
+        "name": "MiniMaxToken",
+        "base_url": "https://api.minimaxi.com/v1",
+        "models": [
+            "MiniMax-M2.7",
+            "MiniMax-M2.5",
+            "MiniMax-M2.1",
+            "MiniMax-M2",
+            "MiniMax-M2.7-highspeed",
+            "MiniMax-M2.5-highspeed",
+            "MiniMax-M2.1-highspeed",
+        ],
     },
-    "KIMI_API_KEY":{
-        'name':"KimiCode",
-        "base_url":"https://api.kimi.com/coding/v1",
-        "models":["kimi-for-coding"]
-    }
+    "KIMI_API_KEY": {
+        "name": "KimiCode",
+        "base_url": "https://api.kimi.com/coding/v1",
+        "models": ["kimi-for-coding"],
+    },
 }
+
 
 # 确保.chat配置目录存在
 def ensure_config_dir() -> Path:
@@ -128,9 +142,13 @@ async def _ask_multimodal(config: dict) -> None:
         try:
             role = add_vision_model(config)
             if role == "default":
-                console.print(f"[green]{t('model.vision_added_default', model=config['model'])}[/green]")
+                console.print(
+                    f"[green]{t('model.vision_added_default', model=config['model'])}[/green]"
+                )
             elif role == "fallback":
-                console.print(f"[green]{t('model.vision_added_fallback', model=config['model'])}[/green]")
+                console.print(
+                    f"[green]{t('model.vision_added_fallback', model=config['model'])}[/green]"
+                )
             else:
                 console.print(f"[yellow]{t('model.vision_duplicate')}[/yellow]")
         except Exception as e:
@@ -225,8 +243,11 @@ async def _ask_language_first_run() -> str:
     zh_label = "中文 (Chinese)"
     en_label = "English"
     from questionary import Style
+
     _no_bg = Style([("highlighted", "noinherit"), ("selected", "noinherit")])
-    result = await select(t("cmd.lang"), [zh_label, en_label], default=zh_label, style=_no_bg)
+    result = await select(
+        t("cmd.lang"), [zh_label, en_label], default=zh_label, style=_no_bg
+    )
     lang = "en" if result == en_label else "zh"
     set_language(lang)
     save_language(lang)
@@ -329,7 +350,12 @@ async def first_run_configure() -> dict | None:
             t("firstrun.exit"),
         ]
         # 与上面 env 分支一致的 tuple 编码（见上文注释）
-        choice_ids = [("modelscope", False), ("modelscope", True), ("manual",), ("exit",)]
+        choice_ids = [
+            ("modelscope", False),
+            ("modelscope", True),
+            ("manual",),
+            ("exit",),
+        ]
         result = await select(t("firstrun.select"), choices)
         if result is None:
             console.print(f"[dim]{t('firstrun.env_hint')}[/dim]")
@@ -453,14 +479,21 @@ async def _configure_modelscope_with_test(*, intl: bool = False) -> dict | None:
 
     _merge_and_save_config(default, fallback_updates=ms_config["fallback"])
     fallback_names = ", ".join(ms_config["fallback"].keys())
-    console.print(f"[green]{t('modelscope.config_done', model=default['model'])}[/green]")
-    console.print(f"[dim]{t('modelscope.fallback_count', count=len(ms_config['fallback']), names=fallback_names)}[/dim]")
+    console.print(
+        f"[green]{t('modelscope.config_done', model=default['model'])}[/green]"
+    )
+    console.print(
+        f"[dim]{t('modelscope.fallback_count', count=len(ms_config['fallback']), names=fallback_names)}[/dim]"
+    )
 
     # 魔搭配置完成后，自动同步视觉模型配置
     from chcode.vision_config import auto_configure_vision
+
     vision_default = auto_configure_vision()
     if vision_default:
-        console.print(f"[dim]{t('modelscope.vision_auto', model=vision_default.get('model', t('modelscope.vision_unknown')))}[/dim]")
+        console.print(
+            f"[dim]{t('modelscope.vision_auto', model=vision_default.get('model', t('modelscope.vision_unknown')))}[/dim]"
+        )
 
     await configure_tavily()
     await configure_langsmith()
@@ -504,7 +537,9 @@ async def edit_current_model() -> dict | None:
             continue
         return None  # 放弃 或 用户取消菜单
 
-    await _ask_context_length(config, current_ctx=(current.get("metadata") or {}).get("context_length"))
+    await _ask_context_length(
+        config, current_ctx=(current.get("metadata") or {}).get("context_length")
+    )
 
     # 与新建流程对齐
     await _ask_multimodal(config)
@@ -609,9 +644,7 @@ async def configure_tavily() -> None:
         from chcode.utils.tools import update_tavily_api_key
 
         update_tavily_api_key(current)
-        console.print(
-            f"[dim]{t('tavily.configured', key=mask_api_key(current))}[/dim]"
-        )
+        console.print(f"[dim]{t('tavily.configured', key=mask_api_key(current))}[/dim]")
         return
 
     console.print()
@@ -638,6 +671,7 @@ def _sync_langsmith_config() -> None:
     """启动时同步 LangSmith 配置到 chagent.json（Windows 额外从注册表刷新 os.environ）"""
     if sys.platform == "win32":
         import winreg
+
         for var_name in ("LANGSMITH_TRACING", "LANGSMITH_PROJECT", "LANGSMITH_API_KEY"):
             value = None
             try:
@@ -700,14 +734,15 @@ def _persist_env_linux(name: str, value: str) -> None:
             break
 
     # 转义特殊字符
-    escaped_value = value.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+    escaped_value = value.replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
     export_line = f'export {name}="{escaped_value}"'
 
     # 读取并更新内容
     content = target_file.read_text(encoding="utf-8") if target_file.exists() else ""
 
     import re
-    pattern = rf'^export\s+{re.escape(name)}=.*$'
+
+    pattern = rf"^export\s+{re.escape(name)}=.*$"
     if re.search(pattern, content, re.MULTILINE):
         content = re.sub(pattern, export_line, content, flags=re.MULTILINE)
     else:
@@ -736,7 +771,9 @@ def _apply_langsmith_env(tracing: bool, project: str, api_key: str) -> None:
         "LANGSMITH_API_KEY": api_key or "",
     }
     os.environ.update(env_map)
-    _update_setting(langsmith_tracing=tracing, langsmith_project=project, langsmith_api_key=api_key)
+    _update_setting(
+        langsmith_tracing=tracing, langsmith_project=project, langsmith_api_key=api_key
+    )
     # LANGSMITH_ENDPOINT 固定值，缺失时自动补上
     if not os.getenv("LANGSMITH_ENDPOINT"):
         os.environ["LANGSMITH_ENDPOINT"] = "https://api.smith.langchain.com"
@@ -767,14 +804,18 @@ async def configure_langsmith() -> dict:
 
     # 3. 引导配置
     console.print()
-    result = await select(t("langsmith.ask_configure"), [t("common.yes"), t("common.no")])
+    result = await select(
+        t("langsmith.ask_configure"), [t("common.yes"), t("common.no")]
+    )
     if result is None or result == t("common.no"):
         os.environ["LANGSMITH_TRACING"] = "false"
         _persist_env("LANGSMITH_TRACING", "false")
         console.print(f"[dim]{t('langsmith.skipped')}[/dim]")
         return {"tracing": False, "project": "", "api_key": ""}
 
-    project_name = await text(t("langsmith.input_project"), default="chcode") or "chcode"
+    project_name = (
+        await text(t("langsmith.input_project"), default="chcode") or "chcode"
+    )
     api_key = await text(t("langsmith.input_key"))
 
     if not api_key:

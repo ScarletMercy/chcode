@@ -71,9 +71,7 @@ class _BoomClient:
     async def get(self, url: str, **kwargs):
         if "clawhub" in url:
             raise httpx.ConnectError("boom")
-        return _FakeResp(
-            json_data={"skills": [{"id": "o/r/gamma", "name": "Gamma"}]}
-        )
+        return _FakeResp(json_data={"skills": [{"id": "o/r/gamma", "name": "Gamma"}]})
 
 
 def _make_zip(files: dict[str, str]) -> bytes:
@@ -100,7 +98,10 @@ async def test_search_skills_merges_and_orders(monkeypatch):
             json_data={
                 "skills": [
                     {"id": "o/r/git-flow", "name": "Git Flow"},
-                    {"id": "o/r/git-helper", "name": "Git Helper"},  # 与 clawhub 重名,应去重
+                    {
+                        "id": "o/r/git-helper",
+                        "name": "Git Helper",
+                    },  # 与 clawhub 重名,应去重
                 ]
             }
         ),
@@ -175,9 +176,7 @@ async def test_search_skills_clawhub_filters_irrelevant(monkeypatch):
 
 
 async def test_search_skills_one_source_fails(monkeypatch):
-    monkeypatch.setattr(
-        skill_hub.httpx, "AsyncClient", lambda **kw: _BoomClient()
-    )
+    monkeypatch.setattr(skill_hub.httpx, "AsyncClient", lambda **kw: _BoomClient())
 
     results, errors = await skill_hub.search_skills("x")
 
@@ -313,9 +312,7 @@ async def test_download_and_install_clawhub_ambiguous(tmp_path, monkeypatch):
                 },
             )
 
-    monkeypatch.setattr(
-        skill_hub.httpx, "AsyncClient", lambda **kw: _AmbigClient()
-    )
+    monkeypatch.setattr(skill_hub.httpx, "AsyncClient", lambda **kw: _AmbigClient())
 
     async def fake_select(message, choices, **kw):
         return choices[0]  # 模拟用户选第一个 @alice/my-skill
@@ -342,9 +339,7 @@ async def test_download_and_install_clawhub_rejects_traversal_name(
         {"evil/SKILL.md": "---\nname: ../evil\ndescription: d\n---\n# body"}
     )
     routes = {
-        "/skills/evil": _FakeResp(
-            json_data={"latestVersion": {"version": "1.0.0"}}
-        ),
+        "/skills/evil": _FakeResp(json_data={"latestVersion": {"version": "1.0.0"}}),
         "/download": _FakeResp(content=zip_bytes),
     }
     monkeypatch.setattr(
@@ -371,9 +366,7 @@ async def test_download_and_install_clawhub_network_error(tmp_path, monkeypatch)
         async def get(self, url, **kw):
             raise httpx.ConnectError("dead")
 
-    monkeypatch.setattr(
-        skill_hub.httpx, "AsyncClient", lambda **kw: _DeadClient()
-    )
+    monkeypatch.setattr(skill_hub.httpx, "AsyncClient", lambda **kw: _DeadClient())
 
     ok, msg = await skill_hub.download_and_install("my-skill", "clawhub", tmp_path)
 
@@ -427,9 +420,7 @@ async def test_download_and_install_skills_sh(tmp_path, monkeypatch):
     assert written == skill_md
 
 
-async def test_download_and_install_skills_sh_multi_segment_path(
-    tmp_path, monkeypatch
-):
+async def test_download_and_install_skills_sh_multi_segment_path(tmp_path, monkeypatch):
     """多段 skillId(搜索 fallback 构造的 owner/repo/path/to/my-skill)应完整取 repo 后全部路径。"""
     skill_md = "---\nname: nested-skill\ndescription: d\n---\n# body"
     # 只有完整 skillId 路径 @main/path/to/my-skill/SKILL.md 命中(路由按插入顺序匹配)
@@ -499,7 +490,10 @@ async def test_download_and_install_skills_sh_mirror_fallback(tmp_path, monkeypa
     assert name == "my-skill"
     assert (tmp_path / "my-skill" / "SKILL.md").exists()
     # 成功的镜像被记住,后续优先使用
-    assert skill_hub._preferred_jsdelivr_host in ("gcore.jsdelivr.net", "fastly.jsdelivr.net")
+    assert skill_hub._preferred_jsdelivr_host in (
+        "gcore.jsdelivr.net",
+        "fastly.jsdelivr.net",
+    )
 
 
 async def test_download_and_install_skills_sh_bad_name_falls_back(

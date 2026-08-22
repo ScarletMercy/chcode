@@ -1,4 +1,5 @@
 """Extended tests for chcode/agents/runner.py"""
+
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,6 +29,7 @@ class TestHandleToolErrors:
         mock_request = MagicMock()
         mock_request.tool_call = {"id": "123"}
         from langchain_core.messages import ToolMessage
+
         result = await handle_tool_errors.awrap_tool_call(mock_request, mock_handler)
         assert isinstance(result, ToolMessage)
         assert result.tool_call_id == "123"
@@ -37,11 +39,14 @@ class TestHandleToolErrors:
 class TestSubagentSystemPrompt:
     async def test_returns_system_prompt(self):
         from langchain_core.messages import SystemMessage
+
         mock_request = MagicMock()
         mock_request.runtime.context.extra = {"system_prompt": "You are a planner."}
         mock_request.override = MagicMock(return_value=mock_request)
         mock_handler = AsyncMock(return_value="response")
-        result = await _subagent_system_prompt.awrap_model_call(mock_request, mock_handler)
+        result = await _subagent_system_prompt.awrap_model_call(
+            mock_request, mock_handler
+        )
         mock_request.override.assert_called_once()
         call_kwargs = mock_request.override.call_args
         assert call_kwargs[1]["system_message"].content == "You are a planner."
@@ -49,11 +54,14 @@ class TestSubagentSystemPrompt:
 
     async def test_returns_empty_when_no_key(self):
         from langchain_core.messages import SystemMessage
+
         mock_request = MagicMock()
         mock_request.runtime.context.extra = {}
         mock_request.override = MagicMock(return_value=mock_request)
         mock_handler = AsyncMock(return_value="response")
-        result = await _subagent_system_prompt.awrap_model_call(mock_request, mock_handler)
+        result = await _subagent_system_prompt.awrap_model_call(
+            mock_request, mock_handler
+        )
         mock_request.override.assert_called_once()
         call_kwargs = mock_request.override.call_args
         assert call_kwargs[1]["system_message"].content == ""
@@ -63,16 +71,23 @@ class TestSubagentSystemPrompt:
 class TestToolResultBudget:
     async def test_no_tool_messages_passthrough(self):
         from langchain_core.messages import HumanMessage
+
         mock_request = MagicMock()
         mock_request.messages = [HumanMessage(content="hi")]
         mock_request.runtime.context.working_directory = Path("/w")
         mock_handler = AsyncMock(return_value="response")
-        with patch("chcode.agent_setup.enforce_per_turn_budget", return_value=[HumanMessage(content="hi")]):
-            result = await tool_result_budget.awrap_model_call(mock_request, mock_handler)
+        with patch(
+            "chcode.agent_setup.enforce_per_turn_budget",
+            return_value=[HumanMessage(content="hi")],
+        ):
+            result = await tool_result_budget.awrap_model_call(
+                mock_request, mock_handler
+            )
         mock_handler.assert_called_once()
 
     async def test_processes_tool_messages(self):
         from langchain_core.messages import ToolMessage
+
         mock_msg = MagicMock(spec=ToolMessage)
         mock_msg.content = "output"
         mock_msg.name = "bash"
@@ -83,9 +98,13 @@ class TestToolResultBudget:
         mock_request.messages = [mock_msg]
         mock_request.runtime.context.working_directory = Path("/w")
         mock_handler = AsyncMock(return_value="response")
-        with patch("chcode.agent_setup.clean_tool_output", return_value="cleaned"), \
-             patch("chcode.agent_setup.truncate_large_result", return_value="truncated"), \
-             patch("chcode.agent_setup.enforce_per_turn_budget", return_value=[mock_msg]):
+        with (
+            patch("chcode.agent_setup.clean_tool_output", return_value="cleaned"),
+            patch("chcode.agent_setup.truncate_large_result", return_value="truncated"),
+            patch(
+                "chcode.agent_setup.enforce_per_turn_budget", return_value=[mock_msg]
+            ),
+        ):
             await tool_result_budget.awrap_model_call(mock_request, mock_handler)
         assert mock_handler.called
 
@@ -93,89 +112,157 @@ class TestToolResultBudget:
 class TestRunSubagent:
     async def test_success(self):
         from chcode.agents.runner import run_subagent
+
         mock_def = AgentDefinition(
-            agent_type="Explore", when_to_use="explore",
-            system_prompt="prompt", read_only=True, tools=None,
-            disallowed_tools=[], model=None,
+            agent_type="Explore",
+            when_to_use="explore",
+            system_prompt="prompt",
+            read_only=True,
+            tools=None,
+            disallowed_tools=[],
+            model=None,
         )
         mock_msg = MagicMock()
         mock_msg.type = "ai"
         mock_msg.content = "result text"
         mock_agent = MagicMock()
         mock_agent.ainvoke = AsyncMock(return_value={"messages": [mock_msg]})
-        with patch("chcode.agents.runner.create_agent", return_value=mock_agent), \
-             patch("chcode.agents.runner._resolve_tools", return_value=[]), \
-             patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            result, is_error = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock())
+        with (
+            patch("chcode.agents.runner.create_agent", return_value=mock_agent),
+            patch("chcode.agents.runner._resolve_tools", return_value=[]),
+            patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()),
+        ):
+            result, is_error = await run_subagent(
+                "task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock()
+            )
         assert result == "result text"
         assert is_error is False
 
     async def test_timeout(self):
         import asyncio
         from chcode.agents.runner import run_subagent
+
         mock_def = AgentDefinition(
-            agent_type="Explore", when_to_use="explore",
-            system_prompt="prompt", read_only=True, tools=None,
-            disallowed_tools=[], model=None,
+            agent_type="Explore",
+            when_to_use="explore",
+            system_prompt="prompt",
+            read_only=True,
+            tools=None,
+            disallowed_tools=[],
+            model=None,
         )
         mock_agent = MagicMock()
         mock_agent.ainvoke = AsyncMock(side_effect=asyncio.TimeoutError())
-        with patch("chcode.agents.runner.create_agent", return_value=mock_agent), \
-             patch("chcode.agents.runner._resolve_tools", return_value=[]), \
-             patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            result, is_error = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
+        with (
+            patch("chcode.agents.runner.create_agent", return_value=mock_agent),
+            patch("chcode.agents.runner._resolve_tools", return_value=[]),
+            patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()),
+        ):
+            result, is_error = await run_subagent(
+                "task",
+                mock_def,
+                {"model": "gpt-4"},
+                Path("/w"),
+                MagicMock(),
+                timeout_seconds=300,
+            )
         assert "timed out" in result
         assert is_error is True
 
     async def test_model_switch_error_runner(self):
         from chcode.agents.runner import run_subagent
         from chcode.agent_setup import ModelSwitchError
+
         mock_def = AgentDefinition(
-            agent_type="Explore", when_to_use="explore",
-            system_prompt="prompt", read_only=True, tools=None,
-            disallowed_tools=[], model=None,
+            agent_type="Explore",
+            when_to_use="explore",
+            system_prompt="prompt",
+            read_only=True,
+            tools=None,
+            disallowed_tools=[],
+            model=None,
         )
         mock_agent = MagicMock()
         mock_agent.ainvoke = AsyncMock(side_effect=ModelSwitchError("switch"))
-        with patch("chcode.agents.runner.create_agent", return_value=mock_agent), \
-             patch("chcode.agents.runner._resolve_tools", return_value=[]), \
-             patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            result, is_error = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
+        with (
+            patch("chcode.agents.runner.create_agent", return_value=mock_agent),
+            patch("chcode.agents.runner._resolve_tools", return_value=[]),
+            patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()),
+        ):
+            result, is_error = await run_subagent(
+                "task",
+                mock_def,
+                {"model": "gpt-4"},
+                Path("/w"),
+                MagicMock(),
+                timeout_seconds=300,
+            )
         assert "备用模型" in result
         assert is_error is True
 
     async def test_generic_error(self):
         from chcode.agents.runner import run_subagent
+
         mock_def = AgentDefinition(
-            agent_type="Explore", when_to_use="explore",
-            system_prompt="prompt", read_only=True, tools=None,
-            disallowed_tools=[], model=None,
+            agent_type="Explore",
+            when_to_use="explore",
+            system_prompt="prompt",
+            read_only=True,
+            tools=None,
+            disallowed_tools=[],
+            model=None,
         )
         mock_agent = MagicMock()
         mock_agent.ainvoke = AsyncMock(side_effect=RuntimeError("crash"))
-        with patch("chcode.agents.runner.create_agent", return_value=mock_agent), \
-             patch("chcode.agents.runner._resolve_tools", return_value=[]), \
-             patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            result, is_error = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
+        with (
+            patch("chcode.agents.runner.create_agent", return_value=mock_agent),
+            patch("chcode.agents.runner._resolve_tools", return_value=[]),
+            patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()),
+        ):
+            result, is_error = await run_subagent(
+                "task",
+                mock_def,
+                {"model": "gpt-4"},
+                Path("/w"),
+                MagicMock(),
+                timeout_seconds=300,
+            )
         assert "error" in result.lower()
         assert is_error is True
 
     async def test_list_content_output(self):
         from chcode.agents.runner import run_subagent
+
         mock_def = AgentDefinition(
-            agent_type="Explore", when_to_use="explore",
-            system_prompt="prompt", read_only=True, tools=None,
-            disallowed_tools=[], model=None,
+            agent_type="Explore",
+            when_to_use="explore",
+            system_prompt="prompt",
+            read_only=True,
+            tools=None,
+            disallowed_tools=[],
+            model=None,
         )
         mock_msg = MagicMock()
         mock_msg.type = "ai"
-        mock_msg.content = [{"type": "text", "text": "part1"}, {"type": "text", "text": "part2"}]
+        mock_msg.content = [
+            {"type": "text", "text": "part1"},
+            {"type": "text", "text": "part2"},
+        ]
         mock_agent = MagicMock()
         mock_agent.ainvoke = AsyncMock(return_value={"messages": [mock_msg]})
-        with patch("chcode.agents.runner.create_agent", return_value=mock_agent), \
-             patch("chcode.agents.runner._resolve_tools", return_value=[]), \
-             patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            result, is_error = await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300)
+        with (
+            patch("chcode.agents.runner.create_agent", return_value=mock_agent),
+            patch("chcode.agents.runner._resolve_tools", return_value=[]),
+            patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()),
+        ):
+            result, is_error = await run_subagent(
+                "task",
+                mock_def,
+                {"model": "gpt-4"},
+                Path("/w"),
+                MagicMock(),
+                timeout_seconds=300,
+            )
         assert "part1" in result and "part2" in result
         assert is_error is False
 
@@ -186,6 +273,7 @@ class TestRestrictBash:
     @pytest.mark.asyncio
     async def test_blocks_rm_rf(self):
         from chcode.agents.runner import _restrict_bash
+
         req = MagicMock()
         req.tool_call = {"name": "bash", "args": {"command": "rm -rf /"}, "id": "tc1"}
         result = await _restrict_bash.awrap_tool_call(req, AsyncMock())
@@ -195,6 +283,7 @@ class TestRestrictBash:
     @pytest.mark.asyncio
     async def test_blocks_mkdir(self):
         from chcode.agents.runner import _restrict_bash
+
         req = MagicMock()
         req.tool_call = {"name": "bash", "args": {"command": "mkdir foo"}, "id": "tc1"}
         result = await _restrict_bash.awrap_tool_call(req, AsyncMock())
@@ -203,6 +292,7 @@ class TestRestrictBash:
     @pytest.mark.asyncio
     async def test_allows_safe_command(self):
         from chcode.agents.runner import _restrict_bash
+
         handler = AsyncMock(return_value=MagicMock())
         req = MagicMock()
         req.tool_call = {"name": "bash", "args": {"command": "ls -la"}, "id": "tc1"}
@@ -212,17 +302,27 @@ class TestRestrictBash:
     @pytest.mark.asyncio
     async def test_ignores_non_bash(self):
         from chcode.agents.runner import _restrict_bash
+
         handler = AsyncMock(return_value=MagicMock())
         req = MagicMock()
-        req.tool_call = {"name": "read_file", "args": {"file_path": "/tmp/test"}, "id": "tc1"}
+        req.tool_call = {
+            "name": "read_file",
+            "args": {"file_path": "/tmp/test"},
+            "id": "tc1",
+        }
         result = await _restrict_bash.awrap_tool_call(req, handler)
         handler.assert_called_once_with(req)
 
     @pytest.mark.asyncio
     async def test_blocks_git_push(self):
         from chcode.agents.runner import _restrict_bash
+
         req = MagicMock()
-        req.tool_call = {"name": "bash", "args": {"command": "git push origin main"}, "id": "tc1"}
+        req.tool_call = {
+            "name": "bash",
+            "args": {"command": "git push origin main"},
+            "id": "tc1",
+        }
         result = await _restrict_bash.awrap_tool_call(req, AsyncMock())
         assert result.status == "error"
 
@@ -235,9 +335,13 @@ class TestRunSubagentYoloParam:
         from chcode.agents.runner import run_subagent
 
         mock_def = AgentDefinition(
-            agent_type="test", when_to_use="test",
-            system_prompt="prompt", read_only=True, tools=None,
-            disallowed_tools=[], model=None,
+            agent_type="test",
+            when_to_use="test",
+            system_prompt="prompt",
+            read_only=True,
+            tools=None,
+            disallowed_tools=[],
+            model=None,
         )
         mock_msg = MagicMock()
         mock_msg.type = "ai"
@@ -247,11 +351,23 @@ class TestRunSubagentYoloParam:
 
         captured_ctx = {}
 
-        def capture_create(model, tools, middleware, context_schema=None, checkpointer=None, **kw):
+        def capture_create(
+            model, tools, middleware, context_schema=None, checkpointer=None, **kw
+        ):
             # Capture the context passed to the agent
             return mock_agent
 
-        with patch("chcode.agents.runner.create_agent", side_effect=capture_create), \
-             patch("chcode.agents.runner._resolve_tools", return_value=[]), \
-             patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()):
-            await run_subagent("task", mock_def, {"model": "gpt-4"}, Path("/w"), MagicMock(), timeout_seconds=300, yolo=True)
+        with (
+            patch("chcode.agents.runner.create_agent", side_effect=capture_create),
+            patch("chcode.agents.runner._resolve_tools", return_value=[]),
+            patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()),
+        ):
+            await run_subagent(
+                "task",
+                mock_def,
+                {"model": "gpt-4"},
+                Path("/w"),
+                MagicMock(),
+                timeout_seconds=300,
+                yolo=True,
+            )

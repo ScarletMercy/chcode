@@ -23,12 +23,14 @@ from chcode.config import (
 class TestLoadModelJson:
     def test_no_file(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         mod._model_json.invalidate()
         monkeypatch.setattr(mod, "MODEL_JSON", tmp_path / "model.json")
         assert load_model_json() == {}
 
     def test_valid_file(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         mod._model_json.invalidate()
         f = tmp_path / "model.json"
         f.write_text(json.dumps({"default": {"model": "gpt-4o"}}))
@@ -38,6 +40,7 @@ class TestLoadModelJson:
 
     def test_mtime_cache(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         mod._model_json.invalidate()
         f = tmp_path / "model.json"
         f.write_text(json.dumps({"default": {"model": "a"}}))
@@ -48,6 +51,7 @@ class TestLoadModelJson:
 
     def test_invalid_json(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         mod._model_json.invalidate()
         f = tmp_path / "model.json"
         f.write_text("not json{{{")
@@ -58,6 +62,7 @@ class TestLoadModelJson:
 class TestSaveModelJson:
     def test_saves_and_invalidates_cache(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         mod._model_json.invalidate()
         f = tmp_path / "model.json"
         monkeypatch.setattr(mod, "MODEL_JSON", f)
@@ -71,11 +76,13 @@ class TestSaveModelJson:
 class TestLoadWorkplace:
     def test_no_file_v2(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         monkeypatch.setattr(mod, "SETTING_JSON", tmp_path / "nope.json")
         assert load_workplace() is None
 
     def test_valid(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         f = tmp_path / "settings.json"
         f.write_text(json.dumps({"workplace_path": str(tmp_path)}))
         monkeypatch.setattr(mod, "SETTING_JSON", f)
@@ -85,6 +92,7 @@ class TestLoadWorkplace:
 class TestSaveWorkplace:
     def test_saves(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         f = tmp_path / "settings.json"
         monkeypatch.setattr(mod, "SETTING_JSON", f)
         monkeypatch.setattr(mod, "CONFIG_DIR", tmp_path)
@@ -96,12 +104,14 @@ class TestSaveWorkplace:
 class TestLoadSaveTavilyApiKey:
     def test_no_file_v3(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         monkeypatch.delenv("TAVILY_API_KEY", raising=False)
         monkeypatch.setattr(mod, "SETTING_JSON", tmp_path / "nope.json")
         assert load_tavily_api_key() == ""
 
     def test_save_and_load(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         f = tmp_path / "settings.json"
         f.write_text("{}")
         monkeypatch.setattr(mod, "SETTING_JSON", f)
@@ -114,6 +124,7 @@ class TestLoadSaveTavilyApiKey:
 class TestEnsureConfigDir:
     def test_creates_dir(self, tmp_path: Path, monkeypatch):
         import chcode.config as mod
+
         d = tmp_path / "newconfig"
         monkeypatch.setattr(mod, "CONFIG_DIR", d)
         result = ensure_config_dir()
@@ -132,12 +143,17 @@ class TestLoadLangsmithConfig:
         monkeypatch.setenv("LANGSMITH_PROJECT", "my-proj")
         monkeypatch.setenv("LANGSMITH_TRACING", "true")
 
-        with patch("chcode.config._sync_langsmith_config"), \
-             patch("chcode.config._load_setting", return_value={
-                 "langsmith_tracing": True,
-                 "langsmith_project": "my-proj",
-                 "langsmith_api_key": "lsv2_test_key",
-             }):
+        with (
+            patch("chcode.config._sync_langsmith_config"),
+            patch(
+                "chcode.config._load_setting",
+                return_value={
+                    "langsmith_tracing": True,
+                    "langsmith_project": "my-proj",
+                    "langsmith_api_key": "lsv2_test_key",
+                },
+            ),
+        ):
             cfg = load_langsmith_config()
         assert cfg["api_key"] == "lsv2_test_key"
         assert cfg["project"] == "my-proj"
@@ -148,10 +164,15 @@ class TestLoadLangsmithConfig:
         monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
-        with patch("chcode.config._sync_langsmith_config"), \
-             patch("chcode.config._load_setting", return_value={
-                 "langsmith_api_key": "lsv2_test_key",
-             }):
+        with (
+            patch("chcode.config._sync_langsmith_config"),
+            patch(
+                "chcode.config._load_setting",
+                return_value={
+                    "langsmith_api_key": "lsv2_test_key",
+                },
+            ),
+        ):
             cfg = load_langsmith_config()
         assert cfg["api_key"] == "lsv2_test_key"
         assert cfg["project"] == "chcode"
@@ -162,8 +183,10 @@ class TestLoadLangsmithConfig:
         monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
-        with patch("chcode.config._sync_langsmith_config"), \
-             patch("chcode.config._load_setting", return_value={}):
+        with (
+            patch("chcode.config._sync_langsmith_config"),
+            patch("chcode.config._load_setting", return_value={}),
+        ):
             cfg = load_langsmith_config()
         assert cfg["api_key"] == ""
         assert cfg["project"] == ""
@@ -176,8 +199,10 @@ class TestApplyLangsmithEnv:
         monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
         monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
 
-        with patch("chcode.config._persist_env"), \
-             patch("chcode.config._update_setting"):
+        with (
+            patch("chcode.config._persist_env"),
+            patch("chcode.config._update_setting"),
+        ):
             _apply_langsmith_env(True, "my-proj", "lsv2_key")
 
         assert os.environ["LANGSMITH_TRACING"] == "true"
@@ -187,8 +212,10 @@ class TestApplyLangsmithEnv:
     def test_disabled(self, monkeypatch):
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
-        with patch("chcode.config._persist_env"), \
-             patch("chcode.config._update_setting"):
+        with (
+            patch("chcode.config._persist_env"),
+            patch("chcode.config._update_setting"),
+        ):
             _apply_langsmith_env(False, "", "")
 
         assert os.environ["LANGSMITH_TRACING"] == "false"
@@ -198,7 +225,9 @@ class TestTestConnectionNullValue:
     @pytest.mark.asyncio
     async def test_null_value_with_choices_is_success(self):
         config = {"model": "test", "base_url": "http://x", "api_key": "k"}
-        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model:
+        with patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_model:
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
             mock_model_inst.invoke.side_effect = Exception("null value for 'choices'")
@@ -208,7 +237,9 @@ class TestTestConnectionNullValue:
     @pytest.mark.asyncio
     async def test_null_value_without_choices_is_failure(self):
         config = {"model": "test", "base_url": "http://x", "api_key": "k"}
-        with patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model:
+        with patch(
+            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+        ) as mock_model:
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
             mock_model_inst.invoke.side_effect = Exception("null value for 'model'")
@@ -224,8 +255,11 @@ class TestConfigureLangsmithBehavior:
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
         from chcode.config import configure_langsmith
-        with patch("chcode.config._persist_env"), \
-             patch("chcode.config._update_setting"):
+
+        with (
+            patch("chcode.config._persist_env"),
+            patch("chcode.config._update_setting"),
+        ):
             cfg = await configure_langsmith()
         assert cfg["tracing"] is False
 
@@ -236,8 +270,11 @@ class TestConfigureLangsmithBehavior:
         monkeypatch.setenv("LANGSMITH_TRACING", "true")
 
         from chcode.config import configure_langsmith
-        with patch("chcode.config._persist_env"), \
-             patch("chcode.config._update_setting"):
+
+        with (
+            patch("chcode.config._persist_env"),
+            patch("chcode.config._update_setting"),
+        ):
             cfg = await configure_langsmith()
         assert cfg["tracing"] is True
 
@@ -248,10 +285,17 @@ class TestConfigureLangsmithBehavior:
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
         from chcode.config import configure_langsmith
-        with patch("chcode.config.select", new_callable=AsyncMock, return_value="是"), \
-             patch("chcode.config.text", new_callable=AsyncMock, side_effect=["my-proj", "lsv2_key"]), \
-             patch("chcode.config._persist_env"), \
-             patch("chcode.config._update_setting"):
+
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock, return_value="是"),
+            patch(
+                "chcode.config.text",
+                new_callable=AsyncMock,
+                side_effect=["my-proj", "lsv2_key"],
+            ),
+            patch("chcode.config._persist_env"),
+            patch("chcode.config._update_setting"),
+        ):
             cfg = await configure_langsmith()
 
         assert cfg["tracing"] is True
@@ -267,6 +311,7 @@ class TestConfigureLangsmithBehavior:
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
         from chcode.config import configure_langsmith
+
         with patch("chcode.config.select", new_callable=AsyncMock, return_value="否"):
             cfg = await configure_langsmith()
 
@@ -280,8 +325,15 @@ class TestConfigureLangsmithBehavior:
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
         from chcode.config import configure_langsmith
-        with patch("chcode.config.select", new_callable=AsyncMock, return_value="是"), \
-             patch("chcode.config.text", new_callable=AsyncMock, side_effect=["my-proj", ""]):
+
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock, return_value="是"),
+            patch(
+                "chcode.config.text",
+                new_callable=AsyncMock,
+                side_effect=["my-proj", ""],
+            ),
+        ):
             cfg = await configure_langsmith()
 
         assert cfg["tracing"] is False
@@ -295,10 +347,17 @@ class TestConfigureLangsmithBehavior:
         monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
 
         from chcode.config import configure_langsmith
-        with patch("chcode.config.select", new_callable=AsyncMock, return_value="是"), \
-             patch("chcode.config.text", new_callable=AsyncMock, side_effect=[None, "lsv2_key"]), \
-             patch("chcode.config._persist_env"), \
-             patch("chcode.config._update_setting"):
+
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock, return_value="是"),
+            patch(
+                "chcode.config.text",
+                new_callable=AsyncMock,
+                side_effect=[None, "lsv2_key"],
+            ),
+            patch("chcode.config._persist_env"),
+            patch("chcode.config._update_setting"),
+        ):
             cfg = await configure_langsmith()
 
         assert cfg["tracing"] is True

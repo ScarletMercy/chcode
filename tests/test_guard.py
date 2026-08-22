@@ -76,24 +76,24 @@ SAFE_CASES = [
     "   ",
     "echo hello",
     "ls -la",
-    "rm file.txt",            # 非递归删除
-    "rm -f file.txt",         # 仅强制、无递归
+    "rm file.txt",  # 非递归删除
+    "rm -f file.txt",  # 仅强制、无递归
     "rm --verbose file.txt",  # 长标志含 r 但非递归
-    "kill 1234",              # 普通终止信号
-    "kill -15 1234",          # SIGTERM，默认优雅终止
-    "kill -19 1234",          # SIGSTOP，含 9 但非 SIGKILL
+    "kill 1234",  # 普通终止信号
+    "kill -15 1234",  # SIGTERM，默认优雅终止
+    "kill -19 1234",  # SIGSTOP，含 9 但非 SIGKILL
     "git status",
     "npm run build",
     "python -m pytest",
-    "tasklist",               # 仅列出进程
-    "Get-Process",            # 仅列出进程
+    "tasklist",  # 仅列出进程
+    "Get-Process",  # 仅列出进程
     "cd /tmp && pwd",
-    "grep -r foo .",          # grep 的 -r 不是 rm
-    "grep --recursive foo .", # --recursive 锚定到 rm，grep 不误伤
-    "cp --recursive src dst", # 同上
-    "format-string",          # 子串不应误伤
-    "skill list",             # 含 kill 子串但非 kill 命令
-    "prmsg",                  # 含 rm 子串
+    "grep -r foo .",  # grep 的 -r 不是 rm
+    "grep --recursive foo .",  # --recursive 锚定到 rm，grep 不误伤
+    "cp --recursive src dst",  # 同上
+    "format-string",  # 子串不应误伤
+    "skill list",  # 含 kill 子串但非 kill 命令
+    "prmsg",  # 含 rm 子串
     # dd 写入普通文件是安全操作，不应误伤
     "dd if=/dev/zero of=/tmp/file bs=1M",
     "dd if=backup.img of=/home/user/disk.img",
@@ -104,8 +104,8 @@ SAFE_CASES = [
     "./mkfs.ext4",
     "subdir/reboot",
     "../shutdown",
-    ".\\reboot.bat",              # Windows 相对路径
-    "scripts\\shutdown.ps1",      # Windows 反斜杠相对路径
+    ".\\reboot.bat",  # Windows 相对路径
+    "scripts\\shutdown.ps1",  # Windows 反斜杠相对路径
     # init 切换非关机运行级别
     "init 3",
     # systemctl 非关机子命令
@@ -116,8 +116,8 @@ SAFE_CASES = [
     "grep reboot /var/log/syslog",
     "ls reboot backup.txt",
     "echo shutdown.log",
-    "type shutdown.log",                 # cmd 的 type（即 cat）
-    "Select-String reboot syslog.txt",   # powershell 的 grep
+    "type shutdown.log",  # cmd 的 type（即 cat）
+    "Select-String reboot syslog.txt",  # powershell 的 grep
     "cat mkfs.txt",
     "ls halt.notes",
     "grep poweroff /var/log/messages",

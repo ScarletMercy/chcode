@@ -65,7 +65,9 @@ class TestGetDisplayNames:
     async def test_fallback_to_summary(self, sm: SessionManager):
         agent = AsyncMock()
         state = MagicMock()
-        state.values = {"messages": [MagicMock(content="Hello world", __class__=type("H", (), {}))]}
+        state.values = {
+            "messages": [MagicMock(content="Hello world", __class__=type("H", (), {}))]
+        }
         agent.aget_state = AsyncMock(return_value=state)
 
         from langchain_core.messages import HumanMessage
@@ -126,6 +128,7 @@ class TestLoadNamesIOError:
     def test_io_error_propagates(self, sm: SessionManager, monkeypatch):
         sm._names_path.write_text('{"t1": "name"}', encoding="utf-8")
         from unittest.mock import patch
+
         with patch.object(Path, "read_text", side_effect=PermissionError("locked")):
             with pytest.raises(PermissionError):
                 sm._load_names()

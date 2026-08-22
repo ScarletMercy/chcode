@@ -80,14 +80,17 @@ app = typer.Typer(
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-        yolo: bool = typer.Option(
-            False, "--yolo", "-y", help="启用 Yolo 模式 / Enable Yolo mode (auto-approve all actions)"
-        ),
-        lang: str = typer.Option(
-            None, "--lang", help="UI 语言 / language (zh | en)"
-        ),
-        version: bool = typer.Option(False, "--version", "-v", help="显示版本 / Show version"),
-    ):
+    yolo: bool = typer.Option(
+        False,
+        "--yolo",
+        "-y",
+        help="启用 Yolo 模式 / Enable Yolo mode (auto-approve all actions)",
+    ),
+    lang: str = typer.Option(None, "--lang", help="UI 语言 / language (zh | en)"),
+    version: bool = typer.Option(
+        False, "--version", "-v", help="显示版本 / Show version"
+    ),
+):
     """ChCode — 终端 AI 编程助手 / Terminal AI coding assistant"""
     if version:
         console.print(f"chcode v{_app_version()}")

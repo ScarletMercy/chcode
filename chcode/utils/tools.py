@@ -46,6 +46,7 @@ _tavily_client: TavilyClient | None = None
 
 def _load_tavily_key() -> str:
     from chcode.config import load_tavily_api_key
+
     return load_tavily_api_key()
 
 
@@ -274,7 +275,7 @@ async def read_file(file_path: str, runtime: ToolRuntime[SkillAgentContext]) -> 
         return f"read:\n[FAILED] Not a file: {file_path}"
 
     try:
-        async with aiofiles.open(path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(path, "r", encoding="utf-8") as f:
             content = await f.read()
         lines = content.split("\n")
 
@@ -318,7 +319,7 @@ async def write_file(
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        async with aiofiles.open(path, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(path, "w", encoding="utf-8") as f:
             await f.write(content)
         return f"write:\n[OK] File written: {path}"
 
@@ -539,7 +540,7 @@ async def grep(pattern: str, path: str, runtime: ToolRuntime[SkillAgentContext])
                 return
 
             try:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
                 lines = content.split("\n")
                 files_searched += 1
@@ -626,7 +627,7 @@ async def edit(
         return f"edit:\n[FAILED] Not a file: {file_path}"
 
     try:
-        async with aiofiles.open(path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(path, "r", encoding="utf-8") as f:
             content = await f.read()
 
         count = content.count(old_string)
@@ -639,7 +640,7 @@ async def edit(
 
         new_content = content.replace(old_string, new_string, 1)
 
-        async with aiofiles.open(path, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(path, "w", encoding="utf-8") as f:
             await f.write(new_content)
 
         old_lines = len(old_string.split("\n"))
@@ -676,7 +677,9 @@ async def list_dir(path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
         return f"ls:\n[FAILED] Not a directory: {path}"
 
     def _sync_list_dir() -> list[tuple[str, bool, int]]:
-        entries = sorted(dir_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+        entries = sorted(
+            dir_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+        )
         result = []
         for entry in entries:
             try:
@@ -982,7 +985,9 @@ async def _interactive_list_async(
             return
         if control.selected > 0:
             control.selected -= 1
-            e.app.layout.focus(control_window if control.selected < input_row_idx else input_edit)
+            e.app.layout.focus(
+                control_window if control.selected < input_row_idx else input_edit
+            )
         e.app.invalidate()
 
     @kb.add("down")
@@ -1010,6 +1015,7 @@ async def _interactive_list_async(
         e.app.invalidate()
 
     if allow_multiple:
+
         @kb.add(" ")
         def _space(e):
             nonlocal _exiting
@@ -1119,13 +1125,17 @@ async def ask_user(
     render_tool_call("ask_user", question)
 
     if not options:
-        answer = await asyncio.to_thread(lambda: questionary.text(t("tools.please_input")).ask())
+        answer = await asyncio.to_thread(
+            lambda: questionary.text(t("tools.please_input")).ask()
+        )
         if answer is None:
             return f"user_answer:\n{t('tools.user_cancelled')}"
         return f"user_answer:\n{answer}"
 
     try:
-        selected = await _interactive_list_async(question, options, allow_multiple=is_multiple)
+        selected = await _interactive_list_async(
+            question, options, allow_multiple=is_multiple
+        )
         if selected is None:
             return f"user_answer:\n{t('tools.user_cancelled')}"
         if isinstance(selected, list):
@@ -1147,7 +1157,9 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
     import questionary
 
     console.print()
-    console.print(f"[bold cyan]{t('tools.batch_questions', count=len(questions))}[/bold cyan]")
+    console.print(
+        f"[bold cyan]{t('tools.batch_questions', count=len(questions))}[/bold cyan]"
+    )
     console.print()
 
     answers = []
@@ -1156,10 +1168,14 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
         q_options = q.get("options", [])
         q_multiple = q.get("is_multiple", False)
 
-        console.print(f"[dim]{t('tools.question_progress', i=i, total=len(questions), text=q_text)}[/dim]")
+        console.print(
+            f"[dim]{t('tools.question_progress', i=i, total=len(questions), text=q_text)}[/dim]"
+        )
 
         if not q_options:
-            answer = await asyncio.to_thread(lambda: questionary.text(t("tools.please_input")).ask())
+            answer = await asyncio.to_thread(
+                lambda: questionary.text(t("tools.please_input")).ask()
+            )
             if answer is None:
                 answers.append(f"Q{i}: {t('tools.user_cancelled')}")
                 continue
@@ -1185,7 +1201,9 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
     # 汇总结果
     result_lines = [t("tools.batch_results")]
     for i, q in enumerate(questions, 1):
-        result_lines.append(t("tools.batch_qa", question=q.get('question', ''), answer=answers[i - 1]))
+        result_lines.append(
+            t("tools.batch_qa", question=q.get("question", ""), answer=answers[i - 1])
+        )
     return "\n\n".join(result_lines)
 
 
@@ -1219,6 +1237,20 @@ Args:
 
 def update_agent_tool_desc(yolo: bool) -> None:
     agent.__doc__ = _AGENT_DESC_YOLO if yolo else _AGENT_DESC_NORMAL
+
+
+def _collect_memory_notes(messages: list) -> list[str]:
+    """从主会话消息列表收集 CHCODE.md 变更提醒（时间序）。
+
+    note 挂在主会话用户消息的 memory_note metadata 上、随历史落库，
+    历史被摘要替换后自然消失，无需手动清理 —— 手动 /compress 会同步
+    重读冻结块；自动摘要只替换历史，冻结块保持字节稳定不重读。
+    """
+    return [
+        m.additional_kwargs["memory_note"]
+        for m in messages
+        if getattr(m, "additional_kwargs", {}).get("memory_note")
+    ]
 
 
 @tool
@@ -1259,6 +1291,11 @@ async def agent(
     working_directory = runtime.context.working_directory
     skill_loader = runtime.context.skill_loader
 
+    # 主会话的 CHCODE.md 变更提醒随调用显式传入子代理（runner 不读会话状态）
+    memory_notes = _collect_memory_notes(
+        (getattr(runtime, "state", None) or {}).get("messages", [])
+    )
+
     with _display._subagent_count_lock:
         _display._subagent_count += 1
         if _display._subagent_count >= 2:
@@ -1281,7 +1318,10 @@ async def agent(
     await asyncio.sleep(0)
     if not _display._subagent_parallel and _display._subagent_count == 1:
         _display.console.print(
-            Text(f"\n[agent] {subagent_type}: {description or prompt[:60]}", style="bold cyan")
+            Text(
+                f"\n[agent] {subagent_type}: {description or prompt[:60]}",
+                style="bold cyan",
+            )
         )
 
     try:
@@ -1294,6 +1334,7 @@ async def agent(
             timeout_seconds=timeout_seconds,
             description=description,
             yolo=runtime.context.yolo,
+            memory_notes=memory_notes,
         )
 
         with _display._agent_progress_lock:
@@ -1445,6 +1486,8 @@ Args:
 # ---------------------------------------------------------------------------
 
 _VISION_SUPPORTED_EXTS = _ALL_MEDIA_EXTS
+
+
 @tool
 async def vision(
     image_path: str,
@@ -1489,7 +1532,9 @@ async def vision(
 
         b64_image, mime_type = await asyncio.to_thread(encode_media_as_base64, path)
     except Exception as e:
-        return f"vision:\n[FAILED] Failed to read {'video' if is_video else 'image'}: {e}"
+        return (
+            f"vision:\n[FAILED] Failed to read {'video' if is_video else 'image'}: {e}"
+        )
 
     # 获取视觉模型配置 + 构建消息 + 调用模型
     from langchain_core.messages import HumanMessage
@@ -1512,9 +1557,7 @@ async def vision(
             "type": "image_url",
             "image_url": {"url": media_url},
         }
-    messages = [
-        HumanMessage(content=[media_content, {"type": "text", "text": prompt}])
-    ]
+    messages = [HumanMessage(content=[media_content, {"type": "text", "text": prompt}])]
 
     models_to_try = []
     default_model = get_vision_default_model()
@@ -1528,6 +1571,7 @@ async def vision(
     unique_models: list[dict] = []
     # 按 region_key 去重，使同名国内/国际版视觉模型都能保留（均会被尝试）
     from chcode.utils.json_utils import region_key
+
     for m in models_to_try:
         key = region_key(m)
         if key and key not in seen:
@@ -1561,6 +1605,7 @@ async def vision(
                 llm_kwargs["top_p"] = model_config["top_p"]
 
             from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
+
             llm = EnhancedChatOpenAI(**llm_kwargs)
             result = await llm.ainvoke(messages, config={"callbacks": []})
             content = result.content
@@ -1578,8 +1623,11 @@ async def vision(
 
 
 # Backward-compatible aliases
-async def _checkbox_with_other_async(question: str, options: list[str]) -> list[str] | None:
+async def _checkbox_with_other_async(
+    question: str, options: list[str]
+) -> list[str] | None:
     return await _interactive_list_async(question, options, allow_multiple=True)
+
 
 async def _select_with_other_async(question: str, options: list[str]) -> str | None:
     return await _interactive_list_async(question, options, allow_multiple=False)

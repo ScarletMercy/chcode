@@ -115,7 +115,9 @@ class GitManager:
             self._run(["config", "--local", "user.name", "chcode"])
             self._run(["config", "--local", "user.email", "chcode@local"])
             self._run(["config", "--local", "core.autocrlf", "false"])
-            self._run(["config", "--local", "--unset", "core.worktree"])  # 键不存在 rc=5，silent 吞掉
+            self._run(
+                ["config", "--local", "--unset", "core.worktree"]
+            )  # 键不存在 rc=5，silent 吞掉
             self._ensure_exclude()
             self._clean_hooks()
         except (OSError, RuntimeError) as e:
@@ -169,7 +171,10 @@ class GitManager:
     def _ensure_exclude(self) -> None:
         """add 前补写 info/exclude：丢失则 git 会把 cp-repo 自身暂存进历史，rollback 时 reset --hard 删 git-dir。失败抛 OSError 由调用方 except 兜底（不在此静默，否则 add 裸奔）"""
         exclude_file = self.cp_repo_dir / "info" / "exclude"
-        if not exclude_file.exists() or exclude_file.read_text(encoding="utf-8") != self.SHADOW_EXCLUDE:
+        if (
+            not exclude_file.exists()
+            or exclude_file.read_text(encoding="utf-8") != self.SHADOW_EXCLUDE
+        ):
             exclude_file.parent.mkdir(parents=True, exist_ok=True)
             exclude_file.write_text(self.SHADOW_EXCLUDE, encoding="utf-8")
 
@@ -198,21 +203,27 @@ class GitManager:
             self._ensure_exclude()
             add_result = self._run(["add"] + files)
             if add_result.returncode != 0:
-                render_warning(t("chat.git.checkpoint_failed", error=add_result.stderr.strip()))
+                render_warning(
+                    t("chat.git.checkpoint_failed", error=add_result.stderr.strip())
+                )
                 return False
             # diff --cached --quiet: 0=无差异, 1=有差异, 其他=git 出错
             diff_result = self._run(["diff", "--cached", "--quiet"])
             if diff_result.returncode == 0:
                 return True
             if diff_result.returncode != 1:
-                render_warning(t("chat.git.checkpoint_failed", error=diff_result.stderr.strip()))
+                render_warning(
+                    t("chat.git.checkpoint_failed", error=diff_result.stderr.strip())
+                )
                 return False
             # HEAD 必存在（init_shadow 已建立），故不校验 returncode
             pre_head = self._run(["rev-parse", "HEAD"]).stdout.strip()
             existing: dict = {}
             if self.checkpoints_file.exists():
                 try:
-                    existing = json.loads(self.checkpoints_file.read_text(encoding="utf-8"))
+                    existing = json.loads(
+                        self.checkpoints_file.read_text(encoding="utf-8")
+                    )
                 except json.JSONDecodeError:
                     render_warning(t("chat.git.checkpoint_json_corrupt"))
                     return False
@@ -221,12 +232,16 @@ class GitManager:
                     return False
             commit_result = self._run(["commit", "-m", message_ids])
             if commit_result.returncode != 0:
-                render_warning(t("chat.git.checkpoint_failed", error=commit_result.stderr.strip()))
+                render_warning(
+                    t("chat.git.checkpoint_failed", error=commit_result.stderr.strip())
+                )
                 return False
             committed = True
             hash_result = self._run(["rev-parse", "HEAD"])
             if hash_result.returncode != 0:
-                render_warning(t("chat.git.checkpoint_failed", error=hash_result.stderr.strip()))
+                render_warning(
+                    t("chat.git.checkpoint_failed", error=hash_result.stderr.strip())
+                )
                 self._undo_commit(pre_head)
                 return False
             commit_id = hash_result.stdout.strip()

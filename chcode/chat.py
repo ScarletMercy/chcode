@@ -76,12 +76,11 @@ from chcode.utils.skill_manager import manage_skills
 from chcode.utils.git_checker import check_git_availability
 from chcode.utils.git_manager import GitManager
 from chcode.utils.project_memory import (
+    begin_memory_session,
     check_memory_changed,
     diff_memory_lines,
-    ensure_project_memory,
     preview_memory_entry,
-    refresh_memory_state,
-    reset_memory_cache,
+    reset_memory_session,
 )
 
 
@@ -129,7 +128,9 @@ class SlashCommandCompleter(Completer):
                         cmd,  # 返回完整的命令
                         start_position=-len(partial),  # 返回前清空输入框已有输入
                         display=cmd,  # 下拉框显示的命令名
-                        display_meta=t(desc_key),  # 下拉框显示的命令名的描述（按当前语言翻译）
+                        display_meta=t(
+                            desc_key
+                        ),  # 下拉框显示的命令名的描述（按当前语言翻译）
                     )
 
 
@@ -203,7 +204,9 @@ def _group_messages_by_turn(messages: list) -> list[list]:
         if msg.type == "human":  # 下一组消息的第一个消息：HumanMessage
             if current_group:  # 当前消息组
                 groups.append(current_group)
-            current_group = [msg]  # 把下一组消息的第一个消息：HumanMessage，放入新的消息组
+            current_group = [
+                msg
+            ]  # 把下一组消息的第一个消息：HumanMessage，放入新的消息组
         else:
             current_group.append(msg)  # 把下一组消息的其余消息也放入新的消息组
 
@@ -247,7 +250,9 @@ def _get_group_display(group: list) -> str:
     """获取消息组的显示文本（以 HumanMessage 内容为代表）"""
     for msg in group:  # 遍历消息组
         if msg.type == "human":  # 遇到HumanMessage的话
-            text_content = get_text_content(msg.content)  # 获取消息文本内容前60字当场会话名显示
+            text_content = get_text_content(
+                msg.content
+            )  # 获取消息文本内容前60字当场会话名显示
             content = text_content[:60].replace("\n", " ")
             if len(text_content) > 60:
                 content += "..."
@@ -256,7 +261,9 @@ def _get_group_display(group: list) -> str:
 
 
 # 收集即将被压缩的消息的消息id组
-def _collect_ids_from_group(group_index: int, groups: list) -> tuple[list[str], list[str]]:
+def _collect_ids_from_group(
+    group_index: int, groups: list
+) -> tuple[list[str], list[str]]:
     all_ids = [m.id for group in groups for m in group]
     no_need_ids = []
     for i, group in enumerate(groups):
@@ -273,12 +280,13 @@ class _LimitedFileHistory(FileHistory):
         super().store_string(string)
         strings = list(self.load_history_strings())
         if len(strings) > self.MAX_ENTRIES:
-            keep = strings[:self.MAX_ENTRIES]
+            keep = strings[: self.MAX_ENTRIES]
             self._loaded_strings = keep
             self._rewrite(keep)
 
     def _rewrite(self, keep):
         import datetime as _dt
+
         Path(self.filename).parent.mkdir(exist_ok=True)
         with open(self.filename, "wb") as f:
             for s in reversed(keep):
@@ -304,8 +312,12 @@ class ChatREPL:
         self._processing = False
         self._prompt_session = None  # 初始化 prompt-toolkit 会话（用于命令自动补全）
         self._edit_buffer: str | None = None  # 编辑缓冲区（用于 /edit 命令）
-        self._interrupt_buffer: str | None = None  # 中断恢复缓冲区（中断时将内容填回输入框，不进入编辑模式）
-        self._skill_loader: SkillLoader | None = None  # SkillLoader 复用，避免每条消息重建
+        self._interrupt_buffer: str | None = (
+            None  # 中断恢复缓冲区（中断时将内容填回输入框，不进入编辑模式）
+        )
+        self._skill_loader: SkillLoader | None = (
+            None  # SkillLoader 复用，避免每条消息重建
+        )
         self._context_text: str = ""  # 上下文用量缓存
         # LangSmith 配置
         self.langsmith_tracing = False
@@ -351,8 +363,12 @@ class ChatREPL:
         """重建 agent（可选重建 session/checkpointer）"""
         if rebuild_session:
             await self.close_checkpointer()  # 关闭当前会话数据库连接
-            self.session_mgr: SessionManager = SessionManager(self.workplace_path)  # 创建会话管理器
-            db_path = self.session_mgr.sessions_dir / "checkpointer.db"  # 创建新的会话数据库（一般是进入新工作目录才这样）
+            self.session_mgr: SessionManager = SessionManager(
+                self.workplace_path
+            )  # 创建会话管理器
+            db_path = (
+                self.session_mgr.sessions_dir / "checkpointer.db"
+            )  # 创建新的会话数据库（一般是进入新工作目录才这样）
             self.checkpointer = await create_checkpointer(db_path)  # 创建数据库连接
         self.agent = await asyncio.to_thread(  # 异步新线程构建agent
             build_agent,
@@ -376,9 +392,10 @@ class ChatREPL:
 
         self._ensure_chat_dir(self.workplace_path)  # 确保当前项目配置文件存在
 
-        # 确保 CHCODE.md 项目记忆存在（首次创建 / CLAUDE.md 迁移）
+        # 项目记忆会话起点：确保文件存在（首次创建 / CLAUDE.md 迁移），
+        # 清空冻结缓存并建立变更检测基线
         memory_status = await asyncio.to_thread(
-            ensure_project_memory, self.workplace_path
+            begin_memory_session, self.workplace_path
         )
         if memory_status == "created":
             console.print(
@@ -388,13 +405,14 @@ class ChatREPL:
             console.print(
                 f"[dim]{t('chat.memory.migrated', path=self.workplace_path / 'CHCODE.md')}[/dim]"
             )
-        # 会话起点：清空冻结缓存并建立变更检测基线
-        reset_memory_cache()
-        refresh_memory_state(self.workplace_path)
 
-        self.session_mgr: SessionManager = SessionManager(self.workplace_path)  # 初始化历史会话管理器
+        self.session_mgr: SessionManager = SessionManager(
+            self.workplace_path
+        )  # 初始化历史会话管理器
 
-        self.model_config = get_default_model_config() or {}  # 尝试从model.json配置文件中获取默认模型配置，如果获取失败则返回空字典
+        self.model_config = (
+            get_default_model_config() or {}
+        )  # 尝试从model.json配置文件中获取默认模型配置，如果获取失败则返回空字典
         if not self.model_config:  # 如果默认模型配置不存在
             config = await first_run_configure()  # 进行初始化引导
             if config is None:  # 如果配置依旧为空
@@ -403,6 +421,7 @@ class ChatREPL:
 
         # 从环境变量恢复 LangSmith 配置
         from chcode.config import load_langsmith_config
+
         langsmith_cfg = load_langsmith_config()
         if langsmith_cfg["api_key"] or langsmith_cfg["tracing"]:
             self.langsmith_tracing = langsmith_cfg["tracing"]
@@ -516,6 +535,7 @@ class ChatREPL:
             def _bottom_toolbar():
                 nonlocal _last_width, _last_width_time
                 import time as _time
+
                 now = _time.monotonic()
                 if now - _last_width_time > 1.0:
                     _last_width = shutil.get_terminal_size().columns
@@ -529,7 +549,8 @@ class ChatREPL:
                     styled = _rich_to_html(self._context_text)
                     parts.append(styled)
                 parts.append(
-                    t("chat.status.common_mode") if not self.yolo
+                    t("chat.status.common_mode")
+                    if not self.yolo
                     else f"<ansired>{t('chat.status.yolo_mode')}</ansired>"
                 )
                 if self.git and self.git_manager:
@@ -608,8 +629,12 @@ class ChatREPL:
             else:
                 default_text = ""
 
-            width = shutil.get_terminal_size().columns  # 获取终端大小的列数，确保分隔线始终覆盖整个宽度
-            sep = "\u2500" * width  # 即为 width个 ─ , 效果：───────────────（这个是输入框的顶栏，由于prompt_toolkit不支持顶栏，所以需要自己构造）
+            width = (
+                shutil.get_terminal_size().columns
+            )  # 获取终端大小的列数，确保分隔线始终覆盖整个宽度
+            sep = (
+                "\u2500" * width
+            )  # 即为 width个 ─ , 效果：───────────────（这个是输入框的顶栏，由于prompt_toolkit不支持顶栏，所以需要自己构造）
             prompt_text = f"{sep}\n > "  # 构造顶栏和 > 提示符
 
             # 使用 prompt-toolkit 获取输入（支持命令自动补全）
@@ -625,7 +650,9 @@ class ChatREPL:
 
     async def _handle_command(self, cmd: str) -> None:
         """处理斜杠命令"""
-        parts = cmd.strip().split(maxsplit=1)  # 通过空格将命令分割放入列表，最大分割一次
+        parts = cmd.strip().split(
+            maxsplit=1
+        )  # 通过空格将命令分割放入列表，最大分割一次
         command = parts[0].lower()  # 第一个是命令
         arg = parts[1] if len(parts) > 1 else ""  # 如果有第二个则为参数
 
@@ -660,8 +687,7 @@ class ChatREPL:
     async def _cmd_new(self, _arg: str) -> None:
         reset_budget_state()
         self.session_mgr.new_session()
-        reset_memory_cache()  # 新会话：记忆冻结块失效重读
-        refresh_memory_state(self.workplace_path)
+        reset_memory_session(self.workplace_path)  # 新会话：记忆冻结块失效重读
         render_success(t("chat.new_session_started"))
 
     # 模型配置
@@ -696,19 +722,29 @@ class ChatREPL:
         if config:
             self.model_config = config
             from chcode.agent_setup import update_summarization_model
+
             # 同步更新摘要模型
             update_summarization_model(config)
 
     def _sync_langsmith_env(self) -> None:
         from chcode.config import _apply_langsmith_env
-        _apply_langsmith_env(self.langsmith_tracing, self.langsmith_project, self.langsmith_api_key)
+
+        _apply_langsmith_env(
+            self.langsmith_tracing, self.langsmith_project, self.langsmith_api_key
+        )
 
     async def _cmd_langsmith(self, _arg: str) -> None:
         # 显示当前状态
-        state = t("chat.langsmith.state_on") if self.langsmith_tracing else t("chat.langsmith.state_off")
+        state = (
+            t("chat.langsmith.state_on")
+            if self.langsmith_tracing
+            else t("chat.langsmith.state_off")
+        )
         console.print(f"[bold]{t('chat.langsmith.tracing_line', state=state)}[/bold]")
         if self.langsmith_project:
-            console.print(t("chat.langsmith.project_line", project=self.langsmith_project))
+            console.print(
+                t("chat.langsmith.project_line", project=self.langsmith_project)
+            )
         if self.langsmith_api_key:
             masked = mask_api_key(self.langsmith_api_key)
             console.print(f"  Key:  {masked}")
@@ -727,17 +763,24 @@ class ChatREPL:
             case action if action == open_label:
                 import webbrowser
 
-                webbrowser.open("https://smith.langchain.com")  # 如果是windows系统且有浏览器，会直接打开项目主页。如果不是则无效
+                webbrowser.open(
+                    "https://smith.langchain.com"
+                )  # 如果是windows系统且有浏览器，会直接打开项目主页。如果不是则无效
                 return
             case action if action == enable_label:
                 if not self.langsmith_api_key:
-                    console.print(f"[yellow]{t('chat.langsmith.set_key_first')}[/yellow]")
+                    console.print(
+                        f"[yellow]{t('chat.langsmith.set_key_first')}[/yellow]"
+                    )
                     return  # 没有设置LangSmith API Key会提醒配置，然后直接退出
                 self.langsmith_tracing = True
             case action if action == disable_label:
                 self.langsmith_tracing = False
             case action if action == rename_label:
-                new_name = await text(t("chat.langsmith.input_project"), default=self.langsmith_project or "chcode")
+                new_name = await text(
+                    t("chat.langsmith.input_project"),
+                    default=self.langsmith_project or "chcode",
+                )
                 if new_name is None:
                     return
                 self.langsmith_project = new_name.strip() or "chcode"
@@ -757,7 +800,9 @@ class ChatREPL:
         from chcode.utils.multimodal import is_multimodal_model
 
         current_model = (self.model_config or {}).get("model", "")  # 安全获取模型配置
-        native_vision = is_multimodal_model(current_model)  # 判断当前模型是否是视觉模型，如果是视觉模型会禁用视觉工具
+        native_vision = is_multimodal_model(
+            current_model
+        )  # 判断当前模型是否是视觉模型，如果是视觉模型会禁用视觉工具
 
         console.print(f"[bold]{t('chat.tools.title')}[/bold]")
         console.print()
@@ -768,11 +813,19 @@ class ChatREPL:
             # 优先取当前语言的翻译描述，缺失时回退到英文 docstring 首行
             _desc_key = f"tool_desc.{tool.name}"
             _translated = t(_desc_key)
-            desc = _translated if _translated != _desc_key else (tool.description or "").split("\n")[0]
+            desc = (
+                _translated
+                if _translated != _desc_key
+                else (tool.description or "").split("\n")[0]
+            )
             is_disabled = tool.name == "vision" and native_vision
-            style = "dim" if is_disabled else "cyan"  # 样式；dim：灰色（禁用时），cyan：青色（未禁用时）
+            style = (
+                "dim" if is_disabled else "cyan"
+            )  # 样式；dim：灰色（禁用时），cyan：青色（未禁用时）
             suffix = t("chat.tools.disabled") if is_disabled else ""  # 后缀
-            console.print(f"  [{style}]{tool.name:<16}[/{style}] {desc}{suffix}")  # <：左对齐，16：补足空格至16个单位长度
+            console.print(
+                f"  [{style}]{tool.name:<16}[/{style}] {desc}{suffix}"
+            )  # <：左对齐，16：补足空格至16个单位长度
         console.print()
 
     async def _cmd_skill(self, _arg: str) -> None:
@@ -783,55 +836,82 @@ class ChatREPL:
         # ------------------- 1.选择会话--------------------------------------
         if not self.session_mgr or not self.checkpointer or not self.agent:
             return
-        sessions = await self.session_mgr.list_sessions(self.checkpointer)  # 通过检查点从数据库（sqlite）中获取所有会话（实际为会话线程id）
+        sessions = await self.session_mgr.list_sessions(
+            self.checkpointer
+        )  # 通过检查点从数据库（sqlite）中获取所有会话（实际为会话线程id）
         if not sessions:
             render_warning(t("chat.history.none"))
             return
         # ；把自动命名的会话名也缓存（可选）
         sessions = sessions[-50:]  # 取倒数50个会话并倒序排序（从新到旧）
-        display_names = await self.session_mgr.get_display_names(sessions,
-                                                                 self.agent)  # 渲染所有会话的名称，返回一个 {tid: display_name} 的字典
+        display_names = await self.session_mgr.get_display_names(
+            sessions, self.agent
+        )  # 渲染所有会话的名称，返回一个 {tid: display_name} 的字典
         label_to_tid: dict[str, str] = {}  # 初始化 <标签：会话线程id> 键值字典
         labels: list[str] = []  # 初始化标签列表（展示给用户的会话名）
         for tid in sessions:  # 遍历会话线程id
-            name = display_names.get(tid, tid)  # 通过 会话线程id 获取渲染的 会话名 ，如果没有则直接用 线程id 代替 空的 会话名
-            label = name if name == tid else f"{name}  ({tid})"  # 拼接 会话名 和 线程id 成 新的会话名，确保会话名 绝对的 唯一性
+            name = display_names.get(
+                tid, tid
+            )  # 通过 会话线程id 获取渲染的 会话名 ，如果没有则直接用 线程id 代替 空的 会话名
+            label = (
+                name if name == tid else f"{name}  ({tid})"
+            )  # 拼接 会话名 和 线程id 成 新的会话名，确保会话名 绝对的 唯一性
             label_to_tid[label] = tid  # 构建 <新的会话名：会话线程id>字典
             labels.append(label)  # 构建 会话名 列表（展示给用户）
         back_label = t("common.back")
         labels.append(back_label)  # 在 会话名 列表最后 加上 返回 选项
 
-        action = await select(t("chat.history.select"), labels)  # 获取用户 选择的 会话名
+        action = await select(
+            t("chat.history.select"), labels
+        )  # 获取用户 选择的 会话名
         if action is None or action == back_label:  # 如果是返回直接退出
             return
 
-        selected_tid = label_to_tid[action]  # 根据 用户选择 的会话名 在 之前构建好的<会话名：会话线程id>字典中 获取 会话名 对应的 会话线程id
+        selected_tid = label_to_tid[
+            action
+        ]  # 根据 用户选择 的会话名 在 之前构建好的<会话名：会话线程id>字典中 获取 会话名 对应的 会话线程id
 
         # ------------------- 2.操作选择的会话--------------------------------------
         load_label = t("chat.history.load")
         rename_label = t("chat.history.rename")
         delete_label = t("chat.history.delete")
-        match await select(t("chat.history.operation"), [load_label, rename_label, delete_label, back_label]):  # 可以对会话进行 这4个操作
+        match await select(
+            t("chat.history.operation"),
+            [load_label, rename_label, delete_label, back_label],
+        ):  # 可以对会话进行 这4个操作
             case action if action == load_label:
-                self.session_mgr.set_thread(selected_tid)  # 设置会话管理器 的 线程id 属性为 选中的 会话 对应的 线程id
-                await self._load_conversation()  # 加载会话历史消息 （通过 线程id 从 agent 的 state 中取）
+                self.session_mgr.set_thread(
+                    selected_tid
+                )  # 设置会话管理器 的 线程id 属性为 选中的 会话 对应的 线程id
+                await (
+                    self._load_conversation()
+                )  # 加载会话历史消息 （通过 线程id 从 agent 的 state 中取）
             case action if action == rename_label:
                 try:
-                    cur = self.session_mgr._load_names().get(selected_tid,
-                                                             "")  # 尝试获取 已经可能被 更改过的 会话名  | names.json 通过 _save_names 保存。其在两个地方被调用：1. rename_session— 用户重命名会话时写入。  2. delete_session— 删除会话时从 names 里移除对应条目再写回
+                    cur = self.session_mgr._load_names().get(
+                        selected_tid, ""
+                    )  # 尝试获取 已经可能被 更改过的 会话名  | names.json 通过 _save_names 保存。其在两个地方被调用：1. rename_session— 用户重命名会话时写入。  2. delete_session— 删除会话时从 names 里移除对应条目再写回
                 except Exception:  # 获取失败（说明当前会话尚未被改过名）
                     cur = ""
                 new_name = await text(t("chat.history.rename_prompt"), default=cur)
                 if new_name is not None:
-                    self.session_mgr.rename_session(selected_tid, new_name)  # 将 新会话名 和 对应的 线程id 持久化到 name.json中
+                    self.session_mgr.rename_session(
+                        selected_tid, new_name
+                    )  # 将 新会话名 和 对应的 线程id 持久化到 name.json中
                     render_success(t("chat.history.renamed"))
             case action if action == delete_label:
-                ok = await confirm(t("chat.history.delete_confirm", tid=selected_tid), default=False)
+                ok = await confirm(
+                    t("chat.history.delete_confirm", tid=selected_tid), default=False
+                )
                 if ok:
-                    await self.session_mgr.delete_session(selected_tid, self.checkpointer)  # 从数据库中删除 会话id 对应的 会话
+                    await self.session_mgr.delete_session(
+                        selected_tid, self.checkpointer
+                    )  # 从数据库中删除 会话id 对应的 会话
                     render_success(t("chat.history.deleted"))
                     if selected_tid == self.session_mgr.thread_id:
-                        await self._cmd_new("")  # 如删除的是 当前会话 就 原地开启 新会话
+                        await self._cmd_new(
+                            ""
+                        )  # 如删除的是 当前会话 就 原地开启 新会话
             case _:  # 返回 或 Ctrl C 都回到上一步（重新加载历史会话）
                 await self._cmd_history(_arg)
 
@@ -843,13 +923,16 @@ class ChatREPL:
         if not await confirm(t("chat.compress.confirm"), default=True):
             return  # 如果拒绝直接退出
 
-        reset_memory_cache()  # 压缩重建上下文：记忆冻结块失效重读
-        refresh_memory_state(self.workplace_path)
+        reset_memory_session(self.workplace_path)  # 压缩重建上下文：记忆冻结块失效重读
 
         render_info(t("chat.compress.working"))
         try:
-            state = await self.agent.aget_state(self.session_mgr.config)  # 通过 config（会话线程id）取出 state （其中的 messages）
-            messages: list[BaseMessage] = state.values["messages"]  # 从state取出 消息列表
+            state = await self.agent.aget_state(
+                self.session_mgr.config
+            )  # 通过 config（会话线程id）取出 state （其中的 messages）
+            messages: list[BaseMessage] = state.values[
+                "messages"
+            ]  # 从state取出 消息列表
 
             # 分离历史消息和最近消息
             recent_messages = []  # 最近2组消息 （保留的消息）
@@ -865,17 +948,26 @@ class ChatREPL:
 
             pre_messages = []  # 最后2组消息之前的消息（要被压缩的消息）
             for msg in messages:
-                if msg.id not in recent_message_ids:  # 只要除 最近消息（最后两组消息） 之外的消息
-                    msg.additional_kwargs["composed"] = True  # 给需要被压缩的消息加上 压缩标记，由langchain中间件 识别 为已压缩过的消息，显示给用户，但不传给模型
+                if (
+                    msg.id not in recent_message_ids
+                ):  # 只要除 最近消息（最后两组消息） 之外的消息
+                    msg.additional_kwargs["composed"] = (
+                        True  # 给需要被压缩的消息加上 压缩标记，由langchain中间件 识别 为已压缩过的消息，显示给用户，但不传给模型
+                    )
                     # 压缩时去掉 base64 图片/视频，避免 payload 过大导致 API 返回空 choices
-                    if isinstance(msg.content, list):  # 只有列表形式才可能包含图片/视频块
+                    if isinstance(
+                        msg.content, list
+                    ):  # 只有列表形式才可能包含图片/视频块
                         clean_blocks = [
-                            b for b in msg.content
+                            b
+                            for b in msg.content
                             if not isinstance(b, dict)
-                               or b.get("type") not in ("image_url", "video_url")
+                            or b.get("type") not in ("image_url", "video_url")
                         ]  # 提取 非字典 或 是字典 但类型不是 image-url和video-url 的内容
                         if clean_blocks != msg.content:
-                            msg = msg.model_copy(update={"content": clean_blocks})  # 重新构造消息对象，已剔除 图片和视频 2进制数据
+                            msg = msg.model_copy(
+                                update={"content": clean_blocks}
+                            )  # 重新构造消息对象，已剔除 图片和视频 2进制数据
                     pre_messages.append(msg)
 
             from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
@@ -913,8 +1005,12 @@ class ChatREPL:
 ---
             """
             human_msg = HumanMessage(
-                content=f'{compact_prompt}，严格按以下JSON格式输出，不要使用markdown代码块：' + '\n{"summary": "总结内容"}',
-                additional_kwargs={"hide": True, "composed": True},  # 隐藏显示，并且不传给agent
+                content=f"{compact_prompt}，严格按以下JSON格式输出，不要使用markdown代码块："
+                + '\n{"summary": "总结内容"}',
+                additional_kwargs={
+                    "hide": True,
+                    "composed": True,
+                },  # 隐藏显示，并且不传给agent
             )
 
             try:
@@ -923,10 +1019,16 @@ class ChatREPL:
                 )  # 独立模型调用 压缩消息
 
                 # -----------------------保证结构化输出--------------------------------------------------
-                content = raw_resp.content.strip()  # 去除 压缩后的内容 （模型回复），并用 strip 清理空格
+                content = (
+                    raw_resp.content.strip()
+                )  # 去除 压缩后的内容 （模型回复），并用 strip 清理空格
                 ##-----------------------第一层处理（去除 markdown 代码块包裹）--------------------------------
-                if content.startswith("```"):  # 模型可能以markdown的格式输出结构化json输出,所以需要清理 （```{}```）
-                    content = re.sub(r"^```(?:json)?\s*\n?", "", content)  # 去掉开头的“```”或“```json”
+                if content.startswith(
+                    "```"
+                ):  # 模型可能以markdown的格式输出结构化json输出,所以需要清理 （```{}```）
+                    content = re.sub(
+                        r"^```(?:json)?\s*\n?", "", content
+                    )  # 去掉开头的“```”或“```json”
                     content = re.sub(r"\n?```\s*$", "", content)  # 去掉末尾的“```”
                 ##-----------------------第二层处理 （提取包含 "summary" 的 JSON 对象（模型可能在 JSON 前输出思考内容））-------------------------------
                 # 针对"简单情况"——LLM 在 JSON 前说了一堆废话（如"好的，压缩后的内容如下："）——用非贪婪匹配从文本中抠出第一个包含 "summary" 键的 扁平 JSON 对象。
@@ -948,14 +1050,14 @@ class ChatREPL:
                     depth = 0
                     start = -1
                     for i, ch in enumerate(content):
-                        if ch == '{':
+                        if ch == "{":
                             if depth == 0:
                                 start = i  # 如果不是嵌套 记录 “{” 位置
                             depth += 1
-                        elif ch == '}':
+                        elif ch == "}":
                             depth -= 1  # 闭合一个“{}”，闭合标志：depth==0
                             if depth == 0 and start >= 0:  # 如果闭合至少一个非嵌套{}，
-                                candidate = content[start:i + 1]  # 取出 {"xxx":"xxx"}
+                                candidate = content[start : i + 1]  # 取出 {"xxx":"xxx"}
                                 if '"summary"' in candidate:
                                     content = candidate  # 如果 summary 在 {"xxx":"xxx"} ，则代表匹配成功，直接取用
                                     break
@@ -964,7 +1066,9 @@ class ChatREPL:
                 # -----------------------结构化输出保证工作自此 结束-------------------------------------
 
                 ai_content = data.get("summary", "")
-                if isinstance(ai_content, dict):  # summary 的值是 字典 也接受，把它转成json字符串
+                if isinstance(
+                    ai_content, dict
+                ):  # summary 的值是 字典 也接受，把它转成json字符串
                     ai_content = json.dumps(ai_content, ensure_ascii=False)
                 if not ai_content:  # summary值 为空 说明 模型输出错误，压缩失败
                     ai_content = t("chat.compress.failed_no_summary")
@@ -998,13 +1102,13 @@ class ChatREPL:
             render_error(t("chat.compress.error", error=e))
 
     async def _cmd_git(self, _arg: str) -> None:
-        if not self.git_manager: # 如果尚未初始化 git-manager，就先检查git是否可用
+        if not self.git_manager:  # 如果尚未初始化 git-manager，就先检查git是否可用
             is_available, status, version = await asyncio.to_thread(
                 check_git_availability
             )
             if is_available:
                 render_success(f"Git {version}")
-                await self._init_git() # 初始化 git-manager
+                await self._init_git()  # 初始化 git-manager
             else:
                 render_error(t("chat.git.unavailable", status=status))
                 return
@@ -1016,7 +1120,10 @@ class ChatREPL:
 
     async def _cmd_vision(self, _arg: str) -> None:  # pragma: no cover
         """视觉模型配置命令"""  # pragma: no cover
-        from chcode.vision_config import configure_vision_interactive  # pragma: no cover
+        from chcode.vision_config import (
+            configure_vision_interactive,
+        )  # pragma: no cover
+
         await configure_vision_interactive()  # pragma: no cover
 
     # Tavily搜索配置
@@ -1024,19 +1131,21 @@ class ChatREPL:
         from chcode.config import load_tavily_api_key, save_tavily_api_key
         from chcode.utils.tools import update_tavily_api_key
 
-        current = load_tavily_api_key() # 加载当前tavily api key
+        current = load_tavily_api_key()  # 加载当前tavily api key
         masked = (
             mask_api_key(current)
             if current and len(current) > 10
             else (current or t("chat.search.unset"))
-        ) # mask api key
-        render_info(t("chat.search.current_key", key=masked)) # 显示mask后的api key
+        )  # mask api key
+        render_info(t("chat.search.current_key", key=masked))  # 显示mask后的api key
 
         # 变量化选项标签
         back_label = t("common.back")
         configure_label = t("chat.search.configure")
         clear_label = t("chat.search.clear")
-        action = await select(t("chat.search.operation"), [configure_label, clear_label, back_label])
+        action = await select(
+            t("chat.search.operation"), [configure_label, clear_label, back_label]
+        )
         if action is None or action == back_label:
             return
 
@@ -1049,7 +1158,7 @@ class ChatREPL:
         new_key = await text(t("chat.search.input_key"))
         if new_key:
             save_tavily_api_key(new_key)  # 持久化到配置文件
-            update_tavily_api_key(new_key) # 重建运行时全局 TavilyClient
+            update_tavily_api_key(new_key)  # 重建运行时全局 TavilyClient
             render_success(t("chat.search.saved"))
         else:
             render_warning(t("chat.search.cancelled"))
@@ -1065,14 +1174,14 @@ class ChatREPL:
         self.yolo = "Yolo" in action
         from chcode.agent_setup import update_hitl_config
 
-        update_hitl_config(self.yolo) # 更新 人在闭环 中间配置
+        update_hitl_config(self.yolo)  # 更新 人在闭环 中间配置
         mode_str = "Yolo" if self.yolo else "Common"
         render_success(t("chat.mode.switched", mode=mode_str))
 
     # 切换工作目录
     async def _cmd_workdir(self, _arg: str) -> None:
-        saved = load_workplace() # 加载上次工作目录路径
-        choices = [str(saved)] if saved else [] # 将其当做旧的工作目录选项
+        saved = load_workplace()  # 加载上次工作目录路径
+        choices = [str(saved)] if saved else []  # 将其当做旧的工作目录选项
 
         result = await select_or_custom(  # 选择上一次的工作目录或 输入新的 工作目录路径
             t("chat.workdir.select"),
@@ -1080,31 +1189,31 @@ class ChatREPL:
             custom_label=t("chat.workdir.custom"),
             custom_prompt=t("chat.workdir.custom_prompt"),
         )
-        if not result: # 不选择则直接退出此命令
+        if not result:  # 不选择则直接退出此命令
             return
 
-        new_path = Path(result) # 将选择的 工作目录路径 转化 成 Path对象
-        if not new_path.exists(): # 判断路径是否存在
+        new_path = Path(result)  # 将选择的 工作目录路径 转化 成 Path对象
+        if not new_path.exists():  # 判断路径是否存在
             render_error(t("chat.workdir.not_exist"))
             return
 
-        self.workplace_path = new_path # 将实例路径 切换到 新选择的路径
+        self.workplace_path = new_path  # 将实例路径 切换到 新选择的路径
         self._skill_loader = None  # 工作目录变了，失效Skill路径缓存
-        os.chdir(self.workplace_path) # cd <new-path>
-        save_workplace(self.workplace_path) # 缓存当前的新的工作目录路径，作为下次可快捷选择的路径
+        os.chdir(self.workplace_path)  # cd <new-path>
+        save_workplace(
+            self.workplace_path
+        )  # 缓存当前的新的工作目录路径，作为下次可快捷选择的路径
 
         # 重建子目录（skill和会话 等目录）
         self._ensure_chat_dir(self.workplace_path)
 
-        # 新目录同样确保 CHCODE.md 项目记忆存在
-        await asyncio.to_thread(ensure_project_memory, self.workplace_path)
-        reset_memory_cache()  # 切目录：记忆冻结块失效，重读新目录
-        refresh_memory_state(self.workplace_path)
+        # 新目录同样启动记忆会话：确保 CHCODE.md 存在、失效冻结块重读
+        await asyncio.to_thread(begin_memory_session, self.workplace_path)
 
         # 关闭旧 checkpointer（会话） 连接，重建会话和 agent
         await self._rebuild_agent(rebuild_session=True)
 
-        await self._init_git() # git init
+        await self._init_git()  # git init
         render_success(t("chat.workdir.current", path=self.workplace_path))
 
     # 打开项目github主页
@@ -1126,6 +1235,7 @@ class ChatREPL:
         en_label = "English"
         current = get_language()
         from questionary import Style
+
         _no_bg = Style([("highlighted", "noinherit"), ("selected", "noinherit")])
         action = await select(
             t("cmd.lang"),
@@ -1138,9 +1248,7 @@ class ChatREPL:
         new_lang = "zh" if action == zh_label else "en"
         set_language(new_lang)
         save_language(new_lang)
-        render_success(
-            t("lang.saved_zh") if new_lang == "zh" else t("lang.saved_en")
-        )
+        render_success(t("lang.saved_zh") if new_lang == "zh" else t("lang.saved_en"))
 
     async def _cmd_danger(self, _arg: str) -> None:
         from chcode.utils.shell.guard import (
@@ -1179,12 +1287,15 @@ class ChatREPL:
     async def _cmd_help(self, _arg: str) -> None:
         from rich.table import Table
 
-        table = Table(title=t("chat.help.title")) # 创建表格实例
-        table.add_column(t("chat.help.col_cmd"), style="cyan") # 添加命令列
-        table.add_column(t("chat.help.col_desc")) # 添加命令描述列
-        for cmd, desc_key in SLASH_COMMANDS.items(): # 添加 每个命令的 命令名 和 命令描述
+        table = Table(title=t("chat.help.title"))  # 创建表格实例
+        table.add_column(t("chat.help.col_cmd"), style="cyan")  # 添加命令列
+        table.add_column(t("chat.help.col_desc"))  # 添加命令描述列
+        for (
+            cmd,
+            desc_key,
+        ) in SLASH_COMMANDS.items():  # 添加 每个命令的 命令名 和 命令描述
             table.add_row(cmd, t(desc_key))
-        console.print(table) # 打印出来
+        console.print(table)  # 打印出来
 
     async def _cmd_quit(self, _arg: str) -> None:
         raise EOFError()
@@ -1193,18 +1304,26 @@ class ChatREPL:
 
     async def _cmd_messages(self, _arg: str) -> None:
         """管理历史消息：编辑、分叉、删除"""
-        if not self.agent or not self.session_mgr: # 检查agent实例和 会话管理器 是否存在
+        if (
+            not self.agent or not self.session_mgr
+        ):  # 检查agent实例和 会话管理器 是否存在
             render_error(t("chat.messages.no_agent"))
             return
 
-        state = await self.agent.aget_state(self.session_mgr.config) # 取出 agent 当前 state
-        messages: list[BaseMessage] = state.values.get("messages", []) # 从state中获取消息列表
+        state = await self.agent.aget_state(
+            self.session_mgr.config
+        )  # 取出 agent 当前 state
+        messages: list[BaseMessage] = state.values.get(
+            "messages", []
+        )  # 从state中获取消息列表
         # 跳过 hide 标记的元消息（如压缩生成的提示/摘要），不参与编辑/分叉/删除。
         # CHCODE.md 变更提醒挂的是用户消息的 memory_note metadata，不受此过滤影响
         messages = [m for m in messages if not m.additional_kwargs.get("hide")]
 
-        groups = _group_messages_by_turn(messages) # 按照 从某个HumanMessage到下一个HumanMessage的上一个消息为一组 来对消息进行分组
-        if not groups: # 消息列表中没有消息
+        groups = _group_messages_by_turn(
+            messages
+        )  # 按照 从某个HumanMessage到下一个HumanMessage的上一个消息为一组 来对消息进行分组
+        if not groups:  # 消息列表中没有消息
             render_warning(t("chat.messages.none"))
             return
 
@@ -1215,32 +1334,37 @@ class ChatREPL:
         back_label = t("common.back")
         while True:
             # 第一步：选择操作类型
-            action = await select(t("chat.messages.select_op"), [edit_label, fork_label, delete_label])
+            action = await select(
+                t("chat.messages.select_op"), [edit_label, fork_label, delete_label]
+            )
             if not action:
                 return
 
             # 构建选项列表（带返回选项）
             options = []
-            for idx, group in enumerate(groups): # 遍历消息分组
-                display = _get_group_display(group) # 获取消息组中第一个HumanMessage的前60个字符
-                options.append(f"[{idx + 1}] {display}") # [消息组索引] 第一条HumanMessage消息的前60个字符
+            for idx, group in enumerate(groups):  # 遍历消息分组
+                display = _get_group_display(
+                    group
+                )  # 获取消息组中第一个HumanMessage的前60个字符
+                options.append(
+                    f"[{idx + 1}] {display}"
+                )  # [消息组索引] 第一条HumanMessage消息的前60个字符
 
             if action == delete_label:
                 # 多选 消息组
-                chosen_list = await checkbox(
-                    t("chat.messages.select_delete"), options
-                )
+                chosen_list = await checkbox(t("chat.messages.select_delete"), options)
                 if not chosen_list:
                     continue  # 没有选择消息就回车 则 返回操作选择
 
                 ok = await confirm(
-                    t("chat.messages.delete_confirm", count=len(chosen_list)), default=False
-                ) # 是否确认删除
+                    t("chat.messages.delete_confirm", count=len(chosen_list)),
+                    default=False,
+                )  # 是否确认删除
                 if not ok:
                     continue
 
-                delete_ids = [] # 初始化 要被删除的 消息 的 消息id 的列表
-                for chosen in chosen_list: # 遍历消息组选项
+                delete_ids = []  # 初始化 要被删除的 消息 的 消息id 的列表
+                for chosen in chosen_list:  # 遍历消息组选项
                     try:
                         sel_idx = int(chosen.split("]")[0].replace("[", "")) - 1
                         if 0 <= sel_idx < len(groups):
@@ -1253,7 +1377,9 @@ class ChatREPL:
                     continue
 
                 await self._delete_messages(delete_ids)
-                render_success(t("chat.messages.deleted_groups", count=len(chosen_list)))
+                render_success(
+                    t("chat.messages.deleted_groups", count=len(chosen_list))
+                )
                 return
 
             # 编辑 / 分叉：单选一条消息组
@@ -1298,9 +1424,7 @@ class ChatREPL:
                 if not ok:
                     continue
 
-                no_need_ids, all_ids = _collect_ids_from_group(
-                    sel_idx, groups
-                )
+                no_need_ids, all_ids = _collect_ids_from_group(sel_idx, groups)
 
                 if self.git and self.git_manager:
                     try:
@@ -1336,9 +1460,7 @@ class ChatREPL:
                 if not ok:
                     continue
 
-                no_need_ids, all_ids = _collect_ids_from_group(
-                    sel_idx, groups
-                )
+                no_need_ids, all_ids = _collect_ids_from_group(sel_idx, groups)
 
                 saved = load_workplace()
                 choices = [str(saved)] if saved else []
@@ -1423,7 +1545,9 @@ class ChatREPL:
                 await self._load_conversation()
                 return
 
-    async def _cleanup_last_turn(self, append_msg: str | None = None) -> list[BaseMessage] | None:
+    async def _cleanup_last_turn(
+        self, append_msg: str | None = None
+    ) -> list[BaseMessage] | None:
         """查找最后一组消息：若无 AIMessage 则删除整组并返回该组，否则追加错误消息返回 None
 
         用于统一 _handle_agent_error 和 _handle_cancel 的共同逻辑：
@@ -1570,10 +1694,10 @@ class ChatREPL:
 
                 try:
                     async for m, i in self.agent.astream(
-                            input_data,
-                            self.session_mgr.config,
-                            stream_mode=["messages", "updates"],
-                            context=skill_agent_context,
+                        input_data,
+                        self.session_mgr.config,
+                        stream_mode=["messages", "updates"],
+                        context=skill_agent_context,
                     ):
                         if self._stop_requested:
                             raise asyncio.CancelledError()
@@ -1590,14 +1714,17 @@ class ChatREPL:
                                 # 工具执行（含 ask_user 的 questionary 等交互界面）发生在
                                 # ToolMessage 到达之前，此时 Live 可能仍开着，导致工具输出
                                 # 与 Live 残留帧重复。检测到即先落版并关 Live。
-                                if getattr(i[0], "tool_call_chunks", None) and ai_started:
+                                if (
+                                    getattr(i[0], "tool_call_chunks", None)
+                                    and ai_started
+                                ):
                                     render_ai_end()
                                     ai_started = False
                                 reasoning = additional_kwargs.get("reasoning")
                                 if reasoning:
                                     if (
-                                            not _display._subagent_parallel
-                                            and _display._subagent_count == 0
+                                        not _display._subagent_parallel
+                                        and _display._subagent_count == 0
                                     ):
                                         # reasoning 用裸 console.print 输出；若 Live 正在
                                         # 渲染 unstable 块，先固定该块，避免 reasoning
@@ -1636,12 +1763,19 @@ class ChatREPL:
                     # 需要切换到备用模型
                     fallback = get_fallback_model()
                     if fallback:
-                        console.print(f"[yellow]{t('chat.switching_fallback', model=fallback.get('model', 'unknown'))}[/yellow]")
+                        console.print(
+                            f"[yellow]{t('chat.switching_fallback', model=fallback.get('model', 'unknown'))}[/yellow]"
+                        )
                         self.model_config = fallback
                         advance_fallback()
                         # 持久化到 model.json，确保模型列表显示一致
                         import copy
-                        from chcode.config import load_model_json, save_model_json, region_key
+                        from chcode.config import (
+                            load_model_json,
+                            save_model_json,
+                            region_key,
+                        )
+
                         _data = copy.deepcopy(load_model_json())
                         _old_default = _data.get("default", {})
                         _old_key = region_key(_old_default)
@@ -1665,13 +1799,17 @@ class ChatREPL:
                                 input_data = _original_input_data
                             # 删除失败轮次已写入的 HumanMessage，避免重发时重复追加
                             await self._cleanup_last_turn()
-                            console.print(f"[green]{t('chat.switched_fallback_retry')}[/green]")
+                            console.print(
+                                f"[green]{t('chat.switched_fallback_retry')}[/green]"
+                            )
                             continue  # 用备用模型重试当前请求
                         except Exception as e:
                             render_error(t("chat.switch_failed", error=e))
                     else:
                         render_error(t("chat.no_more_fallback"))
-                        await self._handle_agent_error(ModelSwitchError("所有模型均失败"))
+                        await self._handle_agent_error(
+                            ModelSwitchError("所有模型均失败")
+                        )
                     break
                 except openai.APIError as e:
                     render_error(t("chat.agent_error", error=e))
@@ -1748,7 +1886,11 @@ class ChatREPL:
                     case "bash":
                         content = args.get("command", "")
                     case "write_file":
-                        content = t("hitl.write_file", path=args.get('file_path'), content=args.get('content', '')[:200])
+                        content = t(
+                            "hitl.write_file",
+                            path=args.get("file_path"),
+                            content=args.get("content", "")[:200],
+                        )
                     case "update_memory":
                         # 预演写入（不落盘），渲染红删绿增 diff（同 edit 工具审批）
                         content = None  # 已直接渲染，跳过通用渲染

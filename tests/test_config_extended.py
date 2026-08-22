@@ -42,7 +42,9 @@ class TestFirstRunConfigure:
             yield
 
     @pytest.mark.asyncio
-    async def test_with_detected_env_key_and_success(self, mock_config_dir, monkeypatch):
+    async def test_with_detected_env_key_and_success(
+        self, mock_config_dir, monkeypatch
+    ):
         """Test first run with detected env key and successful connection"""
         import chcode.config as mod
 
@@ -50,12 +52,12 @@ class TestFirstRunConfigure:
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test123")
 
         # Mock prompts
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock), patch(
-            "chcode.config.configure_langsmith", new_callable=AsyncMock
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
         ):
-
             mock_select.side_effect = [
                 "OpenAI (检测到 OPENAI_API_KEY)",  # Config choice
                 "gpt-4o",  # Model choice
@@ -72,20 +74,25 @@ class TestFirstRunConfigure:
             assert result["base_url"] == "https://api.openai.com/v1"
 
     @pytest.mark.asyncio
-    async def test_with_detected_env_key_connection_fails_user_aborts(self, mock_config_dir, monkeypatch):
+    async def test_with_detected_env_key_connection_fails_user_aborts(
+        self, mock_config_dir, monkeypatch
+    ):
         """Test first run with detected env key but connection fails, user aborts."""
         import chcode.config as mod
         from chcode.i18n import t
 
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test123")
 
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model:
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+        ):
             mock_select.side_effect = [
-                t("firstrun.env_detected", name="OpenAI", env_var="OPENAI_API_KEY"),  # Config choice
-                "gpt-4o",                                                              # Model choice
-                t("connection.abort"),                                                 # retry menu -> abort
+                t(
+                    "firstrun.env_detected", name="OpenAI", env_var="OPENAI_API_KEY"
+                ),  # Config choice
+                "gpt-4o",  # Model choice
+                t("connection.abort"),  # retry menu -> abort
             ]
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -96,22 +103,27 @@ class TestFirstRunConfigure:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_with_detected_env_key_fails_then_retry_succeeds(self, mock_config_dir, monkeypatch):
+    async def test_with_detected_env_key_fails_then_retry_succeeds(
+        self, mock_config_dir, monkeypatch
+    ):
         """Connection fails once, user retries, second attempt succeeds."""
         import chcode.config as mod
         from chcode.i18n import t
 
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test123")
 
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock), patch(
-            "chcode.config.configure_langsmith", new_callable=AsyncMock
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
         ):
             mock_select.side_effect = [
-                t("firstrun.env_detected", name="OpenAI", env_var="OPENAI_API_KEY"),  # Config choice
-                "gpt-4o",                                                              # Model choice
-                t("connection.retry"),                                                 # retry menu -> retry
+                t(
+                    "firstrun.env_detected", name="OpenAI", env_var="OPENAI_API_KEY"
+                ),  # Config choice
+                "gpt-4o",  # Model choice
+                t("connection.retry"),  # retry menu -> retry
             ]
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -123,22 +135,28 @@ class TestFirstRunConfigure:
             assert result["model"] == "gpt-4o"
 
     @pytest.mark.asyncio
-    async def test_with_detected_env_key_fails_then_reinput_to_manual(self, mock_config_dir, monkeypatch):
+    async def test_with_detected_env_key_fails_then_reinput_to_manual(
+        self, mock_config_dir, monkeypatch
+    ):
         """Connection fails, user picks Re-enter -> hands off to manual configure."""
         import chcode.config as mod
         from chcode.i18n import t
 
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test123")
 
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, patch(
-            "chcode.config.configure_new_model", new_callable=AsyncMock
-        ) as mock_manual:
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch(
+                "chcode.config.configure_new_model", new_callable=AsyncMock
+            ) as mock_manual,
+        ):
             mock_select.side_effect = [
-                t("firstrun.env_detected", name="OpenAI", env_var="OPENAI_API_KEY"),  # Config choice
-                "gpt-4o",                                                              # Model choice
-                t("connection.reinput"),                                               # retry menu -> reinput (handoff)
+                t(
+                    "firstrun.env_detected", name="OpenAI", env_var="OPENAI_API_KEY"
+                ),  # Config choice
+                "gpt-4o",  # Model choice
+                t("connection.reinput"),  # retry menu -> reinput (handoff)
             ]
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -174,9 +192,12 @@ class TestFirstRunConfigure:
         for var in mod.ENV_TO_CONFIG:
             monkeypatch.delenv(var, raising=False)
 
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.config.configure_new_model", new_callable=AsyncMock
-        ) as mock_configure:
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch(
+                "chcode.config.configure_new_model", new_callable=AsyncMock
+            ) as mock_configure,
+        ):
             mock_select.return_value = "手动配置..."
             mock_configure.return_value = {"model": "test-model", "api_key": "key"}
 
@@ -192,9 +213,12 @@ class TestFirstRunConfigure:
 
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test123")
 
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.config.configure_new_model", new_callable=AsyncMock
-        ) as mock_configure:
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch(
+                "chcode.config.configure_new_model", new_callable=AsyncMock
+            ) as mock_configure,
+        ):
             mock_select.return_value = "手动配置..."
             mock_configure.return_value = {"model": "test-model", "api_key": "key"}
 
@@ -204,7 +228,9 @@ class TestFirstRunConfigure:
             mock_configure.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_detected_keys_user_cancels_model_select(self, mock_config_dir, monkeypatch):
+    async def test_detected_keys_user_cancels_model_select(
+        self, mock_config_dir, monkeypatch
+    ):
         """Test first run with detected keys but user cancels model selection"""
         import chcode.config as mod
 
@@ -242,12 +268,20 @@ class TestConfigureNewModel:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-            patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
-            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
-            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="手动配置...",
+            ),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -270,7 +304,11 @@ class TestConfigureNewModel:
         # Setup existing default
         mod.save_model_json(
             {
-                "default": {"model": "default-model", "api_key": "key1", "base_url": "https://api1.com"},
+                "default": {
+                    "model": "default-model",
+                    "api_key": "key1",
+                    "base_url": "https://api1.com",
+                },
                 "fallback": {},
             }
         )
@@ -282,12 +320,20 @@ class TestConfigureNewModel:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-            patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
-            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
-            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="手动配置...",
+            ),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             mock_form.return_value = new_config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -308,8 +354,12 @@ class TestConfigureNewModel:
         """Test user cancels configuration form"""
         import chcode.config as mod
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-            patch("chcode.config.select", new_callable=AsyncMock, return_value=None):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.config.select", new_callable=AsyncMock, return_value=None),
+        ):
             mock_form.return_value = None
 
             result = await mod.configure_new_model()
@@ -329,14 +379,17 @@ class TestConfigureNewModel:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, \
-            patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+        ):
             mock_form.return_value = config
             mock_select.side_effect = [
-                t("firstrun.manual"),        # method select
-                t("connection.abort"),       # retry menu -> abort
+                t("firstrun.manual"),  # method select
+                t("connection.abort"),  # retry menu -> abort
             ]
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -359,17 +412,20 @@ class TestConfigureNewModel:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, \
-            patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-            patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
-            patch("chcode.config.select", new_callable=AsyncMock) as mock_select, \
-            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             mock_form.return_value = config
             mock_select.side_effect = [
-                t("firstrun.manual"),        # method select
-                t("connection.retry"),       # retry menu -> retry
+                t("firstrun.manual"),  # method select
+                t("connection.retry"),  # retry menu -> retry
             ]
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -399,17 +455,20 @@ class TestConfigureNewModel:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, \
-            patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-            patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
-            patch("chcode.config.select", new_callable=AsyncMock) as mock_select, \
-            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             mock_form.side_effect = [bad_config, good_config]
             mock_select.side_effect = [
-                t("firstrun.manual"),        # method select
-                t("connection.reinput"),     # retry menu -> reinput
+                t("firstrun.manual"),  # method select
+                t("connection.reinput"),  # retry menu -> reinput
             ]
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -441,13 +500,21 @@ class TestConfigureNewModelMultimodal:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
-             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.add_vision_model") as mock_add:
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="手动配置...",
+            ),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=True),
+            patch("chcode.vision_config.add_vision_model") as mock_add,
+        ):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -473,13 +540,21 @@ class TestConfigureNewModelMultimodal:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
-             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False), \
-             patch("chcode.vision_config.add_vision_model") as mock_add:
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="手动配置...",
+            ),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+            patch("chcode.vision_config.add_vision_model") as mock_add,
+        ):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -504,13 +579,28 @@ class TestConfigureNewModelMultimodal:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock) as mock_tavily, \
-             patch("chcode.config.configure_langsmith", new_callable=AsyncMock) as mock_langsmith, \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
-             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.vision_config.add_vision_model", side_effect=Exception("vision IO fail")):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch(
+                "chcode.config.configure_tavily", new_callable=AsyncMock
+            ) as mock_tavily,
+            patch(
+                "chcode.config.configure_langsmith", new_callable=AsyncMock
+            ) as mock_langsmith,
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="手动配置...",
+            ),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=True),
+            patch(
+                "chcode.vision_config.add_vision_model",
+                side_effect=Exception("vision IO fail"),
+            ),
+        ):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -526,7 +616,9 @@ class TestConfigureNewModelMultimodal:
 
 
 @contextlib.contextmanager
-def _patched_configure_new_model(config, *, text_return="1048576", confirm_return=False):
+def _patched_configure_new_model(
+    config, *, text_return="1048576", confirm_return=False
+):
     """configure_new_model 的标准 mock 套件(连接成功 + 跳过 tavily/langsmith)。"""
     with contextlib.ExitStack() as stack:
         stack.enter_context(
@@ -536,16 +628,30 @@ def _patched_configure_new_model(config, *, text_return="1048576", confirm_retur
             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI")
         )
         mock_model.return_value.invoke.return_value = MagicMock()
-        stack.enter_context(patch("chcode.config.configure_tavily", new_callable=AsyncMock))
-        stack.enter_context(patch("chcode.config.configure_langsmith", new_callable=AsyncMock))
         stack.enter_context(
-            patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置...")
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock)
         )
         stack.enter_context(
-            patch("chcode.config.text", new_callable=AsyncMock, return_value=text_return)
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock)
         )
         stack.enter_context(
-            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=confirm_return)
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="手动配置...",
+            )
+        )
+        stack.enter_context(
+            patch(
+                "chcode.config.text", new_callable=AsyncMock, return_value=text_return
+            )
+        )
+        stack.enter_context(
+            patch(
+                "chcode.config.confirm",
+                new_callable=AsyncMock,
+                return_value=confirm_return,
+            )
         )
         yield
 
@@ -636,10 +742,18 @@ class TestConfigureNewModelContextLength:
                 patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI")
             )
             mock_model.return_value.invoke.return_value = MagicMock()
-            stack.enter_context(patch("chcode.config.configure_tavily", new_callable=AsyncMock))
-            stack.enter_context(patch("chcode.config.configure_langsmith", new_callable=AsyncMock))
             stack.enter_context(
-                patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置...")
+                patch("chcode.config.configure_tavily", new_callable=AsyncMock)
+            )
+            stack.enter_context(
+                patch("chcode.config.configure_langsmith", new_callable=AsyncMock)
+            )
+            stack.enter_context(
+                patch(
+                    "chcode.config.select",
+                    new_callable=AsyncMock,
+                    return_value="手动配置...",
+                )
             )
             stack.enter_context(patch("chcode.config.text", side_effect=_text))
             stack.enter_context(patch("chcode.config.confirm", side_effect=_confirm))
@@ -648,7 +762,9 @@ class TestConfigureNewModelContextLength:
         assert order.index("ctx") < order.index("multimodal")
 
     @pytest.mark.asyncio
-    async def test_skip_method_select_bypasses_config_method_prompt(self, mock_config_dir):
+    async def test_skip_method_select_bypasses_config_method_prompt(
+        self, mock_config_dir
+    ):
         """skip_method_select=True:不弹"配置方式"select,直接进表单(避免重复询问)。"""
         import chcode.config as mod
 
@@ -658,13 +774,21 @@ class TestConfigureNewModelContextLength:
             "api_key": "sk-test",
             "stream_usage": True,
         }
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-             patch("chcode.config._test_connection", new_callable=AsyncMock, return_value=True), \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
-             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False), \
-             patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch(
+                "chcode.config._test_connection",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+        ):
             mock_form.return_value = config
             await mod.configure_new_model(skip_method_select=True)
 
@@ -715,11 +839,14 @@ class TestEditCurrentModel:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, \
-            patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             mock_form.return_value = updated
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -752,11 +879,14 @@ class TestEditCurrentModel:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, \
-            patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             mock_form.return_value = updated
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -789,11 +919,14 @@ class TestEditCurrentModel:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, \
-            patch("chcode.config.text", new_callable=AsyncMock, return_value="200000"), \
-            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.text", new_callable=AsyncMock, return_value="200000"),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             mock_form.return_value = updated
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -825,12 +958,15 @@ class TestEditCurrentModel:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, patch(
-            "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
-        ) as mock_model, \
-            patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=True), \
-            patch("chcode.vision_config.add_vision_model") as mock_add:
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=True),
+            patch("chcode.vision_config.add_vision_model") as mock_add,
+        ):
             mock_form.return_value = updated
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -849,7 +985,9 @@ class TestEditCurrentModel:
 
         mod.save_model_json({})
 
-        with patch("chcode.config.configure_new_model", new_callable=AsyncMock) as mock_configure:
+        with patch(
+            "chcode.config.configure_new_model", new_callable=AsyncMock
+        ) as mock_configure:
             mock_configure.return_value = {"model": "new-model", "api_key": "key"}
 
             result = await mod.edit_current_model()
@@ -870,7 +1008,9 @@ class TestEditCurrentModel:
         }
         mod.save_model_json({"default": existing, "fallback": {}})
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form:
+        with patch(
+            "chcode.config.model_config_form", new_callable=AsyncMock
+        ) as mock_form:
             mock_form.return_value = None
 
             result = await mod.edit_current_model()
@@ -886,15 +1026,24 @@ class TestSwitchModel:
         """Test switching from default to a fallback model"""
         import chcode.config as mod
 
-        default = {"model": "default-model", "api_key": "key1", "base_url": "https://api1.com"}
+        default = {
+            "model": "default-model",
+            "api_key": "key1",
+            "base_url": "https://api1.com",
+        }
         fallback = {
-            "fallback-model": {"model": "fallback-model", "api_key": "key2", "base_url": "https://api2.com"}
+            "fallback-model": {
+                "model": "fallback-model",
+                "api_key": "key2",
+                "base_url": "https://api2.com",
+            }
         }
         mod.save_model_json({"default": default, "fallback": fallback})
 
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.config.confirm", new_callable=AsyncMock
-        ) as mock_confirm:
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.config.confirm", new_callable=AsyncMock) as mock_confirm,
+        ):
             mock_select.return_value = "fallback-model"
             mock_confirm.return_value = True
 
@@ -913,15 +1062,24 @@ class TestSwitchModel:
         """Test switching when default is also in fallback with tag"""
         import chcode.config as mod
 
-        default = {"model": "model-a", "api_key": "key1", "base_url": "https://api1.com"}
+        default = {
+            "model": "model-a",
+            "api_key": "key1",
+            "base_url": "https://api1.com",
+        }
         fallback = {
-            "model-b": {"model": "model-b", "api_key": "key2", "base_url": "https://api2.com"}
+            "model-b": {
+                "model": "model-b",
+                "api_key": "key2",
+                "base_url": "https://api2.com",
+            }
         }
         mod.save_model_json({"default": default, "fallback": fallback})
 
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.config.confirm", new_callable=AsyncMock
-        ) as mock_confirm:
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.config.confirm", new_callable=AsyncMock) as mock_confirm,
+        ):
             mock_select.return_value = "model-b"
             mock_confirm.return_value = True
 
@@ -937,7 +1095,9 @@ class TestSwitchModel:
 
         mod.save_model_json({})
 
-        with patch("chcode.config.configure_new_model", new_callable=AsyncMock) as mock_configure:
+        with patch(
+            "chcode.config.configure_new_model", new_callable=AsyncMock
+        ) as mock_configure:
             mock_configure.return_value = {"model": "new-model", "api_key": "key"}
 
             result = await mod.switch_model()
@@ -950,7 +1110,11 @@ class TestSwitchModel:
         """Test switch when no fallback models available"""
         import chcode.config as mod
 
-        default = {"model": "default-model", "api_key": "key1", "base_url": "https://api1.com"}
+        default = {
+            "model": "default-model",
+            "api_key": "key1",
+            "base_url": "https://api1.com",
+        }
         mod.save_model_json({"default": default, "fallback": {}})
 
         result = await mod.switch_model()
@@ -962,9 +1126,17 @@ class TestSwitchModel:
         """Test user cancels model selection"""
         import chcode.config as mod
 
-        default = {"model": "default-model", "api_key": "key1", "base_url": "https://api1.com"}
+        default = {
+            "model": "default-model",
+            "api_key": "key1",
+            "base_url": "https://api1.com",
+        }
         fallback = {
-            "fallback-model": {"model": "fallback-model", "api_key": "key2", "base_url": "https://api2.com"}
+            "fallback-model": {
+                "model": "fallback-model",
+                "api_key": "key2",
+                "base_url": "https://api2.com",
+            }
         }
         mod.save_model_json({"default": default, "fallback": fallback})
 
@@ -980,15 +1152,24 @@ class TestSwitchModel:
         """Test user rejects confirmation dialog"""
         import chcode.config as mod
 
-        default = {"model": "default-model", "api_key": "key1", "base_url": "https://api1.com"}
+        default = {
+            "model": "default-model",
+            "api_key": "key1",
+            "base_url": "https://api1.com",
+        }
         fallback = {
-            "fallback-model": {"model": "fallback-model", "api_key": "key2", "base_url": "https://api2.com"}
+            "fallback-model": {
+                "model": "fallback-model",
+                "api_key": "key2",
+                "base_url": "https://api2.com",
+            }
         }
         mod.save_model_json({"default": default, "fallback": fallback})
 
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.config.confirm", new_callable=AsyncMock
-        ) as mock_confirm:
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.config.confirm", new_callable=AsyncMock) as mock_confirm,
+        ):
             mock_select.return_value = "fallback-model"
             mock_confirm.return_value = False
 
@@ -1088,9 +1269,11 @@ class TestConfigureTavily:
         for var in ["TAVILY_API_KEY"] + list(mod.ENV_TO_CONFIG.keys()):
             monkeypatch.delenv(var, raising=False)
 
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.config.text", new_callable=AsyncMock
-        ) as mock_text, patch("chcode.utils.tools.update_tavily_api_key") as mock_update:
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.config.text", new_callable=AsyncMock) as mock_text,
+            patch("chcode.utils.tools.update_tavily_api_key") as mock_update,
+        ):
             mock_select.return_value = "是"
             mock_text.return_value = "tvly-new-key"
 
@@ -1107,9 +1290,10 @@ class TestConfigureTavily:
         for var in ["TAVILY_API_KEY"] + list(mod.ENV_TO_CONFIG.keys()):
             monkeypatch.delenv(var, raising=False)
 
-        with patch("chcode.config.select", new_callable=AsyncMock) as mock_select, patch(
-            "chcode.config.text", new_callable=AsyncMock
-        ) as mock_text:
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.config.text", new_callable=AsyncMock) as mock_text,
+        ):
             mock_select.return_value = "是"
             mock_text.return_value = ""
 
@@ -1191,12 +1375,20 @@ class TestConfigureNewModelNullChoices:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
-             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="手动配置...",
+            ),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -1219,10 +1411,18 @@ class TestConfigureNewModelNullChoices:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.console") as mock_console, \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.console") as mock_console,
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="手动配置...",
+            ),
+        ):
             mock_form.return_value = config
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -1257,10 +1457,14 @@ class TestEditCurrentModelConnectionErrors:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             mock_form.return_value = updated
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
@@ -1291,10 +1495,14 @@ class TestEditCurrentModelConnectionErrors:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.select", new_callable=AsyncMock) as mock_select, \
-             patch("chcode.config.console") as mock_console:
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.config.console") as mock_console,
+        ):
             mock_form.return_value = updated
             mock_select.return_value = t("connection.abort")  # retry menu -> abort
             mock_model_inst = MagicMock()
@@ -1326,11 +1534,15 @@ class TestEditCurrentModelConnectionErrors:
             "stream_usage": True,
         }
 
-        with patch("chcode.config.model_config_form", new_callable=AsyncMock) as mock_form, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.select", new_callable=AsyncMock) as mock_select, \
-             patch("chcode.config.text", new_callable=AsyncMock, return_value=""), \
-             patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False):
+        with (
+            patch(
+                "chcode.config.model_config_form", new_callable=AsyncMock
+            ) as mock_form,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+            patch("chcode.config.text", new_callable=AsyncMock, return_value=""),
+            patch("chcode.config.confirm", new_callable=AsyncMock, return_value=False),
+        ):
             mock_form.return_value = updated
             mock_select.return_value = t("connection.retry")  # retry menu -> retry
             mock_model_inst = MagicMock()
@@ -1368,6 +1580,7 @@ class TestSaveWorkplaceException:
 
         # Should not raise, should create fresh data
         from pathlib import Path
+
         mod.save_workplace(Path("/tmp/test_workplace"))
 
         # Verify it saved correctly
@@ -1410,7 +1623,9 @@ class TestConfigureTavilySavedKeyException:
     """Cover line 414: configure_tavily exception when reading saved key."""
 
     @pytest.mark.asyncio
-    async def test_configure_tavily_saved_key_read_error(self, mock_config_dir, monkeypatch):
+    async def test_configure_tavily_saved_key_read_error(
+        self, mock_config_dir, monkeypatch
+    ):
         """Line 414: exception when reading tavily key from settings."""
         import chcode.config as mod
 
@@ -1444,10 +1659,14 @@ class TestConfigureModelscope:
         import chcode.config as mod
         from chcode.prompts import MODELSCOPE_PRESETS
 
-        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-             patch("chcode.config.configure_langsmith", new_callable=AsyncMock):
+        with (
+            patch(
+                "chcode.prompts.configure_modelscope", new_callable=AsyncMock
+            ) as mock_ms,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+        ):
             ms_result = {
                 "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
                 "fallback": {
@@ -1476,15 +1695,26 @@ class TestConfigureModelscope:
         import chcode.config as mod
         from chcode.prompts import MODELSCOPE_PRESETS
 
-        mod.save_model_json({
-            "default": {"model": "old-model", "api_key": "k", "base_url": "https://x.com/v1", "stream_usage": True},
-            "fallback": {"existing-fb": {"model": "existing-fb", "api_key": "k2"}},
-        })
+        mod.save_model_json(
+            {
+                "default": {
+                    "model": "old-model",
+                    "api_key": "k",
+                    "base_url": "https://x.com/v1",
+                    "stream_usage": True,
+                },
+                "fallback": {"existing-fb": {"model": "existing-fb", "api_key": "k2"}},
+            }
+        )
 
-        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-             patch("chcode.config.configure_langsmith", new_callable=AsyncMock):
+        with (
+            patch(
+                "chcode.prompts.configure_modelscope", new_callable=AsyncMock
+            ) as mock_ms,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+        ):
             ms_result = {
                 "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
                 "fallback": {
@@ -1511,12 +1741,19 @@ class TestConfigureModelscope:
         from chcode.i18n import t
         from chcode.prompts import MODELSCOPE_PRESETS
 
-        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+        with (
+            patch(
+                "chcode.prompts.configure_modelscope", new_callable=AsyncMock
+            ) as mock_ms,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+        ):
             mock_ms.return_value = {
                 "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
-                "fallback": {m["model"]: {**m, "api_key": "ms-key"} for m in MODELSCOPE_PRESETS[1:]},
+                "fallback": {
+                    m["model"]: {**m, "api_key": "ms-key"}
+                    for m in MODELSCOPE_PRESETS[1:]
+                },
             }
             mock_select.return_value = t("connection.abort")  # retry menu -> abort
             mock_model_inst = MagicMock()
@@ -1535,22 +1772,31 @@ class TestConfigureModelscope:
         from chcode.i18n import t
         from chcode.prompts import MODELSCOPE_PRESETS
 
-        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
-             patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+        with (
+            patch(
+                "chcode.prompts.configure_modelscope", new_callable=AsyncMock
+            ) as mock_ms,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+        ):
             mock_ms.return_value = {
                 "default": {**MODELSCOPE_PRESETS[0], "api_key": "ms-key"},
-                "fallback": {m["model"]: {**m, "api_key": "ms-key"} for m in MODELSCOPE_PRESETS[1:]},
+                "fallback": {
+                    m["model"]: {**m, "api_key": "ms-key"}
+                    for m in MODELSCOPE_PRESETS[1:]
+                },
             }
             mock_select.return_value = t("connection.retry")  # retry menu -> retry
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
             # First full loop (3 models) all fail, then retry succeeds on first
             mock_model_inst.invoke.side_effect = [
-                Exception("boom"), Exception("boom"), Exception("boom"),  # first loop
-                MagicMock(),                                                # retry loop
+                Exception("boom"),
+                Exception("boom"),
+                Exception("boom"),  # first loop
+                MagicMock(),  # retry loop
             ]
 
             result = await mod._configure_modelscope_with_test()
@@ -1565,27 +1811,41 @@ class TestConfigureModelscope:
         from chcode.i18n import t
         from chcode.prompts import MODELSCOPE_PRESETS
 
-        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-             patch("chcode.config.configure_langsmith", new_callable=AsyncMock), \
-             patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
+        with (
+            patch(
+                "chcode.prompts.configure_modelscope", new_callable=AsyncMock
+            ) as mock_ms,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+            patch("chcode.config.select", new_callable=AsyncMock) as mock_select,
+        ):
             first_ms = {
                 "default": {**MODELSCOPE_PRESETS[0], "api_key": "bad-key"},
-                "fallback": {m["model"]: {**m, "api_key": "bad-key"} for m in MODELSCOPE_PRESETS[1:]},
+                "fallback": {
+                    m["model"]: {**m, "api_key": "bad-key"}
+                    for m in MODELSCOPE_PRESETS[1:]
+                },
             }
             second_ms = {
                 "default": {**MODELSCOPE_PRESETS[0], "api_key": "good-key"},
-                "fallback": {m["model"]: {**m, "api_key": "good-key"} for m in MODELSCOPE_PRESETS[1:]},
+                "fallback": {
+                    m["model"]: {**m, "api_key": "good-key"}
+                    for m in MODELSCOPE_PRESETS[1:]
+                },
             }
             mock_ms.side_effect = [first_ms, second_ms]
-            mock_select.return_value = t("connection.reinput")  # retry menu -> reinput key
+            mock_select.return_value = t(
+                "connection.reinput"
+            )  # retry menu -> reinput key
             mock_model_inst = MagicMock()
             mock_model.return_value = mock_model_inst
             # First loop (3 models) all fail, then after re-input succeeds on first
             mock_model_inst.invoke.side_effect = [
-                Exception("boom"), Exception("boom"), Exception("boom"),  # first loop
-                MagicMock(),                                                # second loop
+                Exception("boom"),
+                Exception("boom"),
+                Exception("boom"),  # first loop
+                MagicMock(),  # second loop
             ]
 
             result = await mod._configure_modelscope_with_test()
@@ -1598,8 +1858,18 @@ class TestConfigureModelscope:
         """configure_modelscope() manual key input."""
         from chcode.prompts import configure_modelscope
 
-        with patch("chcode.prompts.select", new_callable=AsyncMock, return_value="手动输入..."), \
-             patch("chcode.prompts.password", new_callable=AsyncMock, return_value="ms-test-key"):
+        with (
+            patch(
+                "chcode.prompts.select",
+                new_callable=AsyncMock,
+                return_value="手动输入...",
+            ),
+            patch(
+                "chcode.prompts.password",
+                new_callable=AsyncMock,
+                return_value="ms-test-key",
+            ),
+        ):
             result = await configure_modelscope()
 
         assert result is not None
@@ -1612,8 +1882,10 @@ class TestConfigureModelscope:
         """configure_modelscope() returns None when user cancels select."""
         from chcode.prompts import configure_modelscope
 
-        with patch.dict(os.environ, {"ModelScopeToken": "fake-token"}), \
-             patch("chcode.prompts.select", new_callable=AsyncMock, return_value=None):
+        with (
+            patch.dict(os.environ, {"ModelScopeToken": "fake-token"}),
+            patch("chcode.prompts.select", new_callable=AsyncMock, return_value=None),
+        ):
             result = await configure_modelscope()
 
         assert result is None
@@ -1623,8 +1895,14 @@ class TestConfigureModelscope:
         """configure_modelscope() returns None for empty API key."""
         from chcode.prompts import configure_modelscope
 
-        with patch("chcode.prompts.select", new_callable=AsyncMock, return_value="手动输入..."), \
-             patch("chcode.prompts.password", new_callable=AsyncMock, return_value=""):
+        with (
+            patch(
+                "chcode.prompts.select",
+                new_callable=AsyncMock,
+                return_value="手动输入...",
+            ),
+            patch("chcode.prompts.password", new_callable=AsyncMock, return_value=""),
+        ):
             result = await configure_modelscope()
 
         assert result is None
@@ -1635,8 +1913,14 @@ class TestConfigureModelscope:
         import os as _os
         from chcode.prompts import configure_modelscope
 
-        with patch.dict(_os.environ, {"ModelScopeToken": "env-ms-key"}), \
-             patch("chcode.prompts.select", new_callable=AsyncMock, return_value="ModelScopeToken (ModelScope)"):
+        with (
+            patch.dict(_os.environ, {"ModelScopeToken": "env-ms-key"}),
+            patch(
+                "chcode.prompts.select",
+                new_callable=AsyncMock,
+                return_value="ModelScopeToken (ModelScope)",
+            ),
+        ):
             result = await configure_modelscope()
 
         assert result is not None
@@ -1647,7 +1931,11 @@ class TestConfigureModelscope:
         """configure_modelscope returns None -> _configure_modelscope_with_test returns None."""
         import chcode.config as mod
 
-        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock, return_value=None):
+        with patch(
+            "chcode.prompts.configure_modelscope",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
             result = await mod._configure_modelscope_with_test()
 
         assert result is None
@@ -1657,11 +1945,30 @@ class TestConfigureModelscope:
         """first_run_configure with detected key chooses 魔搭 path."""
         import chcode.config as mod
 
-        with patch("chcode.config.detect_env_api_keys", return_value=[
-            {"name": "TestProvider", "env_var": "TEST_KEY", "base_url": "https://x.com", "models": ["m1"], "api_key": "k"}
-        ]), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置..."), \
-             patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock, return_value=None):
+        with (
+            patch(
+                "chcode.config.detect_env_api_keys",
+                return_value=[
+                    {
+                        "name": "TestProvider",
+                        "env_var": "TEST_KEY",
+                        "base_url": "https://x.com",
+                        "models": ["m1"],
+                        "api_key": "k",
+                    }
+                ],
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="魔搭快捷配置...",
+            ),
+            patch(
+                "chcode.prompts.configure_modelscope",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
             result = await mod.first_run_configure()
 
         # Returns None because configure_modelscope returns None
@@ -1672,9 +1979,19 @@ class TestConfigureModelscope:
         """first_run_configure no env vars, user picks 魔搭."""
         import chcode.config as mod
 
-        with patch("chcode.config.detect_env_api_keys", return_value=[]), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置..."), \
-             patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock, return_value=None):
+        with (
+            patch("chcode.config.detect_env_api_keys", return_value=[]),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="魔搭快捷配置...",
+            ),
+            patch(
+                "chcode.prompts.configure_modelscope",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
             result = await mod.first_run_configure()
 
         assert result is None
@@ -1684,8 +2001,18 @@ class TestConfigureModelscope:
         """configure_new_model user selects 魔搭."""
         import chcode.config as mod
 
-        with patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置..."), \
-             patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock, return_value=None):
+        with (
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="魔搭快捷配置...",
+            ),
+            patch(
+                "chcode.prompts.configure_modelscope",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
             result = await mod.configure_new_model()
 
         assert result is None
@@ -1695,8 +2022,18 @@ class TestConfigureModelscope:
         """configure_new_model user selects 魔搭快捷配置（国际版）→ intl=True."""
         import chcode.config as mod
 
-        with patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置（国际版）..."), \
-             patch("chcode.config._configure_modelscope_with_test", new_callable=AsyncMock, return_value={"model": "ms-intl"}) as mock_ms:
+        with (
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="魔搭快捷配置（国际版）...",
+            ),
+            patch(
+                "chcode.config._configure_modelscope_with_test",
+                new_callable=AsyncMock,
+                return_value={"model": "ms-intl"},
+            ) as mock_ms,
+        ):
             result = await mod.configure_new_model()
 
         assert result is not None
@@ -1708,11 +2045,30 @@ class TestConfigureModelscope:
         """first_run_configure with detected key chooses 魔搭快捷配置（国际版）→ intl=True."""
         import chcode.config as mod
 
-        with patch("chcode.config.detect_env_api_keys", return_value=[
-            {"name": "TestProvider", "env_var": "TEST_KEY", "base_url": "https://x.com", "models": ["m1"], "api_key": "k"}
-        ]), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置（国际版）..."), \
-             patch("chcode.config._configure_modelscope_with_test", new_callable=AsyncMock, return_value={"model": "ms-intl"}) as mock_ms:
+        with (
+            patch(
+                "chcode.config.detect_env_api_keys",
+                return_value=[
+                    {
+                        "name": "TestProvider",
+                        "env_var": "TEST_KEY",
+                        "base_url": "https://x.com",
+                        "models": ["m1"],
+                        "api_key": "k",
+                    }
+                ],
+            ),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="魔搭快捷配置（国际版）...",
+            ),
+            patch(
+                "chcode.config._configure_modelscope_with_test",
+                new_callable=AsyncMock,
+                return_value={"model": "ms-intl"},
+            ) as mock_ms,
+        ):
             result = await mod.first_run_configure()
 
         assert result is not None
@@ -1724,9 +2080,19 @@ class TestConfigureModelscope:
         """first_run_configure no env vars, user picks 魔搭快捷配置（国际版）→ intl=True."""
         import chcode.config as mod
 
-        with patch("chcode.config.detect_env_api_keys", return_value=[]), \
-             patch("chcode.config.select", new_callable=AsyncMock, return_value="魔搭快捷配置（国际版）..."), \
-             patch("chcode.config._configure_modelscope_with_test", new_callable=AsyncMock, return_value={"model": "ms-intl"}) as mock_ms:
+        with (
+            patch("chcode.config.detect_env_api_keys", return_value=[]),
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="魔搭快捷配置（国际版）...",
+            ),
+            patch(
+                "chcode.config._configure_modelscope_with_test",
+                new_callable=AsyncMock,
+                return_value={"model": "ms-intl"},
+            ) as mock_ms,
+        ):
             result = await mod.first_run_configure()
 
         assert result is not None
@@ -1739,10 +2105,14 @@ class TestConfigureModelscope:
         import chcode.config as mod
         from chcode.prompts import MODELSCOPE_INTL_PRESETS
 
-        with patch("chcode.prompts.configure_modelscope", new_callable=AsyncMock) as mock_ms, \
-             patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model, \
-             patch("chcode.config.configure_tavily", new_callable=AsyncMock), \
-             patch("chcode.config.configure_langsmith", new_callable=AsyncMock):
+        with (
+            patch(
+                "chcode.prompts.configure_modelscope", new_callable=AsyncMock
+            ) as mock_ms,
+            patch("chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI") as mock_model,
+            patch("chcode.config.configure_tavily", new_callable=AsyncMock),
+            patch("chcode.config.configure_langsmith", new_callable=AsyncMock),
+        ):
             ms_result = {
                 "default": {**MODELSCOPE_INTL_PRESETS[0], "api_key": "ms-key"},
                 "fallback": {
@@ -1762,15 +2132,27 @@ class TestConfigureModelscope:
             mock_ms.assert_called_once_with(intl=True)
 
             data = mod.load_model_json()
-            assert data["default"]["base_url"] == "https://api-inference.modelscope.ai/v1"
+            assert (
+                data["default"]["base_url"] == "https://api-inference.modelscope.ai/v1"
+            )
 
     @pytest.mark.asyncio
     async def test_configure_new_model_form_returns_none(self, mock_config_dir):
         """configure_new_model: user selects manual, model_config_form returns None."""
         import chcode.config as mod
 
-        with patch("chcode.config.select", new_callable=AsyncMock, return_value="手动配置..."), \
-             patch("chcode.config.model_config_form", new_callable=AsyncMock, return_value=None):
+        with (
+            patch(
+                "chcode.config.select",
+                new_callable=AsyncMock,
+                return_value="手动配置...",
+            ),
+            patch(
+                "chcode.config.model_config_form",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
             result = await mod.configure_new_model()
 
         assert result is None
@@ -1779,12 +2161,15 @@ class TestConfigureModelscope:
 class TestAskConnRetryAction:
     """Tests for the _ask_conn_retry_action menu helper."""
 
-    @pytest.mark.parametrize("key", ["connection.retry", "connection.reinput", "connection.abort"])
+    @pytest.mark.parametrize(
+        "key", ["connection.retry", "connection.reinput", "connection.abort"]
+    )
     @pytest.mark.asyncio
     async def test_passes_through_menu_choice(self, key):
         """Helper transparently returns whatever select returns for each menu option."""
         import chcode.config as mod
         from chcode.i18n import t
+
         with patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
             mock_select.return_value = t(key)
             result = await mod._ask_conn_retry_action("Connection error.")
@@ -1793,6 +2178,7 @@ class TestAskConnRetryAction:
     @pytest.mark.asyncio
     async def test_cancelled_menu_returns_none(self):
         import chcode.config as mod
+
         with patch("chcode.config.select", new_callable=AsyncMock) as mock_select:
             mock_select.return_value = None
             result = await mod._ask_conn_retry_action("Connection error.")
@@ -1801,8 +2187,11 @@ class TestAskConnRetryAction:
     @pytest.mark.asyncio
     async def test_prints_red_summary_no_traceback(self):
         import chcode.config as mod
-        with patch("chcode.config.select", new_callable=AsyncMock, return_value="放弃"), \
-             patch("chcode.config.console") as mock_console:
+
+        with (
+            patch("chcode.config.select", new_callable=AsyncMock, return_value="放弃"),
+            patch("chcode.config.console") as mock_console,
+        ):
             await mod._ask_conn_retry_action("Connection error.")
             printed = "".join(str(c) for c in mock_console.print.call_args_list)
             assert "Connection error." in printed

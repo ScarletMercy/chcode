@@ -5,9 +5,7 @@ from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
 
 class TestExtractReasoning:
     def test_auto_detect_field(self):
-        model = EnhancedChatOpenAI(
-            model="test", api_key="sk-test"
-        )
+        model = EnhancedChatOpenAI(model="test", api_key="sk-test")
         data = {"reasoning_content": "thinking...", "content": "answer"}
         result = model._extract_reasoning(data)
         assert result == "thinking..."
@@ -21,9 +19,7 @@ class TestExtractReasoning:
         assert result == "deep thought"
 
     def test_no_reasoning(self):
-        model = EnhancedChatOpenAI(
-            model="test", api_key="sk-test"
-        )
+        model = EnhancedChatOpenAI(model="test", api_key="sk-test")
         data = {"content": "just answer"}
         result = model._extract_reasoning(data)
         assert result is None
@@ -31,32 +27,27 @@ class TestExtractReasoning:
 
 class TestProcessMessageWithReasoning:
     def test_adds_to_additional_kwargs(self):
-        model = EnhancedChatOpenAI(
-            model="test", api_key="sk-test"
-        )
+        model = EnhancedChatOpenAI(model="test", api_key="sk-test")
         msg = {"reasoning_content": "think", "content": "ans"}
         result = model._process_message_with_reasoning(msg)
         assert result["additional_kwargs"]["reasoning"] == "think"
 
     def test_removes_reasoning_field(self):
-        model = EnhancedChatOpenAI(
-            model="test", api_key="sk-test"
-        )
+        model = EnhancedChatOpenAI(model="test", api_key="sk-test")
         msg = {"reasoning_content": "think", "content": "ans"}
         result = model._process_message_with_reasoning(msg)
         assert "reasoning_content" not in result
 
     def test_no_reasoning_passthrough(self):
-        model = EnhancedChatOpenAI(
-            model="test", api_key="sk-test"
-        )
+        model = EnhancedChatOpenAI(model="test", api_key="sk-test")
         msg = {"content": "ans"}
         result = model._process_message_with_reasoning(msg)
         assert result == {"content": "ans"}
 
     def test_include_in_content(self):
         model = EnhancedChatOpenAI(
-            model="test", api_key="sk-test",
+            model="test",
+            api_key="sk-test",
             include_reasoning_in_content=True,
         )
         msg = {"reasoning_content": "think", "content": "ans"}

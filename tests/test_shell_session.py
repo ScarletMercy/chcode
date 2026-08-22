@@ -29,13 +29,18 @@ class TestShellSessionIntegration:
     def test_cwd_tracking(self):
         session = _make_session()
         import tempfile
+
         tmpdir = tempfile.gettempdir()
         result, _ = session.execute(f"cd {tmpdir} && pwd", timeout=5000)
-        tracked_cwd = session._provider.read_cwd_file(session._provider.create_cwd_file())
+        tracked_cwd = session._provider.read_cwd_file(
+            session._provider.create_cwd_file()
+        )
         provider = session._provider
         cwd_file = provider.create_cwd_file()
         result, _ = session.execute(f"cd {tmpdir} && pwd", timeout=5000)
         tracked_cwd = provider.read_cwd_file(cwd_file)
         if tracked_cwd:
-            assert tmpdir in tracked_cwd or tmpdir.lower() in (tracked_cwd or "").lower()
+            assert (
+                tmpdir in tracked_cwd or tmpdir.lower() in (tracked_cwd or "").lower()
+            )
         provider.cleanup_cwd_file(cwd_file)

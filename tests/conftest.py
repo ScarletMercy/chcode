@@ -13,12 +13,14 @@ def _isolate_config_files(tmp_path_factory, monkeypatch):
     # 不吞异常：import/setattr/invalidate 任何一步失败都意味着隔离失效，
     # 应当显式报错而非静默--否则测试会写到真实 ~/.chat/ 还一声不吭。
     import chcode.config as config_mod
+
     monkeypatch.setattr(config_mod, "CONFIG_DIR", isolated_root)
     monkeypatch.setattr(config_mod, "MODEL_JSON", isolated_root / "model.json")
     monkeypatch.setattr(config_mod, "SETTING_JSON", isolated_root / "chagent.json")
     config_mod._model_json.invalidate()
 
     import chcode.vision_config as vision_mod
+
     monkeypatch.setattr(vision_mod, "CONFIG_DIR", isolated_root)
     monkeypatch.setattr(vision_mod, "VISION_JSON", isolated_root / "vision_model.json")
     vision_mod._vision_json.invalidate()
@@ -30,21 +32,26 @@ def reset_global_state():
     # 每个测试前确保 UI 语言为默认中文（避免上一个测试/ locale 检测污染全局 _lang）
     try:
         from chcode.i18n import set_language
+
         set_language("zh")
     except Exception:
         pass
     yield
     try:
         from chcode.i18n import set_language
+
         set_language("zh")
 
         from chcode.agent_setup import set_fallback_models
+
         set_fallback_models([])
 
         import chcode.config as config_mod
+
         config_mod._model_json.invalidate()
 
         import chcode.utils.tools as tools_mod
+
         tools_mod._tavily_api_key = ""
         tools_mod._tavily_key_loaded = False
         tools_mod._tavily_client = None

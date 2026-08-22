@@ -33,14 +33,49 @@ MEMORY_HARD_LIMIT = 16_000  # 注入截断 + 禁止新增（replace 清理不受
 
 # 节定义 (zh 名, en 名, zh 提示, en 提示) — 模板生成与节名匹配的单一事实源
 _SECTIONS: list[tuple[str, str, str, str]] = [
-    ("项目概览", "Project Overview", "项目主要功能：一到两句话", "What the project does: one or two sentences"),
-    ("开发风格", "Development Style", "命名、注释、模块划分等团队风格", "Naming, comments, module layout conventions"),
-    ("项目结构", "Project Structure", "关键目录与入口文件的用途", "Key directories and entry points"),
-    ("常用命令", "Common Commands", "构建/运行/测试/安装命令，注明包管理器类型", "Build / run / test / install commands; note the package manager"),
-    ("编码规范", "Coding Standards", "强制执行的编码约定：格式、类型、错误处理等", "Mandatory conventions: formatting, typing, error handling"),
+    (
+        "项目概览",
+        "Project Overview",
+        "项目主要功能：一到两句话",
+        "What the project does: one or two sentences",
+    ),
+    (
+        "开发风格",
+        "Development Style",
+        "命名、注释、模块划分等团队风格",
+        "Naming, comments, module layout conventions",
+    ),
+    (
+        "项目结构",
+        "Project Structure",
+        "关键目录与入口文件的用途",
+        "Key directories and entry points",
+    ),
+    (
+        "常用命令",
+        "Common Commands",
+        "构建/运行/测试/安装命令，注明包管理器类型",
+        "Build / run / test / install commands; note the package manager",
+    ),
+    (
+        "编码规范",
+        "Coding Standards",
+        "强制执行的编码约定：格式、类型、错误处理等",
+        "Mandatory conventions: formatting, typing, error handling",
+    ),
     ("禁止事项", "Prohibitions", "绝对不允许的操作", "Things that must never be done"),
-    ("验证流程", "Verification Workflow", "改动后如何验证：测试命令、手动检查步骤", "How to verify changes: test commands, manual checks"),
-    ("踩过的坑", "Pitfalls", "已解决过的坑及规避方法", "Solved pitfalls and how to avoid them"),
+    (
+        "验证流程",
+        "Verification Workflow",
+        "改动后如何验证：测试命令、手动检查步骤",
+        "How to verify changes: test commands, manual checks",
+    ),
+    (
+        "踩过的坑",
+        "Pitfalls",
+        "已解决过的坑及规避方法",
+        "Solved pitfalls and how to avoid them",
+    ),
 ]
 
 # 规范节名对（zh, en）— 工具的节名匹配用
@@ -76,7 +111,11 @@ def get_template(lang: str | None = None) -> str:
     zh = (lang or get_language()) != "en"
     parts = [_TEMPLATE_HEADERS["zh" if zh else "en"], "", "# CHCODE.md"]
     for zh_name, en_name, zh_hint, en_hint in _SECTIONS:
-        parts += ["", f"## {zh_name if zh else en_name}", f"<!-- {zh_hint if zh else en_hint} -->"]
+        parts += [
+            "",
+            f"## {zh_name if zh else en_name}",
+            f"<!-- {zh_hint if zh else en_hint} -->",
+        ]
     return "\n".join(parts) + "\n"
 
 
@@ -362,6 +401,37 @@ def reset_memory_cache() -> None:
     """
     _session_memory_blocks.clear()
     _memory_file_state.clear()
+
+
+# ─── 生命周期门面 ─────────────────────────────────────
+
+
+def begin_memory_session(workdir: Path) -> str:
+    """
+    会话启动/切换目录的记忆生命周期入口：
+    确保文件存在（首次创建 / CLAUDE.md 迁移）→ 冻结块失效 → 重建轮询基线。
+
+    Args:
+        workdir: 项目根目录
+
+    Returns:
+        ensure_project_memory 的状态："created" | "migrated" | "exists"
+    """
+    workdir = Path(workdir)
+    status = ensure_project_memory(workdir)
+    reset_memory_cache()
+    refresh_memory_state(workdir)
+    return status
+
+
+def reset_memory_session(workdir: Path) -> None:
+    """
+    会话内上下文重建（新会话/压缩）的记忆生命周期入口：
+    冻结块失效重读 + 重建轮询基线。不做 ensure —— 用户会话中
+    删掉 CHCODE.md 后不应被静默重建模板。
+    """
+    reset_memory_cache()
+    refresh_memory_state(workdir)
 
 
 # ─── 写入 ─────────────────────────────────────────────

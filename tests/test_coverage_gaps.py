@@ -2,6 +2,7 @@
 Targeted tests to cover gaps identified in coverage reports.
 Focuses on: prompts.py, agent_setup.py, skill_loader.py, session.py, shell/provider.py
 """
+
 from __future__ import annotations
 
 import json
@@ -46,13 +47,16 @@ class TestAskHyperparamExistingValueInPreset:
 
     async def test_existing_value_sets_default(self):
         """When existing_value is in preset_choices, it should be the default."""
+
         async def _select(msg, choices, default=None, **kw):
             # default should be "0.7" since it's in presets
             assert default == "0.7"
             return "0.7"
 
         with patch("chcode.prompts.select", _select):
-            result = await _ask_hyperparam("Temp:", ["0.3", "0.7", "1.0"], existing_value="0.7")
+            result = await _ask_hyperparam(
+                "Temp:", ["0.3", "0.7", "1.0"], existing_value="0.7"
+            )
         assert result == "0.7"
 
 
@@ -61,6 +65,7 @@ class TestAskHyperparamCustomInput:
 
     async def test_custom_input_nonempty(self):
         """Custom input returns the stripped value."""
+
         async def _select(msg, choices, default=None, **kw):
             if "自定义" in str(choices):
                 return "自定义输入..."
@@ -69,52 +74,64 @@ class TestAskHyperparamCustomInput:
         async def _text(msg, default="", **kw):
             return "  0.85  "
 
-        with patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.text", _text):
+        with (
+            patch("chcode.prompts.select", _select),
+            patch("chcode.prompts.text", _text),
+        ):
             result = await _ask_hyperparam("Temp:", ["0.3", "0.7"])
         assert result == "0.85"
 
     async def test_custom_input_empty_returns_skip(self):
         """Empty custom input returns _SKIP."""
+
         async def _select(msg, choices, default=None, **kw):
             return "自定义输入..."
 
         async def _text(msg, default="", **kw):
             return ""
 
-        with patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.text", _text):
+        with (
+            patch("chcode.prompts.select", _select),
+            patch("chcode.prompts.text", _text),
+        ):
             result = await _ask_hyperparam("Temp:", ["0.3", "0.7"])
         assert result is _SKIP
 
     async def test_custom_input_whitespace_returns_skip(self):
         """Whitespace-only custom input returns _SKIP."""
+
         async def _select(msg, choices, default=None, **kw):
             return "自定义输入..."
 
         async def _text(msg, default="", **kw):
             return "   "
 
-        with patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.text", _text):
+        with (
+            patch("chcode.prompts.select", _select),
+            patch("chcode.prompts.text", _text),
+        ):
             result = await _ask_hyperparam("Temp:", ["0.3", "0.7"])
         assert result is _SKIP
 
     async def test_custom_input_none_returns_skip(self):
         """None from text (user cancelled) returns _SKIP."""
+
         async def _select(msg, choices, default=None, **kw):
             return "自定义输入..."
 
         async def _text(msg, default="", **kw):
             return None
 
-        with patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.text", _text):
+        with (
+            patch("chcode.prompts.select", _select),
+            patch("chcode.prompts.text", _text),
+        ):
             result = await _ask_hyperparam("Temp:", ["0.3", "0.7"])
         assert result is _SKIP
 
     async def test_select_none_returns_none(self):
         """Cancelling the select entirely returns None."""
+
         async def _select(msg, choices, default=None, **kw):
             return None
 
@@ -124,6 +141,7 @@ class TestAskHyperparamCustomInput:
 
     async def test_skip_label_returns_skip(self):
         """Selecting SKIP_LABEL returns _SKIP."""
+
         async def _select(msg, choices, default=None, **kw):
             return "跳过 (不设置)"
 
@@ -137,6 +155,7 @@ class TestModelConfigFormHyperparamCancels:
 
     async def _run_hyperparam_cancel_test(self, cancel_on_label):
         """Generic test: hyperparam select returns None -> form returns None."""
+
         async def _select(msg, choices, default=None, **kw):
             if "API Key" in msg:
                 return "手动输入 API Key..."
@@ -144,10 +163,12 @@ class TestModelConfigFormHyperparamCancels:
                 return None
             return "0.7"
 
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.prompts.select", _select):
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+            patch("chcode.prompts.select", _select),
+        ):
             result = await model_config_form(None)
         assert result is None
 
@@ -157,6 +178,7 @@ class TestModelConfigFormHyperparamCancels:
 
     async def test_cancel_top_p(self):
         """Cancel on Top P but pass Temperature."""
+
         async def _select(msg, choices, default=None, **kw):
             if "API Key" in msg:
                 return "手动输入 API Key..."
@@ -165,15 +187,19 @@ class TestModelConfigFormHyperparamCancels:
             if "Top P" in msg:
                 return None
             return "0.5"
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.prompts.select", _select):
+
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+            patch("chcode.prompts.select", _select),
+        ):
             result = await model_config_form(None)
         assert result is None
 
     async def test_cancel_top_k(self):
         """Cancel on Top K but pass earlier params."""
+
         async def _select(msg, choices, default=None, **kw):
             if "API Key" in msg:
                 return "手动输入 API Key..."
@@ -184,10 +210,13 @@ class TestModelConfigFormHyperparamCancels:
             if "Top K" in msg:
                 return None
             return "10"
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.prompts.select", _select):
+
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+            patch("chcode.prompts.select", _select),
+        ):
             result = await model_config_form(None)
         assert result is None
 
@@ -204,10 +233,13 @@ class TestModelConfigFormHyperparamCancels:
             if "Max Completion" in msg:
                 return None
             return "10"
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.prompts.select", _select):
+
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+            patch("chcode.prompts.select", _select),
+        ):
             result = await model_config_form(None)
         assert result is None
 
@@ -218,10 +250,13 @@ class TestModelConfigFormHyperparamCancels:
             if "Frequency" in msg:
                 return None
             return "10"
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.prompts.select", _select):
+
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+            patch("chcode.prompts.select", _select),
+        ):
             result = await model_config_form(None)
         assert result is None
 
@@ -232,10 +267,13 @@ class TestModelConfigFormHyperparamCancels:
             if "Presence" in msg:
                 return None
             return "10"
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.prompts.select", _select):
+
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+            patch("chcode.prompts.select", _select),
+        ):
             result = await model_config_form(None)
         assert result is None
 
@@ -246,10 +284,13 @@ class TestModelConfigFormHyperparamCancels:
             if "Stop" in msg:
                 return None
             return "10"
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.prompts.select", _select):
+
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+            patch("chcode.prompts.select", _select),
+        ):
             result = await model_config_form(None)
         assert result is None
 
@@ -274,10 +315,12 @@ class TestModelConfigFormHyperparamSkips:
                 return "跳过 (不设置)"
             return "10"
 
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)):
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.select", _select),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+        ):
             result = await model_config_form(existing)
         assert result is not None
         assert "extra_body" in result
@@ -303,10 +346,12 @@ class TestModelConfigFormHyperparamSkips:
                 return "10"
             return "10"
 
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)):
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.select", _select),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+        ):
             result = await model_config_form(existing)
         assert result is not None
         # top_k is set, max_completion_tokens is skipped, so extra_body should still exist with top_k
@@ -334,10 +379,12 @@ class TestModelConfigFormHyperparamSkips:
                 return "跳过 (不设置)"
             return "10"
 
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)):
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.select", _select),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+        ):
             result = await model_config_form(existing)
         assert result is not None
         assert "stop_sequences" in result
@@ -363,10 +410,12 @@ class TestModelConfigFormHyperparamSkips:
                 return "跳过 (不设置)"
             return "10"
 
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)):
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.select", _select),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+        ):
             result = await model_config_form(existing)
         assert result is not None
         assert "stop_sequences" not in result
@@ -386,15 +435,19 @@ class TestModelConfigFormEditBaseURLCustom:
         async def _text(msg, default="", **kw):
             return "https://custom.url/v1"
 
-        with patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.text", _text), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=False)):
-            result = await model_config_form({
-                "model": "gpt-4",
-                "base_url": "https://old.com",
-                "api_key": "sk-old",
-            })
+        with (
+            patch("chcode.prompts.select", _select),
+            patch("chcode.prompts.text", _text),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=False)),
+        ):
+            result = await model_config_form(
+                {
+                    "model": "gpt-4",
+                    "base_url": "https://old.com",
+                    "api_key": "sk-old",
+                }
+            )
         assert result is not None
         assert result["base_url"] == "https://custom.url/v1"
 
@@ -404,6 +457,7 @@ class TestModelConfigFormAllHyperparamsFilled:
 
     async def test_all_hyperparams_set(self):
         """Set every hyperparam to a value."""
+
         async def _select(msg, choices, default=None, **kw):
             if "API Key" in msg:
                 return "手动输入 API Key..."
@@ -430,11 +484,13 @@ class TestModelConfigFormAllHyperparamsFilled:
                 return "<|im_end|>"
             return "value"
 
-        with patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")), \
-             patch("chcode.prompts.password", AsyncMock(return_value="sk-123")), \
-             patch("chcode.prompts.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.prompts.select", _select), \
-             patch("chcode.prompts.text", _text):
+        with (
+            patch("chcode.prompts.text", AsyncMock(return_value="gpt-4")),
+            patch("chcode.prompts.password", AsyncMock(return_value="sk-123")),
+            patch("chcode.prompts.confirm", AsyncMock(return_value=True)),
+            patch("chcode.prompts.select", _select),
+            patch("chcode.prompts.text", _text),
+        ):
             result = await model_config_form(None)
         assert result is not None
         assert result["temperature"] == 0.5
@@ -453,9 +509,11 @@ class TestPromptsWithArgs:
     async def test_select_with_default(self):
         """Cover line 27 path: select with a default value."""
         call_args = {}
+
         async def mock_to_thread(fn, *args, **kwargs):
             call_args["fn"] = fn
             return "B"
+
         with patch("chcode.prompts.asyncio.to_thread", mock_to_thread):
             result = await select("Pick?", ["A", "B"], default="A")
         assert result == "B"
@@ -463,9 +521,11 @@ class TestPromptsWithArgs:
     async def test_confirm_default_false(self):
         """Cover line 40 path: confirm with default=False."""
         call_args = {}
+
         async def mock_to_thread(fn, *args, **kwargs):
             call_args["fn"] = fn
             return False
+
         with patch("chcode.prompts.asyncio.to_thread", mock_to_thread):
             result = await confirm("Sure?", default=False)
         assert result is False
@@ -473,9 +533,11 @@ class TestPromptsWithArgs:
     async def test_checkbox_returns_value(self):
         """Cover line 52 path: checkbox returns a non-empty list."""
         call_args = {}
+
         async def mock_to_thread(fn, *args, **kwargs):
             call_args["fn"] = fn
             return ["X", "Y"]
+
         with patch("chcode.prompts.asyncio.to_thread", mock_to_thread):
             result = await checkbox("Pick:", ["X", "Y", "Z"])
         assert result == ["X", "Y"]
@@ -483,9 +545,11 @@ class TestPromptsWithArgs:
     async def test_text_with_default(self):
         """Cover line 61 path: text with a default value."""
         call_args = {}
+
         async def mock_to_thread(fn, *args, **kwargs):
             call_args["fn"] = fn
             return "preset"
+
         with patch("chcode.prompts.asyncio.to_thread", mock_to_thread):
             result = await text("Name:", default="preset")
         assert result == "preset"
@@ -493,9 +557,11 @@ class TestPromptsWithArgs:
     async def test_password_returns_value(self):
         """Cover line 27 (password) path."""
         call_args = {}
+
         async def mock_to_thread(fn, *args, **kwargs):
             call_args["fn"] = fn
             return "mysecret"
+
         with patch("chcode.prompts.asyncio.to_thread", mock_to_thread):
             result = await password("Key:")
         assert result == "mysecret"
@@ -508,15 +574,18 @@ class TestPromptsWithArgs:
 
 def _patched_load_fallback_config(mod):
     """Patched version of _load_fallback_config that uses globals correctly."""
+
     def patched():
         if not mod._fallback_models:
             from chcode.config import load_model_json
+
             data = load_model_json()
             fallback = data.get("fallback", {})
             if not fallback:
                 return None
             mod._fallback_models = list(fallback.values())
         return mod.get_fallback_model()
+
     return patched
 
 
@@ -530,10 +599,13 @@ class TestLoadFallbackConfig:
     def test_fallback_models_pre_set(self):
         """When _fallback_models already has entries, returns first."""
         from chcode import agent_setup as mod
+
         old_models = mod._fallback_models
         mod._fallback_models = [{"model": "preloaded"}]
         try:
-            with patch.object(mod, "_load_fallback_config", _patched_load_fallback_config(mod)):
+            with patch.object(
+                mod, "_load_fallback_config", _patched_load_fallback_config(mod)
+            ):
                 result = mod._load_fallback_config()
             assert result["model"] == "preloaded"
         finally:
@@ -542,6 +614,7 @@ class TestLoadFallbackConfig:
     def test_loads_from_config(self):
         """When _fallback_models is empty, loads from config file."""
         from chcode import agent_setup as mod
+
         mock_data = {
             "fallback": {
                 "model-a": {"model": "a", "api_key": "k"},
@@ -551,8 +624,12 @@ class TestLoadFallbackConfig:
         old_models = mod._fallback_models
         mod._fallback_models = []
         try:
-            with patch.object(mod, "_load_fallback_config", _patched_load_fallback_config(mod)), \
-                 patch("chcode.config.load_model_json", return_value=mock_data):
+            with (
+                patch.object(
+                    mod, "_load_fallback_config", _patched_load_fallback_config(mod)
+                ),
+                patch("chcode.config.load_model_json", return_value=mock_data),
+            ):
                 result = mod._load_fallback_config()
             assert result is not None
             assert result["model"] == "a"
@@ -562,11 +639,16 @@ class TestLoadFallbackConfig:
     def test_no_fallback_in_config(self):
         """When config has no fallback key, returns None."""
         from chcode import agent_setup as mod
+
         old_models = mod._fallback_models
         mod._fallback_models = []
         try:
-            with patch.object(mod, "_load_fallback_config", _patched_load_fallback_config(mod)), \
-                 patch("chcode.config.load_model_json", return_value={}):
+            with (
+                patch.object(
+                    mod, "_load_fallback_config", _patched_load_fallback_config(mod)
+                ),
+                patch("chcode.config.load_model_json", return_value={}),
+            ):
                 result = mod._load_fallback_config()
             assert result is None
         finally:
@@ -584,14 +666,18 @@ class TestLoadFallbackConfigDirect:
     def test_empty_fallback_models_uses_patched(self):
         """Cover lines 84-93: _fallback_models is falsy, loads from config."""
         from chcode import agent_setup as mod
+
         old_models = mod._fallback_models
         mod._fallback_models = []
         try:
             patched = _patched_load_fallback_config(mod)
-            with patch.object(mod, "_load_fallback_config", patched), \
-                 patch("chcode.config.load_model_json", return_value={
-                     "fallback": {"m1": {"model": "fb", "api_key": "k"}}
-                 }):
+            with (
+                patch.object(mod, "_load_fallback_config", patched),
+                patch(
+                    "chcode.config.load_model_json",
+                    return_value={"fallback": {"m1": {"model": "fb", "api_key": "k"}}},
+                ),
+            ):
                 result = mod._load_fallback_config()
             assert result is not None
             assert result["model"] == "fb"
@@ -601,14 +687,15 @@ class TestLoadFallbackConfigDirect:
     def test_empty_fallback_dict_returns_none(self):
         """Cover lines 89-90: fallback dict is empty -> return None."""
         from chcode import agent_setup as mod
+
         old_models = mod._fallback_models
         mod._fallback_models = []
         try:
             patched = _patched_load_fallback_config(mod)
-            with patch.object(mod, "_load_fallback_config", patched), \
-                 patch("chcode.config.load_model_json", return_value={
-                     "fallback": {}
-                 }):
+            with (
+                patch.object(mod, "_load_fallback_config", patched),
+                patch("chcode.config.load_model_json", return_value={"fallback": {}}),
+            ):
                 result = mod._load_fallback_config()
             assert result is None
         finally:
@@ -617,12 +704,15 @@ class TestLoadFallbackConfigDirect:
     def test_no_fallback_key_returns_none(self):
         """Cover line 89: data.get('fallback', {}) returns empty dict."""
         from chcode import agent_setup as mod
+
         old_models = mod._fallback_models
         mod._fallback_models = []
         try:
             patched = _patched_load_fallback_config(mod)
-            with patch.object(mod, "_load_fallback_config", patched), \
-                 patch("chcode.config.load_model_json", return_value={}):
+            with (
+                patch.object(mod, "_load_fallback_config", patched),
+                patch("chcode.config.load_model_json", return_value={}),
+            ):
                 result = mod._load_fallback_config()
             assert result is None
         finally:
@@ -639,17 +729,21 @@ class TestLoadFallbackConfigRealFunction:
     def test_real_function_with_fallback_data(self):
         """Lines 84-93: call real _load_fallback_config with fallback data."""
         from chcode import agent_setup as mod
+
         old_models = list(mod._fallback_models)
         old_index = mod._fallback_index
         mod._fallback_models = []
         mod._fallback_index = 0
         try:
-            with patch("chcode.config.load_model_json", return_value={
-                "fallback": {
-                    "m1": {"model": "fb-a", "api_key": "k1"},
-                    "m2": {"model": "fb-b", "api_key": "k2"},
-                }
-            }):
+            with patch(
+                "chcode.config.load_model_json",
+                return_value={
+                    "fallback": {
+                        "m1": {"model": "fb-a", "api_key": "k1"},
+                        "m2": {"model": "fb-b", "api_key": "k2"},
+                    }
+                },
+            ):
                 result = mod._load_fallback_config()
             # Now with the global fix, _fallback_models should be populated
             assert result is not None
@@ -661,6 +755,7 @@ class TestLoadFallbackConfigRealFunction:
     def test_real_function_no_fallback(self):
         """Lines 89-90: real function with no fallback in config."""
         from chcode import agent_setup as mod
+
         old_models = list(mod._fallback_models)
         old_index = mod._fallback_index
         mod._fallback_models = []
@@ -676,6 +771,7 @@ class TestLoadFallbackConfigRealFunction:
     def test_real_function_empty_fallback(self):
         """Lines 89-90: real function with empty fallback dict."""
         from chcode import agent_setup as mod
+
         old_models = list(mod._fallback_models)
         old_index = mod._fallback_index
         mod._fallback_models = []
@@ -694,6 +790,7 @@ class TestToolResultBudgetProcessing:
 
     async def test_processes_tool_message(self):
         from langchain_core.messages import ToolMessage
+
         mock_msg = MagicMock(spec=ToolMessage)
         mock_msg.content = "  some output  "
         mock_msg.name = "bash"
@@ -714,10 +811,21 @@ class TestToolResultBudgetProcessing:
         mock_request.runtime.context.working_directory = "/w"
         mock_request.override = mock_override
 
-        with patch("chcode.agent_setup.clean_tool_output", return_value="cleaned output"), \
-             patch("chcode.agent_setup.truncate_large_result", return_value="cleaned output"), \
-             patch("chcode.agent_setup.enforce_per_turn_budget", return_value=[mock_msg]) as mock_budget:
-            result = await tool_result_budget.awrap_model_call(mock_request, mock_handler)
+        with (
+            patch(
+                "chcode.agent_setup.clean_tool_output", return_value="cleaned output"
+            ),
+            patch(
+                "chcode.agent_setup.truncate_large_result",
+                return_value="cleaned output",
+            ),
+            patch(
+                "chcode.agent_setup.enforce_per_turn_budget", return_value=[mock_msg]
+            ) as mock_budget,
+        ):
+            result = await tool_result_budget.awrap_model_call(
+                mock_request, mock_handler
+            )
         mock_handler.assert_called_once()
         mock_budget.assert_called_once()
 
@@ -727,19 +835,21 @@ class TestBuildAgentWithFallback:
 
     def test_fallback_models_set(self):
         from chcode.agent_setup import build_agent
-        mock_data = {
-            "fallback": {"fb-model": {"model": "fb", "api_key": "k"}}
-        }
-        with patch("chcode.agent_setup._dummy_model"), \
-             patch("chcode.agent_setup.create_agent") as mock_create, \
-             patch("chcode.agent_setup._get_all_tools", return_value=[]), \
-             patch("chcode.config.load_model_json", return_value=mock_data), \
-             patch("chcode.agent_setup._hitl_middleware", None), \
-             patch("chcode.agent_setup.EnhancedChatOpenAI"), \
-             patch("chcode.agent_setup._summarization_model", None):
+
+        mock_data = {"fallback": {"fb-model": {"model": "fb", "api_key": "k"}}}
+        with (
+            patch("chcode.agent_setup._dummy_model"),
+            patch("chcode.agent_setup.create_agent") as mock_create,
+            patch("chcode.agent_setup._get_all_tools", return_value=[]),
+            patch("chcode.config.load_model_json", return_value=mock_data),
+            patch("chcode.agent_setup._hitl_middleware", None),
+            patch("chcode.agent_setup.EnhancedChatOpenAI"),
+            patch("chcode.agent_setup._summarization_model", None),
+        ):
             agent = build_agent(checkpointer=None, yolo=False)
         # After build_agent, _fallback_models should be populated
         from chcode.agent_setup import get_fallback_model
+
         assert get_fallback_model() is not None
         mock_create.assert_called_once()
 
@@ -750,14 +860,20 @@ class TestBuildAgentContextLength:
     def test_summary_trigger_uses_configured_context_length(self):
         from chcode.agent_setup import build_agent
 
-        cfg = {"model": "ctx-model", "api_key": "k", "metadata": {"context_length": 50000}}
-        with patch("chcode.agent_setup._dummy_model"), \
-             patch("chcode.agent_setup.create_agent") as mock_create, \
-             patch("chcode.agent_setup._get_all_tools", return_value=[]), \
-             patch("chcode.config.load_model_json", return_value={}), \
-             patch("chcode.agent_setup._hitl_middleware", None), \
-             patch("chcode.agent_setup.EnhancedChatOpenAI"), \
-             patch("chcode.agent_setup._summarization_model", None):
+        cfg = {
+            "model": "ctx-model",
+            "api_key": "k",
+            "metadata": {"context_length": 50000},
+        }
+        with (
+            patch("chcode.agent_setup._dummy_model"),
+            patch("chcode.agent_setup.create_agent") as mock_create,
+            patch("chcode.agent_setup._get_all_tools", return_value=[]),
+            patch("chcode.config.load_model_json", return_value={}),
+            patch("chcode.agent_setup._hitl_middleware", None),
+            patch("chcode.agent_setup.EnhancedChatOpenAI"),
+            patch("chcode.agent_setup._summarization_model", None),
+        ):
             build_agent(model_config=cfg, checkpointer=None, yolo=False)
 
         middleware = mock_create.call_args.kwargs["middleware"]
@@ -772,6 +888,7 @@ class TestUpdateSummarizationModel:
 
     def test_updates_when_model_exists(self):
         from chcode.agent_setup import update_summarization_model
+
         # Create a simple object that mimics the real model's interface
         class FakeModel:
             def __init__(self):
@@ -785,19 +902,26 @@ class TestUpdateSummarizationModel:
 
         fake = FakeModel()
         new_model = FakeModel.__new__(FakeModel)
-        new_model.__dict__ = {"model": "new-model", "temperature": 1.0, "api_key": "new-key"}
+        new_model.__dict__ = {
+            "model": "new-model",
+            "temperature": 1.0,
+            "api_key": "new-key",
+        }
         new_model.model_fields_set = {"model", "temperature", "api_key"}
 
         import chcode.agent_setup as mod
+
         old_val = mod._summarization_model
         mod._summarization_model = fake
         try:
             with patch("chcode.agent_setup.EnhancedChatOpenAI", return_value=new_model):
-                update_summarization_model({
-                    "model": "new-model",
-                    "temperature": 1.0,
-                    "api_key": "new-key",
-                })
+                update_summarization_model(
+                    {
+                        "model": "new-model",
+                        "temperature": 1.0,
+                        "api_key": "new-key",
+                    }
+                )
             assert fake.model == "new-model"
             assert fake.temperature == 1.0
         finally:
@@ -824,15 +948,18 @@ class TestUpdateSummarizationModel:
         new_model.model_fields_set = {"model", "nonexistent_key"}
 
         import chcode.agent_setup as mod
+
         old_val = mod._summarization_model
         mod._summarization_model = fake
         try:
             with patch("chcode.agent_setup.EnhancedChatOpenAI", return_value=new_model):
                 # Should not raise despite AttributeError in setattr
-                update_summarization_model({
-                    "model": "new-model",
-                    "nonexistent_key": "val",
-                })
+                update_summarization_model(
+                    {
+                        "model": "new-model",
+                        "nonexistent_key": "val",
+                    }
+                )
                 # If we get here, the AttributeError was caught
                 assert fake.model == "new-model"
         finally:
@@ -859,15 +986,18 @@ class TestUpdateSummarizationModel:
         new_model.model_fields_set = {"model", "bad_key"}
 
         import chcode.agent_setup as mod
+
         old_val = mod._summarization_model
         mod._summarization_model = fake
         try:
             with patch("chcode.agent_setup.EnhancedChatOpenAI", return_value=new_model):
                 # Should not raise despite TypeError in setattr
-                update_summarization_model({
-                    "model": "new-model",
-                    "bad_key": "val",
-                })
+                update_summarization_model(
+                    {
+                        "model": "new-model",
+                        "bad_key": "val",
+                    }
+                )
                 # If we get here, the TypeError was caught
                 assert fake.model == "new-model"
         finally:
@@ -879,7 +1009,11 @@ class TestGetAllTools:
 
     def test_returns_tools(self):
         from chcode.agent_setup import _get_all_tools
-        with patch.dict("sys.modules", {"chcode.utils.tools": MagicMock(ALL_TOOLS=[MagicMock(name="tool1")])}):
+
+        with patch.dict(
+            "sys.modules",
+            {"chcode.utils.tools": MagicMock(ALL_TOOLS=[MagicMock(name="tool1")])},
+        ):
             tools = _get_all_tools()
         assert len(tools) == 1
 
@@ -901,6 +1035,7 @@ class TestCacheValidationEdgeCases:
         loader._dir_mtimes[str(skills_dir)] = 1.0
         # Now remove the dir
         import shutil
+
         shutil.rmtree(skills_dir)
         assert loader._is_cache_valid() is False
 
@@ -926,6 +1061,7 @@ class TestCacheValidationEdgeCases:
 
         # Modify the file
         import time
+
         time.sleep(0.05)  # ensure mtime differs
         skill_md.write_text("---\nname: s1\ndesc: d2\n---\nbody2", encoding="utf-8")
 
@@ -992,6 +1128,7 @@ class TestExtractArchiveTarBz2:
 
     def test_tar_bz2_extraction(self, tmp_path):
         import io
+
         tar_path = tmp_path / "test.tar.bz2"
         with tarfile.open(tar_path, "w:bz2") as tf:
             info = tarfile.TarInfo(name="dir/file.txt")
@@ -1004,6 +1141,7 @@ class TestExtractArchiveTarBz2:
     def test_tar_bz2_path_traversal(self, tmp_path):
         """Cover line 418/426: path traversal blocked for tar.gz and tar.bz2."""
         import io
+
         tar_path = tmp_path / "evil.tar.bz2"
         with tarfile.open(tar_path, "w:bz2") as tf:
             info = tarfile.TarInfo(name="../escape.txt")
@@ -1033,6 +1171,7 @@ class TestLoadSkillFileReadError:
         loader = SkillLoader(skill_paths=[tmp_path])
         # Manually populate cache with a skill pointing to a non-existent file
         from chcode.utils.skill_loader import SkillMetadata
+
         fake_path = tmp_path / "fake_skill"
         fake_path.mkdir()
         metadata = SkillMetadata(name="fake", description="d", skill_path=fake_path)
@@ -1063,7 +1202,10 @@ class TestValidateSkillPackageEdgeCases:
 
     def test_exception_handling(self, tmp_path):
         """Unexpected exception in validate_skill_package returns None."""
-        with patch("chcode.utils.skill_loader._extract_archive", side_effect=RuntimeError("boom")):
+        with patch(
+            "chcode.utils.skill_loader._extract_archive",
+            side_effect=RuntimeError("boom"),
+        ):
             result = validate_skill_package("/nonexistent/path.zip")
         assert result is None
 
@@ -1134,12 +1276,11 @@ class TestGetSummaryListContent:
     async def test_list_content_string_parts(self):
         """HumanMessage with list content containing string parts."""
         from langchain_core.messages import HumanMessage
+
         sm = SessionManager.__new__(SessionManager)
         agent = AsyncMock()
         state = MagicMock()
-        state.values = {"messages": [
-            HumanMessage(content=["Hello ", "world"])
-        ]}
+        state.values = {"messages": [HumanMessage(content=["Hello ", "world"])]}
         agent.aget_state = AsyncMock(return_value=state)
         result = await sm._get_summary(agent, "t1")
         assert result == "Hello world"
@@ -1147,15 +1288,20 @@ class TestGetSummaryListContent:
     async def test_list_content_dict_parts(self):
         """HumanMessage with list content containing dict parts with type=text."""
         from langchain_core.messages import HumanMessage
+
         sm = SessionManager.__new__(SessionManager)
         agent = AsyncMock()
         state = MagicMock()
-        state.values = {"messages": [
-            HumanMessage(content=[
-                {"type": "text", "text": "Hello "},
-                {"type": "text", "text": "world"},
-            ])
-        ]}
+        state.values = {
+            "messages": [
+                HumanMessage(
+                    content=[
+                        {"type": "text", "text": "Hello "},
+                        {"type": "text", "text": "world"},
+                    ]
+                )
+            ]
+        }
         agent.aget_state = AsyncMock(return_value=state)
         result = await sm._get_summary(agent, "t1")
         assert result == "Hello world"
@@ -1163,16 +1309,21 @@ class TestGetSummaryListContent:
     async def test_list_content_mixed_parts(self):
         """HumanMessage with mixed string and dict parts."""
         from langchain_core.messages import HumanMessage
+
         sm = SessionManager.__new__(SessionManager)
         agent = AsyncMock()
         state = MagicMock()
-        state.values = {"messages": [
-            HumanMessage(content=[
-                "Hello ",
-                {"type": "text", "text": "beautiful "},
-                "world",
-            ])
-        ]}
+        state.values = {
+            "messages": [
+                HumanMessage(
+                    content=[
+                        "Hello ",
+                        {"type": "text", "text": "beautiful "},
+                        "world",
+                    ]
+                )
+            ]
+        }
         agent.aget_state = AsyncMock(return_value=state)
         result = await sm._get_summary(agent, "t1")
         assert result == "Hello beautiful world"
@@ -1180,15 +1331,20 @@ class TestGetSummaryListContent:
     async def test_list_content_non_text_dict_ignored(self):
         """Dict parts without type=text are ignored."""
         from langchain_core.messages import HumanMessage
+
         sm = SessionManager.__new__(SessionManager)
         agent = AsyncMock()
         state = MagicMock()
-        state.values = {"messages": [
-            HumanMessage(content=[
-                {"type": "image_url", "url": "..."},
-                {"type": "text", "text": "visible"},
-            ])
-        ]}
+        state.values = {
+            "messages": [
+                HumanMessage(
+                    content=[
+                        {"type": "image_url", "url": "..."},
+                        {"type": "text", "text": "visible"},
+                    ]
+                )
+            ]
+        }
         agent.aget_state = AsyncMock(return_value=state)
         result = await sm._get_summary(agent, "t1")
         assert result == "visible"
@@ -1196,15 +1352,23 @@ class TestGetSummaryListContent:
     async def test_list_content_empty_text_skipped(self):
         """Content parts that result in empty text are skipped (continue)."""
         from langchain_core.messages import HumanMessage
+
         sm = SessionManager.__new__(SessionManager)
         agent = AsyncMock()
         state = MagicMock()
-        state.values = {"messages": [
-            HumanMessage(content=[
-                {"type": "text", "text": ""},  # empty -> stripped is empty -> continue
-                {"type": "text", "text": "real text"},
-            ])
-        ]}
+        state.values = {
+            "messages": [
+                HumanMessage(
+                    content=[
+                        {
+                            "type": "text",
+                            "text": "",
+                        },  # empty -> stripped is empty -> continue
+                        {"type": "text", "text": "real text"},
+                    ]
+                )
+            ]
+        }
         agent.aget_state = AsyncMock(return_value=state)
         result = await sm._get_summary(agent, "t1")
         assert result == "real text"
@@ -1212,15 +1376,18 @@ class TestGetSummaryListContent:
     async def test_non_string_content_skipped(self):
         """Non-string, non-list content triggers continue."""
         from langchain_core.messages import HumanMessage
+
         sm = SessionManager.__new__(SessionManager)
         agent = AsyncMock()
         mock_msg = MagicMock(spec=HumanMessage)
         mock_msg.content = 12345  # not str or list
         state = MagicMock()
-        state.values = {"messages": [
-            mock_msg,  # first: non-string, non-list -> continue
-            HumanMessage(content="actual text"),  # second: valid
-        ]}
+        state.values = {
+            "messages": [
+                mock_msg,  # first: non-string, non-list -> continue
+                HumanMessage(content="actual text"),  # second: valid
+            ]
+        }
         agent.aget_state = AsyncMock(return_value=state)
         result = await sm._get_summary(agent, "t1")
         # Second valid HumanMessage should be returned (first was skipped)
@@ -1230,13 +1397,12 @@ class TestGetSummaryListContent:
         """Text longer than _SUMMARY_MAX_LEN gets truncated."""
         from chcode.utils.session import _SUMMARY_MAX_LEN
         from langchain_core.messages import HumanMessage
+
         sm = SessionManager.__new__(SessionManager)
         agent = AsyncMock()
         long_text = "A" * (_SUMMARY_MAX_LEN + 20)
         state = MagicMock()
-        state.values = {"messages": [
-            HumanMessage(content=long_text)
-        ]}
+        state.values = {"messages": [HumanMessage(content=long_text)]}
         agent.aget_state = AsyncMock(return_value=state)
         result = await sm._get_summary(agent, "t1")
         assert len(result) == _SUMMARY_MAX_LEN + 1  # truncated + ellipsis
@@ -1267,6 +1433,7 @@ class TestBashProviderGitDetection:
     @patch("os.path.isfile", side_effect=lambda p: p.endswith("bash.exe"))
     def test_git_bash_via_bin(self, mock_isfile, mock_which):
         from chcode.utils.shell.provider import BashProvider
+
         p = BashProvider()
         # Should find bash in git_bin directory
         assert p.is_available is True
@@ -1291,9 +1458,12 @@ class TestBashProviderGitDetection:
                 return True
             return False
 
-        with patch("shutil.which", side_effect=mock_which), \
-             patch("os.path.isfile", side_effect=mock_isfile):
+        with (
+            patch("shutil.which", side_effect=mock_which),
+            patch("os.path.isfile", side_effect=mock_isfile),
+        ):
             from chcode.utils.shell.provider import BashProvider
+
             p = BashProvider()
             assert p.is_available is True
 
@@ -1306,6 +1476,7 @@ class TestBashProviderNonWindows:
     @patch("os.path.isfile", return_value=True)
     def test_uses_env_shell(self, mock_isfile, mock_env_get):
         from chcode.utils.shell.provider import BashProvider
+
         p = BashProvider()
         assert p.shell_path == "/bin/bash"
 
@@ -1314,15 +1485,20 @@ class TestBashProviderNonWindows:
     @patch("os.path.isfile", side_effect=lambda p: p == "/usr/bin/bash")
     def test_falls_through_candidates(self, mock_isfile, mock_env_get):
         from chcode.utils.shell.provider import BashProvider
+
         p = BashProvider()
         assert p.shell_path == "/usr/bin/bash"
 
     @patch("os.name", "posix")
     @patch("os.environ.get", return_value="")
     @patch("os.path.isfile", return_value=False)
-    @patch("shutil.which", side_effect=lambda name: "/found/bash" if name == "zsh" else None)
+    @patch(
+        "shutil.which",
+        side_effect=lambda name: "/found/bash" if name == "zsh" else None,
+    )
     def test_uses_shutil_which_fallback(self, mock_which, mock_isfile, mock_env_get):
         from chcode.utils.shell.provider import BashProvider
+
         p = BashProvider()
         assert p.shell_path == "/found/bash"
 
@@ -1332,6 +1508,7 @@ class TestBashProviderNonWindows:
     @patch("shutil.which", return_value=None)
     def test_no_shell_found(self, mock_which, mock_isfile, mock_env_get):
         from chcode.utils.shell.provider import BashProvider
+
         p = BashProvider()
         assert p.is_available is False
         assert p.shell_path == ""
@@ -1343,6 +1520,7 @@ class TestPowerShellProviderIsAvailable:
     @patch("platform.system", return_value="Linux")
     def test_not_windows(self, mock_sys):
         from chcode.utils.shell.provider import PowerShellProvider
+
         p = PowerShellProvider()
         assert p.is_available is False
 
@@ -1350,13 +1528,18 @@ class TestPowerShellProviderIsAvailable:
     @patch("shutil.which", return_value=None)
     def test_windows_no_powershell(self, mock_which, mock_sys):
         from chcode.utils.shell.provider import PowerShellProvider
+
         p = PowerShellProvider()
         assert p.is_available is False
 
     @patch("platform.system", return_value="Windows")
-    @patch("shutil.which", return_value="C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    @patch(
+        "shutil.which",
+        return_value="C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    )
     def test_windows_with_powershell(self, mock_which, mock_sys):
         from chcode.utils.shell.provider import PowerShellProvider
+
         p = PowerShellProvider()
         assert p.is_available is True
 
@@ -1378,19 +1561,21 @@ class TestCLILangSmithGuard:
         """Cover lines 23-40: cli module imports and sets up guard."""
         # Simply importing the module exercises the guard setup code
         import chcode.cli
+
         # The guard is now installed on sys.stderr
-        assert hasattr(chcode.cli, 'app')
-        assert hasattr(chcode.cli, 'console')
+        assert hasattr(chcode.cli, "app")
+        assert hasattr(chcode.cli, "console")
 
     def test_guard_module_level_setup(self):
         """Cover lines 23-40: Module-level guard setup."""
         # The guard setup happens at import, verify module structure
         import chcode.cli
         import sys
+
         # Verify stderr has been wrapped
         assert sys.stderr is not None
         # The _Guard class is defined and used
-        assert hasattr(chcode.cli, '_setup_langsmith_guard')
+        assert hasattr(chcode.cli, "_setup_langsmith_guard")
 
 
 class TestCLIMainVersion:
@@ -1566,6 +1751,7 @@ class TestKillProcTreeImportError:
         mock_parent.children.return_value = []
 
         import chcode.utils.shell.session as sess_mod
+
         with patch.dict("sys.modules", {"psutil": mock_psutil}):
             sess_mod._kill_proc_tree(mock_proc)
 
@@ -1582,9 +1768,11 @@ class TestKillProcTreeImportError:
 
         import chcode.utils.shell.session as sess_mod
 
-        with patch.dict("sys.modules", {"psutil": None}), \
-             patch("chcode.utils.shell.session.os.name", "posix"), \
-             patch("os.killpg") as mock_killpg:
+        with (
+            patch.dict("sys.modules", {"psutil": None}),
+            patch("chcode.utils.shell.session.os.name", "posix"),
+            patch("os.killpg") as mock_killpg,
+        ):
             sess_mod._kill_proc_tree(mock_proc)
 
         mock_killpg.assert_called_once_with(1234, 9)
@@ -1650,15 +1838,19 @@ class TestSkillManagerDescTruncation:
         # Mock scan_all_skills to return a skill with long description
         long_desc = "a" * 100  # 100 character description
         with patch("chcode.utils.skill_manager.scan_all_skills") as mock_scan:
-            mock_scan.return_value = [{
-                "name": "test",
-                "type": "test",
-                "description": long_desc,
-                "path": "/tmp/test",
-            }]
+            mock_scan.return_value = [
+                {
+                    "name": "test",
+                    "type": "test",
+                    "description": long_desc,
+                    "path": "/tmp/test",
+                }
+            ]
 
             # Mock select to return "返回" to exit early
-            with patch("chcode.utils.skill_manager.select", AsyncMock(return_value="返回")):
+            with patch(
+                "chcode.utils.skill_manager.select", AsyncMock(return_value="返回")
+            ):
                 result = await _list_skills(workplace_path)
                 # Should complete without error
                 assert result is None
@@ -1675,12 +1867,14 @@ class TestSkillManagerSkillNotFound:
         workplace_path = Path("/tmp")
 
         with patch("chcode.utils.skill_manager.scan_all_skills") as mock_scan:
-            mock_scan.return_value = [{
-                "name": "skill1",
-                "type": "test",
-                "description": "desc",
-                "path": "/tmp/skill1",
-            }]
+            mock_scan.return_value = [
+                {
+                    "name": "skill1",
+                    "type": "test",
+                    "description": "desc",
+                    "path": "/tmp/skill1",
+                }
+            ]
 
             # Mock select to return a non-existent skill, then "返回"
             call_count = 0
@@ -1740,7 +1934,10 @@ class TestSkillManagerFileNotExists:
 
         workplace_path = Path("/tmp")
 
-        with patch("chcode.utils.skill_manager.text", AsyncMock(return_value="/nonexistent/file.zip")):
+        with patch(
+            "chcode.utils.skill_manager.text",
+            AsyncMock(return_value="/nonexistent/file.zip"),
+        ):
             with patch("pathlib.Path.exists", return_value=False):
                 result = await _install_skill(workplace_path)
                 # Should handle non-existent file gracefully
@@ -1763,15 +1960,24 @@ class TestSkillManagerInstallFails:
             temp_path = f.name
 
         try:
-            with patch("chcode.utils.skill_manager.text", AsyncMock(return_value=temp_path)):
+            with patch(
+                "chcode.utils.skill_manager.text", AsyncMock(return_value=temp_path)
+            ):
                 with patch("pathlib.Path.exists", return_value=True):
-                    with patch("chcode.utils.skill_manager.select", AsyncMock(return_value="项目级")):
-                        with patch("chcode.utils.skill_manager.validate_skill_package", return_value=None):
+                    with patch(
+                        "chcode.utils.skill_manager.select",
+                        AsyncMock(return_value="项目级"),
+                    ):
+                        with patch(
+                            "chcode.utils.skill_manager.validate_skill_package",
+                            return_value=None,
+                        ):
                             result = await _install_skill(workplace_path)
                             # Should handle installation failure gracefully
                             assert result is None
         finally:
             import os
+
             try:
                 os.unlink(temp_path)
             except:
@@ -1801,6 +2007,7 @@ class TestAgentLoaderParseAgentMDReadError:
             assert result is None
         finally:
             import os
+
             try:
                 os.unlink(temp_path)
             except:
@@ -1824,6 +2031,7 @@ class TestAgentLoaderParseAgentMDYAMLError:
             assert result is None
         finally:
             import os
+
             try:
                 os.unlink(temp_path)
             except:
@@ -1846,7 +2054,7 @@ class TestAgentLoaderLoadAgentsCustomPath:
                 "description: Custom agent for testing\n"
                 "---\n"
                 "You are a custom agent.",
-                encoding="utf-8"
+                encoding="utf-8",
             )
 
             # Load with extra_paths
@@ -1955,6 +2163,7 @@ class TestAgentRunnerModelSwitchError:
         with patch("chcode.utils.tools.ALL_TOOLS", []):
             with patch("chcode.agents.runner.create_agent") as mock_create:
                 from chcode.agent_setup import ModelSwitchError
+
                 mock_agent = AsyncMock()
                 mock_agent.ainvoke = AsyncMock(side_effect=ModelSwitchError("test"))
                 mock_create.return_value = mock_agent
@@ -2030,10 +2239,12 @@ class TestAgentRunnerListContent:
         agent_def.disallowed_tools = []
 
         # Create AIMessage with list content
-        msg = AIMessage(content=[
-            {"type": "text", "text": "Hello "},
-            {"type": "text", "text": "world"},
-        ])
+        msg = AIMessage(
+            content=[
+                {"type": "text", "text": "Hello "},
+                {"type": "text", "text": "world"},
+            ]
+        )
         mock_agent = AsyncMock()
         mock_agent.ainvoke = AsyncMock(return_value={"messages": [msg]})
 
@@ -2146,9 +2357,13 @@ class TestAgentRunnerToolResultBudget:
         async def mock_handler(req):
             return MagicMock()
 
-        with patch("chcode.agent_setup.clean_tool_output", return_value="cleaned"), \
-             patch("chcode.agent_setup.truncate_large_result", return_value="truncated"), \
-             patch("chcode.agent_setup.enforce_per_turn_budget", return_value=[tool_msg]) as mock_budget:
+        with (
+            patch("chcode.agent_setup.clean_tool_output", return_value="cleaned"),
+            patch("chcode.agent_setup.truncate_large_result", return_value="truncated"),
+            patch(
+                "chcode.agent_setup.enforce_per_turn_budget", return_value=[tool_msg]
+            ) as mock_budget,
+        ):
             result = await tool_result_budget.awrap_model_call(request, mock_handler)
             mock_budget.assert_called_once()
 
@@ -2184,7 +2399,9 @@ class TestAgentRunnerModelOverride:
                 mock_agent.ainvoke = AsyncMock(return_value={"messages": []})
                 mock_create.return_value = mock_agent
 
-                with patch("chcode.agents.runner.EnhancedChatOpenAI", mock_enhanced_chat):
+                with patch(
+                    "chcode.agents.runner.EnhancedChatOpenAI", mock_enhanced_chat
+                ):
                     await run_subagent(
                         "test",
                         agent_def,
@@ -2350,7 +2567,10 @@ class TestShellSessionTruncatedOutput:
             mock_truncated.persisted_path = "/tmp/output.txt"
             mock_truncated.total_bytes = 10000
 
-            with patch("chcode.utils.shell.session.truncate_output", return_value=mock_truncated):
+            with patch(
+                "chcode.utils.shell.session.truncate_output",
+                return_value=mock_truncated,
+            ):
                 result, _ = session.execute("echo test")
                 assert result.output_file_path == "/tmp/output.txt"
                 assert result.output_file_size == 10000
@@ -2458,8 +2678,10 @@ class TestSkillManagerDeleteSelectReturns:
 
         skill = {"name": "test", "path": "/tmp/test"}
 
-        with patch("chcode.utils.skill_manager.confirm", AsyncMock(return_value=True)), \
-             patch("chcode.utils.skill_manager.select", AsyncMock(return_value=None)):
+        with (
+            patch("chcode.utils.skill_manager.confirm", AsyncMock(return_value=True)),
+            patch("chcode.utils.skill_manager.select", AsyncMock(return_value=None)),
+        ):
             result = await _delete_skill(skill)
             # Should return early after select
             assert result is None
@@ -2481,15 +2703,26 @@ class TestSkillManagerInstallLocationNone:
         zip_path.close()
 
         try:
-            with patch("chcode.utils.skill_manager.text", AsyncMock(return_value=zip_path.name)), \
-                 patch("pathlib.Path.exists", return_value=True), \
-                 patch("chcode.utils.skill_manager.validate_skill_package", return_value={"name": "test"}), \
-                 patch("chcode.utils.skill_manager.select", AsyncMock(return_value=None)):
+            with (
+                patch(
+                    "chcode.utils.skill_manager.text",
+                    AsyncMock(return_value=zip_path.name),
+                ),
+                patch("pathlib.Path.exists", return_value=True),
+                patch(
+                    "chcode.utils.skill_manager.validate_skill_package",
+                    return_value={"name": "test"},
+                ),
+                patch(
+                    "chcode.utils.skill_manager.select", AsyncMock(return_value=None)
+                ),
+            ):
                 result = await _install_skill(workplace_path)
                 # Should return early
                 assert result is None
         finally:
             import os
+
             try:
                 os.unlink(zip_path.name)
             except:
@@ -2518,6 +2751,7 @@ class TestAgentLoaderYAMLError:
             assert result is None
         finally:
             import os
+
             try:
                 os.unlink(temp_path)
             except:
@@ -2541,7 +2775,7 @@ class TestAgentLoaderNonMdFile:
             md_file = Path(tmpdir) / "custom.md"
             md_file.write_text(
                 "---\nname: custom\ndescription: Custom agent\n---\nprompt",
-                encoding="utf-8"
+                encoding="utf-8",
             )
 
             agents = load_agents(extra_paths=[Path(tmpdir)])
@@ -2566,6 +2800,7 @@ class TestAgentLoaderEmptyBody:
             assert result is None
         finally:
             import os
+
             try:
                 os.unlink(temp_path)
             except:
@@ -2589,6 +2824,7 @@ class TestAgentLoaderEmptyNameOrDescription:
             assert result is None
         finally:
             import os
+
             try:
                 os.unlink(temp_path)
             except:
@@ -2608,6 +2844,7 @@ class TestAgentLoaderEmptyNameOrDescription:
             assert result is None
         finally:
             import os
+
             try:
                 os.unlink(temp_path)
             except:
@@ -2631,6 +2868,7 @@ class TestAgentLoaderNonDictFrontmatter:
             assert result is None
         finally:
             import os
+
             try:
                 os.unlink(temp_path)
             except:
@@ -2647,6 +2885,7 @@ class TestAgentLoaderCacheWithExtraPaths:
 
         # Clear cache first
         import chcode.agents.loader as loader_mod
+
         loader_mod._agents_cache = None
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2780,11 +3019,21 @@ class TestSkillManagerInstallFailurePrint:
         zip_path = tmp_path / "test.zip"
         zip_path.write_bytes(b"PK")
 
-        with patch("chcode.utils.skill_manager.text", AsyncMock(return_value=str(zip_path))), \
-             patch("pathlib.Path.exists", return_value=True), \
-             patch("chcode.utils.skill_manager.validate_skill_package", return_value={"name": "test"}), \
-             patch("chcode.utils.skill_manager.select", AsyncMock(return_value="项目级 (当前工作目录)")), \
-             patch("chcode.utils.skill_manager.install_skill", return_value=False):
+        with (
+            patch(
+                "chcode.utils.skill_manager.text", AsyncMock(return_value=str(zip_path))
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch(
+                "chcode.utils.skill_manager.validate_skill_package",
+                return_value={"name": "test"},
+            ),
+            patch(
+                "chcode.utils.skill_manager.select",
+                AsyncMock(return_value="项目级 (当前工作目录)"),
+            ),
+            patch("chcode.utils.skill_manager.install_skill", return_value=False),
+        ):
             result = await _install_skill(workplace_path)
             # Should print failure message and complete
             assert result is None
@@ -2829,7 +3078,9 @@ class TestGitManagerResetFail:
             json.dumps({msg_ids_str: "abc1234", "init": "init_hash"}), encoding="utf-8"
         )
 
-        with patch.object(gm, "_run", return_value=MagicMock(returncode=1, stdout="", stderr="fail")):
+        with patch.object(
+            gm, "_run", return_value=MagicMock(returncode=1, stdout="", stderr="fail")
+        ):
             result = gm.rollback(["msg1", "msg2"], ["msg1", "msg2"])
             assert result is False
 
@@ -2847,8 +3098,13 @@ class TestRobustDecodeLastFallback:
 
         data = b"\x80\x81\x82\x83"
 
-        with patch("chcode.utils.shell.session.from_bytes") as mock_fb, \
-             patch("chcode.utils.shell.session.locale.getpreferredencoding", return_value="utf-8"):
+        with (
+            patch("chcode.utils.shell.session.from_bytes") as mock_fb,
+            patch(
+                "chcode.utils.shell.session.locale.getpreferredencoding",
+                return_value="utf-8",
+            ),
+        ):
             mock_best = MagicMock()
             mock_best.coherence = 0.1
             mock_fb.return_value.best.return_value = mock_best
@@ -2862,10 +3118,13 @@ class TestRobustDecodeLastFallback:
 
                     def strict_failing_decode(input_bytes, errors="strict"):
                         if errors == "strict":
-                            raise UnicodeDecodeError("latin-1", input_bytes, 0, len(input_bytes), "forced")
+                            raise UnicodeDecodeError(
+                                "latin-1", input_bytes, 0, len(input_bytes), "forced"
+                            )
                         return original_decode(input_bytes, errors)
 
                     import types
+
                     return types.SimpleNamespace(
                         decode=strict_failing_decode,
                         encode=original_codec.encode,
@@ -2895,6 +3154,7 @@ class TestSkillLoaderDirMtimeMismatch:
         loader._dir_mtimes[str(base)] = 100.0
         # Set actual mtime to something different
         import os
+
         os.utime(str(base), (200.0, 200.0))
 
         result = loader._is_cache_valid()
