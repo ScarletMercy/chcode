@@ -365,6 +365,12 @@ async def update_memory(
     """
     render_tool_call("update_memory", f"[{mode}] {section}")
 
+    # 会话（线程）记忆开关（state 键；缺省开启兼容直调/旧会话）
+    if not (getattr(runtime, "state", None) or {}).get("memory_enabled", True):
+        return (
+            "update_memory:\n[FAILED] Project memory is disabled (toggle via /memory)"
+        )
+
     try:
         result = await asyncio.to_thread(
             save_memory_entry,
@@ -1239,13 +1245,17 @@ def update_agent_tool_desc(yolo: bool) -> None:
     agent.__doc__ = _AGENT_DESC_YOLO if yolo else _AGENT_DESC_NORMAL
 
 
-def _collect_memory_notes(messages: list) -> list[str]:
+def _collect_memory_notes(messages: list, enabled: bool = True) -> list[str]:
     """从主会话消息列表收集 CHCODE.md 变更提醒（时间序）。
 
     note 挂在主会话用户消息的 memory_note metadata 上、随历史落库，
     历史被摘要替换后自然消失，无需手动清理 —— 手动 /compress 会同步
     重读冻结块；自动摘要只替换历史，冻结块保持字节稳定不重读。
+    关闭记忆的会话本就不产生新 note，enabled=False 时旧提醒也不再
+    流入子代理。
     """
+    if not enabled:
+        return []
     return [
         m.additional_kwargs["memory_note"]
         for m in messages
@@ -1291,9 +1301,12 @@ async def agent(
     working_directory = runtime.context.working_directory
     skill_loader = runtime.context.skill_loader
 
-    # 主会话的 CHCODE.md 变更提醒随调用显式传入子代理（runner 不读会话状态）
+    # 主会话的记忆开关与 CHCODE.md 变更提醒随调用显式传入子代理
+    # （runner 不读会话状态；子代理是独立无 checkpoint 的图）
+    _state = getattr(runtime, "state", None) or {}
+    memory_enabled = _state.get("memory_enabled", True)
     memory_notes = _collect_memory_notes(
-        (getattr(runtime, "state", None) or {}).get("messages", [])
+        _state.get("messages", []), enabled=memory_enabled
     )
 
     with _display._subagent_count_lock:
@@ -1335,6 +1348,7 @@ async def agent(
             description=description,
             yolo=runtime.context.yolo,
             memory_notes=memory_notes,
+            memory_enabled=memory_enabled,
         )
 
         with _display._agent_progress_lock:
@@ -1650,3 +1664,15 @@ ALL_TOOLS = [
     todo_write,
     vision,
 ]
+
+
+def get_available_tools(memory_enabled: bool = True) -> list:
+    """当前会话可用工具：记忆关闭的会话剔除 update_memory。
+
+    开关取自线程 state（主代理由 filter_memory_tools 中间件按请求
+    过滤，不经此函数）；此处供子代理（run_subagent）与 /tools 展示
+    以同一语义取用。返回副本，调用方可安全增删。
+    """
+    if memory_enabled:
+        return list(ALL_TOOLS)
+    return [t for t in ALL_TOOLS if getattr(t, "name", "") != "update_memory"]

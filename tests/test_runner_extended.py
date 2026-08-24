@@ -371,3 +371,80 @@ class TestRunSubagentYoloParam:
                 timeout_seconds=300,
                 yolo=True,
             )
+
+
+class TestRunSubagentMemoryFlag:
+    """run_subagent 的 memory_enabled：过滤工具 + 经输入播种子代理 state"""
+
+    def _make_mock_agent(self):
+        mock_msg = MagicMock()
+        mock_msg.type = "ai"
+        mock_msg.content = [{"type": "text", "text": "result"}]
+        mock_agent = MagicMock()
+        mock_agent.ainvoke = AsyncMock(return_value={"messages": [mock_msg]})
+        return mock_agent
+
+    @pytest.mark.asyncio
+    async def test_disabled_filters_tool_and_seeds_state(self):
+        from chcode.agents.definitions import BUILT_IN_AGENTS
+        from chcode.agents.runner import run_subagent
+        from chcode.agent_setup import State
+
+        mock_agent = self._make_mock_agent()
+        captured = {}
+
+        def capture_create(model, tools, middleware, **kw):
+            captured["tools"] = tools
+            captured["state_schema"] = kw.get("state_schema")
+            return mock_agent
+
+        with (
+            patch("chcode.agents.runner.create_agent", side_effect=capture_create),
+            patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()),
+        ):
+            await run_subagent(
+                "task",
+                BUILT_IN_AGENTS["general-purpose"],
+                {"model": "gpt-4"},
+                Path("/w"),
+                MagicMock(),
+                timeout_seconds=300,
+                memory_enabled=False,
+            )
+
+        names = [getattr(t, "name", "") for t in captured["tools"]]
+        assert "update_memory" not in names  # general-purpose 本身不禁用该工具
+        assert "read_file" in names
+        assert captured["state_schema"] is State
+        # 子代理图无播种器：开关经 ainvoke 输入播种进 state
+        assert mock_agent.ainvoke.call_args[0][0]["memory_enabled"] is False
+
+    @pytest.mark.asyncio
+    async def test_enabled_keeps_tool(self):
+        from chcode.agents.definitions import BUILT_IN_AGENTS
+        from chcode.agents.runner import run_subagent
+
+        mock_agent = self._make_mock_agent()
+        captured = {}
+
+        def capture_create(model, tools, middleware, **kw):
+            captured["tools"] = tools
+            return mock_agent
+
+        with (
+            patch("chcode.agents.runner.create_agent", side_effect=capture_create),
+            patch("chcode.agents.runner.EnhancedChatOpenAI", MagicMock()),
+        ):
+            await run_subagent(
+                "task",
+                BUILT_IN_AGENTS["general-purpose"],
+                {"model": "gpt-4"},
+                Path("/w"),
+                MagicMock(),
+                timeout_seconds=300,
+                memory_enabled=True,
+            )
+
+        names = [getattr(t, "name", "") for t in captured["tools"]]
+        assert "update_memory" in names
+        assert mock_agent.ainvoke.call_args[0][0]["memory_enabled"] is True

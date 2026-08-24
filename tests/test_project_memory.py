@@ -20,6 +20,7 @@ from chcode.utils.project_memory import (
     check_memory_changed,
     diff_memory_lines,
     ensure_project_memory,
+    get_memory_enabled,
     get_session_memory,
     get_template,
     load_memory_content,
@@ -27,6 +28,7 @@ from chcode.utils.project_memory import (
     reset_memory_cache,
     reset_memory_session,
     save_memory_entry,
+    set_memory_enabled,
 )
 
 
@@ -38,8 +40,104 @@ def _reset_memory_session_state():
     reset_memory_cache()
 
 
+@pytest.fixture(autouse=True)
+def _memory_toggle_isolated():
+    """隔离记忆配置开关：mock 持久化读写并重置为默认开启。
+
+    project_memory 在 import 时读取真实 chagent.json，开发机上遗留的
+    memory_enabled=false 会污染整个文件的记忆测试，故逐用例重置。"""
+    with (
+        patch("chcode.config._load_setting", return_value={}),
+        patch("chcode.config._update_setting"),
+    ):
+        set_memory_enabled(True)
+        yield
+        set_memory_enabled(True)
+
+
 def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+# ============================================================================
+# 配置开关（/memory）
+# ============================================================================
+
+
+class TestMemoryToggle:
+    def test_default_enabled(self):
+        assert get_memory_enabled() is True
+
+    def test_toggle_writes_setting(self):
+        with patch("chcode.config._update_setting") as mock_update:
+            set_memory_enabled(False)
+            assert get_memory_enabled() is False
+            mock_update.assert_called_once_with(memory_enabled=False)
+            set_memory_enabled(True)
+            assert mock_update.call_args.kwargs["memory_enabled"] is True
+
+    def test_load_memory_enabled_applies_saved_value(self):
+        with patch(
+            "chcode.config._load_setting", return_value={"memory_enabled": False}
+        ):
+            from chcode.utils.project_memory import _load_memory_enabled
+
+            _load_memory_enabled()
+            assert get_memory_enabled() is False
+
+    def test_load_memory_enabled_ignores_non_bool(self):
+        with patch(
+            "chcode.config._load_setting", return_value={"memory_enabled": "yes"}
+        ):
+            from chcode.utils.project_memory import _load_memory_enabled
+
+            _load_memory_enabled()
+            assert get_memory_enabled() is True
+
+
+class TestEnsureMemoryConfigWritten:
+    def test_writes_default_when_missing(self):
+        """首次启动字段缺失：写入当前值使用户配置可见（对齐 /danger）"""
+        from chcode.utils.project_memory import ensure_memory_config_written
+
+        with patch("chcode.config._update_setting") as mock_update:
+            ensure_memory_config_written()  # fixture 的 _load_setting 返回 {}
+            mock_update.assert_called_once_with(memory_enabled=True)
+
+    def test_keeps_existing_value(self):
+        """字段已存在：不覆盖用户已保存的偏好"""
+        from chcode.utils.project_memory import ensure_memory_config_written
+
+        with (
+            patch(
+                "chcode.config._load_setting",
+                return_value={"memory_enabled": False},
+            ),
+            patch("chcode.config._update_setting") as mock_update,
+        ):
+            ensure_memory_config_written()
+            mock_update.assert_not_called()
+
+
+class TestSeedMemoryFlag:
+    """线程 state 的 memory_enabled 键由 seed_memory_flag 播种且不可变"""
+
+    def test_seeds_from_config_when_missing(self):
+        from chcode.agent_setup import seed_memory_flag
+
+        set_memory_enabled(False)
+        assert seed_memory_flag.before_agent({}, None) == {"memory_enabled": False}
+
+        set_memory_enabled(True)
+        assert seed_memory_flag.before_agent({}, None) == {"memory_enabled": True}
+
+    def test_immutable_once_seeded(self):
+        from chcode.agent_setup import seed_memory_flag
+
+        # 已有值（含显式 False）不再改写 —— 配置翻转不影响已建立的会话
+        set_memory_enabled(True)
+        assert seed_memory_flag.before_agent({"memory_enabled": False}, None) is None
+        assert seed_memory_flag.before_agent({"memory_enabled": True}, None) is None
 
 
 # ============================================================================
@@ -335,6 +433,12 @@ class TestBeginMemorySession:
         assert begin_memory_session(tmp_path) == "exists"
         assert "pytest tests/" in get_session_memory(tmp_path)
 
+    def test_skipped_when_disabled(self, tmp_path):
+        """会话记忆关闭：不创建/迁移文件、返回 exists（调用方静默）"""
+        (tmp_path / "CLAUDE.md").write_text("- 使用 uv", encoding="utf-8")
+        assert begin_memory_session(tmp_path, enabled=False) == "exists"
+        assert not (tmp_path / "CHCODE.md").exists()  # 未迁移/未建模板
+
 
 class TestResetMemorySession:
     def test_clears_frozen_block(self, tmp_path):
@@ -411,6 +515,19 @@ class TestCheckMemoryChanged:
     def test_missing_file_returns_none(self, tmp_path):
         assert check_memory_changed(tmp_path) is None
 
+    def test_paused_when_disabled(self, tmp_path):
+        """会话记忆关闭：轮询静默，外部变更不产生提醒"""
+        save_memory_entry(tmp_path, "常用命令", "old rule")
+        check_memory_changed(tmp_path)  # 建立基线
+        time.sleep(0.01)
+        _write(
+            tmp_path / "CHCODE.md",
+            (tmp_path / "CHCODE.md")
+            .read_text(encoding="utf-8")
+            .replace("- old rule", "- new rule"),
+        )
+        assert check_memory_changed(tmp_path, enabled=False) is None
+
 
 # ============================================================================
 # update_memory 工具
@@ -420,9 +537,11 @@ class TestCheckMemoryChanged:
 def _make_runtime(**kwargs):
     rt = MagicMock()
     ctx = MagicMock()
+    state = kwargs.pop("state", None)
     for k, v in kwargs.items():
         setattr(ctx, k, v)
     rt.context = ctx
+    rt.state = state if state is not None else {}
     return rt
 
 
@@ -450,6 +569,19 @@ class TestUpdateMemoryTool:
             )
         assert out.startswith("update_memory:\n[FAILED]")
         assert "too long" in out
+
+    async def test_rejected_when_disabled(self, tmp_path):
+        """会话记忆关闭：拒写且不落盘"""
+        from chcode.utils.tools import update_memory
+
+        rt = _make_runtime(working_directory=tmp_path, state={"memory_enabled": False})
+        with patch("chcode.utils.tools.render_tool_call"):
+            out = await update_memory.coroutine(
+                "常用命令", "NEVER use pip; use uv.", runtime=rt
+            )
+        assert out.startswith("update_memory:\n[FAILED]")
+        assert "disabled" in out
+        assert not (tmp_path / "CHCODE.md").exists()
 
 
 # ============================================================================
@@ -635,6 +767,7 @@ class TestLoadSkillsPrompt:
         mock_loader.build_system_prompt = MagicMock(return_value="prompt")
 
         mock_request = MagicMock()
+        mock_request.state = {"memory_enabled": True}
         mock_request.runtime.context.skill_loader = mock_loader
         mock_request.runtime.context.working_directory = tmp_path
         mock_request.runtime.context.model_config = {"model": "glm-5"}
@@ -653,10 +786,140 @@ class TestLoadSkillsPrompt:
         assert "NEVER use pip; use uv." not in base_prompt
         assert "# project_memory" not in base_prompt
 
+    async def test_disabled_prompt_omits_memory(self, tmp_path):
+        """记忆关闭的会话：工具行与维护指引整体不出现在 system prompt"""
+        from chcode.agent_setup import load_skills
+
+        mock_loader = MagicMock()
+        mock_loader.build_system_prompt = MagicMock(return_value="prompt")
+
+        mock_request = MagicMock()
+        mock_request.state = {"memory_enabled": False}
+        mock_request.runtime.context.skill_loader = mock_loader
+        mock_request.runtime.context.working_directory = tmp_path
+        mock_request.runtime.context.model_config = {"model": "glm-5"}
+        mock_request.runtime.context.yolo = False
+        handler = AsyncMock(return_value="model response")
+
+        with patch("chcode.agent_setup.sys.platform", "linux"):
+            await load_skills.awrap_model_call(mock_request, handler)
+
+        base_prompt = mock_loader.build_system_prompt.call_args[0][0]
+        assert "update_memory" not in base_prompt
+        assert "CHCODE.md" not in base_prompt
+        # 其余工具行不受影响
+        assert "- bash:" in base_prompt
+        assert "- load_skill:" in base_prompt
+
+    def test_enabled_tools_prompt_bytes_unchanged(self):
+        """开启态三段拼接与拆分前的整段字符串字节一致（保前缀缓存不回退）"""
+        from chcode.agent_setup import (
+            _TOOLS_PROMPT_HEAD,
+            _TOOLS_PROMPT_TAIL,
+            _UPDATE_MEMORY_PROMPT_LINE,
+        )
+
+        legacy = (
+            "Tools:\n"
+            "- bash: execute shell commands and scripts. Stop immediately if the user refuses.\n"
+            "- read_file: view file content; write_file: create or save files; edit: modify "
+            "existing files. Always read before write, prefer edit over write_file.\n"
+            "- update_memory: save durable project knowledge (commands, conventions, "
+            "prohibitions, pitfalls) to CHCODE.md; keep entries brief and constraint-style.\n"
+            "- glob: find files by name pattern; grep: search file contents with regex; "
+            "list_dir: browse directory structure.\n"
+            "- web_search: search the Internet; web_fetch: fetch and read a URL's content.\n"
+            "- ask_user: present choices to the user and collect their input or "
+            "confirmation.\n"
+            "- todo_write: create and manage a task list for complex multi-step work.\n"
+            "- load_skill: when a request matches a skill's description, load it first "
+            "to get detailed instructions."
+        )
+        assert (
+            _TOOLS_PROMPT_HEAD + _UPDATE_MEMORY_PROMPT_LINE + _TOOLS_PROMPT_TAIL
+            == legacy
+        )
+
+
+class TestMemoryToolFiltering:
+    """记忆关闭的会话：update_memory 不进子代理清单，主代理按请求过滤"""
+
+    def test_available_tools_enabled(self):
+        from chcode.utils.tools import get_available_tools
+
+        names = [getattr(t, "name", "") for t in get_available_tools(True)]
+        assert "update_memory" in names
+
+    def test_available_tools_returns_copy(self):
+        """返回副本：调用方增删不污染全局 ALL_TOOLS"""
+        from chcode.utils.tools import ALL_TOOLS, get_available_tools
+
+        before = len(ALL_TOOLS)
+        get_available_tools(True).append(object())
+        assert len(ALL_TOOLS) == before
+
+    def test_available_tools_disabled(self):
+        from chcode.utils.tools import get_available_tools
+
+        names = [getattr(t, "name", "") for t in get_available_tools(False)]
+        assert "update_memory" not in names
+        assert "bash" in names
+
+    def test_main_agent_tools_always_bound(self):
+        """主代理全量绑定（过滤交给 filter_memory_tools 按线程 state 进行）"""
+        from chcode.agent_setup import _get_all_tools
+
+        names = [getattr(t, "name", "") for t in _get_all_tools()]
+        assert "update_memory" in names
+
+    async def test_filter_memory_tools_removes_when_disabled(self):
+        from chcode.agent_setup import filter_memory_tools
+
+        request = MagicMock()
+        request.state = {"memory_enabled": False}
+        request.tools = [MagicMock(), MagicMock()]
+        request.tools[0].name = "bash"
+        request.tools[1].name = "update_memory"
+        handler = AsyncMock(return_value="resp")
+
+        resp = await filter_memory_tools.awrap_model_call(request, handler)
+
+        assert resp == "resp"
+        tools = request.override.call_args.kwargs["tools"]
+        assert [t.name for t in tools] == ["bash"]
+        handler.assert_awaited_once()
+
+    async def test_filter_memory_tools_passthrough_when_enabled(self):
+        from chcode.agent_setup import filter_memory_tools
+
+        request = MagicMock()
+        request.state = {"memory_enabled": True}
+        handler = AsyncMock(return_value="resp")
+
+        resp = await filter_memory_tools.awrap_model_call(request, handler)
+
+        assert resp == "resp"
+        request.override.assert_not_called()
+        handler.assert_awaited_once_with(request)
+
+    def test_subagent_tools_disabled(self):
+        """general-purpose 子代理（自身未禁用 update_memory）在记忆关闭时也拿不到"""
+        from chcode.agents.definitions import BUILT_IN_AGENTS
+        from chcode.agents.runner import _resolve_tools
+        from chcode.utils.tools import get_available_tools
+
+        tools = _resolve_tools(
+            BUILT_IN_AGENTS["general-purpose"], get_available_tools(False)
+        )
+        names = [getattr(t, "name", "") for t in tools]
+        assert "update_memory" not in names
+        assert "read_file" in names
+
 
 class TestInjectProjectMemoryMiddleware:
     async def _make_request(self, tmp_path):
         request = MagicMock()
+        request.state = {"memory_enabled": True}
         request.runtime.context.working_directory = tmp_path
         request.messages = [HumanMessage(content="hi")]
         return request
@@ -680,6 +943,21 @@ class TestInjectProjectMemoryMiddleware:
         # 原消息保留在后
         assert messages[-1].content == "hi"
         handler.assert_awaited_once()
+
+    async def test_disabled_skips_injection(self, tmp_path):
+        """会话记忆关闭：不前置记忆、不改写消息，请求原样直通"""
+        from chcode.agent_setup import inject_project_memory
+
+        save_memory_entry(tmp_path, "禁止事项", "NEVER commit secrets.")
+        request = await self._make_request(tmp_path)
+        request.state = {"memory_enabled": False}
+        handler = AsyncMock(return_value="resp")
+
+        resp = await inject_project_memory.awrap_model_call(request, handler)
+
+        assert resp == "resp"
+        request.override.assert_not_called()
+        handler.assert_awaited_once_with(request)
 
     async def test_no_change_note_even_after_external_edit(self, tmp_path):
         """diff 提醒已移交回合边界落库（chat._process_input），中间件只前置冻结块"""
@@ -792,6 +1070,15 @@ class TestSubagentMemoryNotesPassing:
 
         assert _collect_memory_notes([]) == []
         assert _collect_memory_notes([HumanMessage(content="hi")]) == []
+
+    def test_collect_memory_notes_empty_when_disabled(self):
+        """会话记忆关闭：历史提醒不再流入子代理"""
+        from chcode.utils.tools import _collect_memory_notes
+
+        note = "<system-reminder>Note: first change</system-reminder>"
+        msgs = [HumanMessage(content="q1", additional_kwargs={"memory_note": note})]
+        assert _collect_memory_notes(msgs, enabled=False) == []
+        assert _collect_memory_notes(msgs, enabled=True) == [note]
 
     def test_with_memory_notes_appends_in_order(self):
         from chcode.agents.runner import _with_memory_notes

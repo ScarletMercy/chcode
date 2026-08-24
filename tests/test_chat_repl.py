@@ -778,6 +778,28 @@ class TestChatREPLSlashCommands:
             assert is_guard_enabled() == master_before
 
     @pytest.mark.asyncio
+    async def test_cmd_memory_flips_config(self):
+        """翻转持久化配置并渲染提示（不可变性由 TestSeedMemoryFlag 覆盖）"""
+        from chcode.utils.project_memory import get_memory_enabled, set_memory_enabled
+
+        repl = ChatREPL()
+        # 恢复动作须在 patch 上下文内：否则 finally 的真实写入会覆盖
+        # 开发机 chagent.json 里用户自己关闭的记忆开关
+        with (
+            patch("chcode.config._update_setting"),
+            patch("chcode.chat.render_success") as mock_success,
+        ):
+            try:
+                set_memory_enabled(True)
+                await repl._cmd_memory("")
+                assert get_memory_enabled() is False
+                await repl._cmd_memory("")  # 再输入一次切回
+                assert get_memory_enabled() is True
+                assert mock_success.call_count == 2
+            finally:
+                set_memory_enabled(True)
+
+    @pytest.mark.asyncio
     async def test_cmd_langsmith_edit_project(self):
         repl = ChatREPL()
         repl.langsmith_project = "old-project"
@@ -872,6 +894,9 @@ class TestChatREPLSlashCommands:
     async def test_sync_langsmith_env_disabled(self):
         repl = ChatREPL()
         repl.langsmith_tracing = False
+        repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
+        repl.session_mgr = Mock()
 
         with (
             patch.dict(os.environ, {}, clear=True),
@@ -1255,7 +1280,7 @@ class TestChatREPLCmdCompress:
         repl = ChatREPL()
         repl.model_config = {"model": "gpt-4"}
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         state = Mock()
         state.values = {"messages": [HumanMessage("test", id="1")]}
         repl.agent.aget_state.return_value = state
@@ -1311,7 +1336,7 @@ class TestChatREPLCmdCompress:
         repl = ChatREPL()
         repl.model_config = {"model": "gpt-4"}
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         # 构造包含多模态 content 的消息
         multimodal_msg = HumanMessage(
             content=[
@@ -1391,7 +1416,7 @@ class TestChatREPLCmdMessages:
     async def test_cmd_messages_no_messages(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         state = Mock()
         state.values = {"messages": []}
         repl.agent.aget_state.return_value = state
@@ -1406,7 +1431,7 @@ class TestChatREPLCmdMessages:
     async def test_cmd_messages_cancel_action(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         state = Mock()
         msg = HumanMessage("test", id="1")
         state.values = {"messages": [msg]}
@@ -1421,7 +1446,7 @@ class TestChatREPLCmdMessages:
     async def test_cmd_messages_delete_success(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg = HumanMessage("test", id="1")
         state = Mock()
         state.values = {"messages": [msg]}
@@ -1449,7 +1474,7 @@ class TestChatREPLCmdMessages:
     async def test_cmd_messages_delete_cancel_confirm(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg = HumanMessage("test", id="1")
         state = Mock()
         state.values = {"messages": [msg]}
@@ -1477,7 +1502,7 @@ class TestChatREPLCmdMessages:
     async def test_cmd_messages_edit_no_human_msg(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg = AIMessage("test", id="1")
         state = Mock()
         state.values = {"messages": [msg]}
@@ -1500,7 +1525,7 @@ class TestChatREPLCmdMessages:
     async def test_cmd_messages_edit_success(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg = HumanMessage("test", id="1")
         state = Mock()
         state.values = {"messages": [msg]}
@@ -1527,7 +1552,7 @@ class TestChatREPLCmdMessages:
     async def test_cmd_messages_fork_cancel(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg = HumanMessage("test", id="1")
         state = Mock()
         state.values = {"messages": [msg]}
@@ -1550,7 +1575,7 @@ class TestChatREPLCmdMessages:
     async def test_cmd_messages_fork_no_path(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg = HumanMessage("test", id="1")
         state = Mock()
         state.values = {"messages": [msg]}
@@ -1864,7 +1889,7 @@ class TestChatREPLLoadConversation:
     async def test_load_conversation_success(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         state = Mock()
         state.values = {"messages": [HumanMessage("test", id="1")]}
         repl.agent.aget_state.return_value = state
@@ -1900,7 +1925,7 @@ class TestChatREPLPostProcess:
     async def test_post_process_success(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         state = Mock()
         msg = HumanMessage("test", id="1")
         state.values = {"messages": [msg]}
@@ -1926,7 +1951,7 @@ class TestChatREPLPostProcess:
     async def test_post_process_no_git(self):
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         state = Mock()
         state.values = {"messages": []}
         repl.agent.aget_state.return_value = state
@@ -1945,7 +1970,7 @@ class TestChatREPLPostProcess:
         """model_config.metadata.context_length 决定状态栏的 max_ctx。"""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         state = Mock()
         state.values = {"messages": []}
         repl.agent.aget_state.return_value = state
@@ -1970,7 +1995,7 @@ class TestChatREPLPostProcess:
 
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         state = Mock()
         state.values = {"messages": []}
         repl.agent.aget_state.return_value = state
@@ -2369,7 +2394,7 @@ class TestChatREPLProcessInput:
             yield "messages", [AIMessageChunk(content="Hello")]
 
         repl.agent.astream = mock_astream
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
 
         with patch("chcode.chat.render_ai_start"):
             with patch("chcode.chat.render_ai_chunk"):
@@ -2383,6 +2408,7 @@ class TestChatREPLProcessInput:
     async def test_process_input_with_interrupt(self):
         repl = ChatREPL()
         repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         repl.session_mgr = Mock()
         repl.session_mgr.config = {}
         repl.session_mgr.thread_id = "test-thread"
@@ -2455,6 +2481,7 @@ class TestChatREPLProcessInput:
     async def test_process_input_api_error(self):
         repl = ChatREPL()
         repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         repl.session_mgr = Mock()
         repl.session_mgr.config = {}
         repl.session_mgr.thread_id = "test-thread"
@@ -2478,6 +2505,7 @@ class TestChatREPLProcessInput:
     async def test_process_input_general_error(self):
         repl = ChatREPL()
         repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         repl.session_mgr = Mock()
         repl.session_mgr.config = {}
         repl.session_mgr.thread_id = "test-thread"
@@ -2510,7 +2538,7 @@ class TestChatREPLProcessInput:
             yield "messages", [AIMessageChunk(content="Hello")]
 
         repl.agent.astream = mock_astream
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
 
         with patch("chcode.chat.SkillLoader"):
             with patch("chcode.chat.render_ai_start"):
@@ -2538,7 +2566,7 @@ class TestChatREPLProcessInput:
             yield "messages", [chunk]
 
         repl.agent.astream = mock_astream
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
 
         with patch("chcode.chat.asyncio.create_task"):
             await repl._process_input("test")
@@ -2558,7 +2586,7 @@ class TestChatREPLProcessInput:
             yield "messages", [ToolMessage(content="result", tool_call_id="123")]
 
         repl.agent.astream = mock_astream
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
 
         with patch("chcode.chat.asyncio.create_task"):
             await repl._process_input("test")
@@ -2581,7 +2609,7 @@ class TestChatREPLProcessInput:
             yield "messages", [chunk]
 
         repl.agent.astream = mock_astream
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
 
         with patch("chcode.chat.console.print"):
             with patch("chcode.chat.render_ai_start"):
@@ -2597,6 +2625,7 @@ class TestChatREPLProcessInput:
     async def test_process_input_model_switch_error(self):
         repl = ChatREPL()
         repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         repl.session_mgr = Mock()
         repl.session_mgr.config = {}
         repl.session_mgr.thread_id = "test-thread"
@@ -2673,7 +2702,7 @@ class TestChatREPLProcessInput:
             yield "messages", [AIMessageChunk(content="Hello")]
 
         repl.agent.astream = mock_astream
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
 
         with patch("chcode.chat.render_ai_start"):
             with patch("chcode.chat.render_ai_chunk"):

@@ -204,11 +204,12 @@ async def run_subagent(
     description: str = "",
     yolo: bool = False,
     memory_notes: list[str] | None = None,
+    memory_enabled: bool = True,
 ) -> tuple[str, bool]:
     timeout_seconds = max(timeout_seconds, 300)
-    from chcode.utils.tools import ALL_TOOLS
+    from chcode.utils.tools import get_available_tools
 
-    filtered_tools = _resolve_tools(agent_def, ALL_TOOLS)
+    filtered_tools = _resolve_tools(agent_def, get_available_tools(memory_enabled))
 
     cfg = dict(model_config)
     if agent_def.model:
@@ -226,7 +227,11 @@ async def run_subagent(
         },
     )
 
-    from chcode.agent_setup import handle_tool_errors, emit_tool_events
+    from chcode.agent_setup import (
+        State,
+        handle_tool_errors,
+        emit_tool_events,
+    )
 
     middleware = [
         emit_tool_events,
@@ -249,12 +254,18 @@ async def run_subagent(
         filtered_tools,
         middleware=middleware,
         context_schema=SkillAgentContext,
+        state_schema=State,
     )
 
     try:
         result = await asyncio.wait_for(
             subagent.ainvoke(
-                {"messages": [HumanMessage(content=prompt)]},
+                {
+                    "messages": [HumanMessage(content=prompt)],
+                    # 子代理图无 checkpoint/播种器：经输入播种主会话的
+                    # 记忆开关，供共用的 inject_project_memory 读取
+                    "memory_enabled": memory_enabled,
+                },
                 config={"configurable": {"thread_id": f"subagent_{id(subagent)}"}},
                 context=subagent_context,
             ),

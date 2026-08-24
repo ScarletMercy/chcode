@@ -85,6 +85,70 @@ _HEADER_LINE_RE = re.compile(r"^#{1,6}\s+(.+?)\s*$")
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
+# ─── 总开关（/memory 斜杠命令）────────────────────────
+
+# 记忆功能总开关（默认开启）。持久化到 ~/.chat/chagent.json 的
+# "memory_enabled" 字段，跨会话保留；/memory 中途切换只改这里的
+# 配置值，提示新会话起生效。
+#
+# 会话级生效值不在此模块：每个会话（线程）的开关是 LangGraph state
+# 的 memory_enabled 键，由 agent_setup.seed_memory_flag 在线程首次
+# 运行时从本配置值播种、之后不可变（随 checkpoint 持久化）。所有
+# 记忆相关激活/禁用（注入/提示词/工具过滤/写入/轮询/文件创建）都
+# 以线程 state 值为准；本模块仅负责配置的读写与生命周期门面的
+# 显式 enabled 参数。
+_memory_enabled: bool = True
+
+
+def get_memory_enabled() -> bool:
+    """查询已持久化的配置值（/memory 的翻转目标，新会话播种时取用）。"""
+    return _memory_enabled
+
+
+def set_memory_enabled(enabled: bool) -> None:
+    """设置持久化开关并写入 chagent.json；不影响已建立的会话。"""
+    global _memory_enabled
+    _memory_enabled = enabled
+    try:
+        from chcode.config import _update_setting
+
+        _update_setting(memory_enabled=enabled)
+    except Exception:
+        pass
+
+
+def _load_memory_enabled() -> None:
+    """模块加载时读取持久化的开关（非 bool 值或读写异常保持默认 True）。"""
+    global _memory_enabled
+    try:
+        from chcode.config import _load_setting
+
+        value = _load_setting().get("memory_enabled")
+        if isinstance(value, bool):
+            _memory_enabled = value
+    except Exception:
+        pass
+
+
+def ensure_memory_config_written() -> None:
+    """确保 chagent.json 中存在 memory_enabled 字段。
+
+    首次初始化时若字段缺失，写入当前默认值（开启），使用户配置可见；
+    已存在则不做任何操作，避免覆盖用户已保存的偏好。
+    应在 ChatREPL.initialize() 中调用（对齐 ensure_guard_config_written）。
+    """
+    try:
+        from chcode.config import _load_setting
+
+        if "memory_enabled" not in _load_setting():
+            set_memory_enabled(_memory_enabled)
+    except Exception:
+        pass
+
+
+_load_memory_enabled()
+
+
 # ─── 模板 ────────────────────────────────────────────
 
 _TEMPLATE_HEADERS = {
@@ -343,7 +407,7 @@ def refresh_memory_state(workdir: Path) -> None:
     _seed_file_state(workdir)
 
 
-def check_memory_changed(workdir: Path) -> str | None:
+def check_memory_changed(workdir: Path, enabled: bool = True) -> str | None:
     """
     mtime 轮询检测 CHCODE.md 外部修改。
 
@@ -353,10 +417,16 @@ def check_memory_changed(workdir: Path) -> str | None:
     - 变了但内容一致（touched）→ 更新基线，返回 None
     - 内容有实际变化 → 更新基线，返回 diff 提醒文本
 
+    Args:
+        workdir: 项目根目录
+        enabled: 本会话（线程）的记忆开关；关闭时暂停轮询返回 None
+
     Returns:
         提醒文本（<system-reminder>Note: ... was modified ...</system-reminder>）
         或 None
     """
+    if not enabled:
+        return None  # 本会话记忆关闭：暂停轮询（开关不可变，无重开场景）
     if not workdir:
         return None
     workdir = Path(workdir)
@@ -406,17 +476,21 @@ def reset_memory_cache() -> None:
 # ─── 生命周期门面 ─────────────────────────────────────
 
 
-def begin_memory_session(workdir: Path) -> str:
+def begin_memory_session(workdir: Path, enabled: bool = True) -> str:
     """
     会话启动/切换目录的记忆生命周期入口：
     确保文件存在（首次创建 / CLAUDE.md 迁移）→ 冻结块失效 → 重建轮询基线。
 
     Args:
         workdir: 项目根目录
+        enabled: 本会话（线程）的记忆开关（调用方取配置值，与线程
+            播种值同源）；关闭时不创建/迁移文件、不建基线
 
     Returns:
         ensure_project_memory 的状态："created" | "migrated" | "exists"
     """
+    if not enabled:
+        return "exists"  # 本会话记忆关闭：不创建/迁移文件、不建基线（调用方静默）
     workdir = Path(workdir)
     status = ensure_project_memory(workdir)
     reset_memory_cache()
@@ -428,7 +502,8 @@ def reset_memory_session(workdir: Path) -> None:
     """
     会话内上下文重建（新会话/压缩）的记忆生命周期入口：
     冻结块失效重读 + 重建轮询基线。不做 ensure —— 用户会话中
-    删掉 CHCODE.md 后不应被静默重建模板。
+    删掉 CHCODE.md 后不应被静默重建模板。记忆开关是线程 state 的
+    不可变值，与本入口无关。
     """
     reset_memory_cache()
     refresh_memory_state(workdir)

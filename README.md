@@ -193,6 +193,8 @@ chcode config switch # 切换模型
 | `/mode` | 切换 Common / YOLO 模式 |
 | `/git` | 显示 Git 状态 |
 | `/langsmith` | 开关 LangSmith 追踪 |
+| `/danger` | 配置危险命令拦截 |
+| `/memory` | 开关项目记忆（新会话生效） |
 | `/tools` | 列出内置工具 |
 | `/quit` | 退出 |
 

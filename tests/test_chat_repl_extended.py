@@ -375,7 +375,7 @@ class TestCmdMessagesEditIndexParsing:
         """Choosing a delete option with non-parseable index should skip it."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         msg2 = HumanMessage("test2", id="2")
         state = Mock()
@@ -407,7 +407,7 @@ class TestCmdMessagesEditIndexParsing:
         """Choosing an index that's out of range should skip it, leaving delete_ids empty."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -444,7 +444,7 @@ class TestCmdMessagesContinueFlow:
         """When editing and chosen is None, _cmd_messages returns."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -461,7 +461,7 @@ class TestCmdMessagesContinueFlow:
         """When editing and chosen is '返回', the loop continues back to action select."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -488,7 +488,7 @@ class TestCmdMessagesEditConfirmCancel:
         """Cancelling the edit confirmation should continue back to action select."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -520,7 +520,7 @@ class TestCmdMessagesEditGitRollback:
         """When git rollback fails during edit, a warning should be shown but edit proceeds."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -576,7 +576,7 @@ class TestProcessInputEmptyChunk:
             yield "messages", [chunk_with_content]
 
         repl.agent.astream = mock_astream
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
 
         with patch("chcode.chat.render_ai_start") as mock_start:
             with patch("chcode.chat.render_ai_chunk"):
@@ -598,6 +598,7 @@ class TestProcessInputFallbackSwitchFailure:
         """When fallback model switch raises, render_error should be called."""
         repl = ChatREPL()
         repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         repl.session_mgr = Mock()
         repl.session_mgr.config = {}
         repl.session_mgr.thread_id = "test-thread"
@@ -780,7 +781,7 @@ class TestProcessInputStopRequested:
                 repl._stop_requested = True
 
         repl.agent.astream = mock_astream
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
 
         with patch("chcode.chat.render_ai_start"):
             with patch("chcode.chat.render_ai_chunk"):
@@ -1184,7 +1185,7 @@ class TestCmdMessagesEditInvalidIndex:
         """Choosing an option that parses to negative index shows error and continues."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -1207,7 +1208,7 @@ class TestCmdMessagesEditInvalidIndex:
         """Choosing an option that parses to index >= len(groups) shows error."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -1230,7 +1231,7 @@ class TestCmdMessagesEditInvalidIndex:
         """Choosing an option that can't be parsed as int shows error."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -1313,6 +1314,9 @@ class TestCmdToolsDisplayList:
     async def test_cmd_tools_displays_all_tools(self):
         """_cmd_tools should iterate over ALL_TOOLS and print each one."""
         repl = ChatREPL()
+        repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
+        repl.session_mgr = Mock()
 
         mock_tool = Mock()
         mock_tool.name = "read_file"
@@ -1340,6 +1344,9 @@ class TestCmdToolsDisplayList:
     async def test_cmd_tools_empty_description(self):
         """_cmd_tools should handle tools with None description gracefully."""
         repl = ChatREPL()
+        repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
+        repl.session_mgr = Mock()
 
         mock_tool = Mock()
         mock_tool.name = "no_desc"
@@ -1361,7 +1368,7 @@ class TestCmdMessagesCheckboxEmpty:
         """When checkbox returns empty list, should continue back to action select."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -1461,7 +1468,7 @@ class TestCmdMessagesForkPathChoices:
         """When load_workplace returns None, choices should only have '自定义路径...'."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -1501,7 +1508,7 @@ class TestCmdMessagesForkPathNotExists:
         """When fork path doesn't exist, render_error should be called and loop continues."""
         repl = ChatREPL()
         repl.agent = Mock()
-        repl.agent.aget_state = AsyncMock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
         msg1 = HumanMessage("test1", id="1")
         state = Mock()
         state.values = {"messages": [msg1]}
@@ -1542,7 +1549,7 @@ def _make_fork_repl(messages=None, workplace=None, git=False):
     """Helper to create a repl configured for fork tests."""
     repl = ChatREPL()
     repl.agent = Mock()
-    repl.agent.aget_state = AsyncMock()
+    repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
     repl.agent.aupdate_state = AsyncMock()
     state = Mock()
     if messages is None:
@@ -1560,7 +1567,7 @@ def _make_fork_repl(messages=None, workplace=None, git=False):
 def _make_new_agent():
     """Create a mock agent with AsyncMock methods for use as build_agent return."""
     new_agent = Mock()
-    new_agent.aget_state = AsyncMock()
+    new_agent.aget_state = AsyncMock(return_value=Mock(values={}))
     new_agent.aupdate_state = AsyncMock()
     return new_agent
 
@@ -1941,7 +1948,7 @@ class TestCmdMessagesForkFullFlow:
             shutil.rmtree(tmp, ignore_errors=True)
 
     async def test_fork_at_first_group_skips_state_and_backfills(self):
-        """sel_idx==0：新 agent 本就为空，跳过 aupdate_state；回填 group0 的 human。"""
+        """sel_idx==0：无保留上下文视作全新会话，跳过 aupdate_state；回填 group0 的 human。"""
         import tempfile
 
         tmp = Path(tempfile.mkdtemp())
@@ -2011,7 +2018,8 @@ class TestCmdMessagesForkFullFlow:
                                                                     repl.agent
                                                                     == new_agent
                                                                 )
-                                                                # sel_idx==0：need_messages 为空，跳过 aupdate_state；回填 group0 的 human
+                                                                # sel_idx==0：全新会话不写状态
+                                                                # （开关由首次运行按配置播种）
                                                                 new_agent.aupdate_state.assert_not_called()
                                                                 assert (
                                                                     repl._edit_buffer

@@ -193,6 +193,8 @@ On first launch, ChCode will:
 | `/mode` | Toggle Common / YOLO mode |
 | `/git` | Show git status |
 | `/langsmith` | Toggle LangSmith tracing |
+| `/danger` | Configure dangerous command guard |
+| `/memory` | Toggle project memory (effective next session) |
 | `/tools` | List built-in tools |
 | `/quit` | Exit |
 

@@ -10,11 +10,12 @@ import socket
 import sys
 import time
 from pathlib import Path
-from typing import Annotated, Awaitable, Callable, NotRequired, TypedDict
+from typing import Annotated, Any, Awaitable, Callable, NotRequired, TypedDict
 
 import httpx
 from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import (
+    before_agent,
     dynamic_prompt,
     wrap_tool_call,
     wrap_model_call,
@@ -35,7 +36,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
 from chcode.utils.multimodal import is_multimodal_model
 from chcode.utils.skill_loader import SkillAgentContext
-from chcode.utils.project_memory import build_memory_reminder
+from chcode.utils.project_memory import build_memory_reminder, get_memory_enabled
 from chcode.display import console
 from chcode.i18n import t
 from chcode.utils.tool_result_pipeline import (
@@ -68,6 +69,10 @@ class ToolStormTracker(TypedDict):
 
 class State(AgentState):
     tool_storm: NotRequired[Annotated[ToolStormTracker | None, lambda _old, new: new]]
+    # 会话（线程）级记忆开关：线程首次运行由 seed_memory_flag 播种，
+    # 之后不可变（LastValue 合并，随 checkpointer 持久化）。缺省视为
+    # 开启以兼容无此键的旧 checkpoint。
+    memory_enabled: NotRequired[bool]
 
 
 INNER_MODEL_CONFIG = {
@@ -356,12 +361,16 @@ async def model_retry_with_backoff(
                 await asyncio.sleep(1)
 
 
-# 工具清单提示（vision 两分支共用 — 文本单一事实源，字节稳定保前缀缓存）
-_BASE_TOOLS_PROMPT = """Tools:
+# 工具清单提示（vision 两分支共用 — 文本单一事实源，字节稳定保前缀缓存）。
+# update_memory 行按会话开关条件注入：开关会话内固定，故会话内字节仍稳定。
+_TOOLS_PROMPT_HEAD = """Tools:
 - bash: execute shell commands and scripts. Stop immediately if the user refuses.
 - read_file: view file content; write_file: create or save files; edit: modify existing files. Always read before write, prefer edit over write_file.
-- update_memory: save durable project knowledge (commands, conventions, prohibitions, pitfalls) to CHCODE.md; keep entries brief and constraint-style.
-- glob: find files by name pattern; grep: search file contents with regex; list_dir: browse directory structure.
+"""
+
+_UPDATE_MEMORY_PROMPT_LINE = "- update_memory: save durable project knowledge (commands, conventions, prohibitions, pitfalls) to CHCODE.md; keep entries brief and constraint-style.\n"
+
+_TOOLS_PROMPT_TAIL = """- glob: find files by name pattern; grep: search file contents with regex; list_dir: browse directory structure.
 - web_search: search the Internet; web_fetch: fetch and read a URL's content.
 - ask_user: present choices to the user and collect their input or confirmation.
 - todo_write: create and manage a task list for complex multi-step work.
@@ -369,6 +378,49 @@ _BASE_TOOLS_PROMPT = """Tools:
 
 # 无原生视觉能力的模型追加的 vision 工具行
 _VISION_TOOL_PROMPT = "- vision: analyze an image or video file using a vision model. Use when the user provides an image/video path or asks about visual content. Supports PNG, JPG, GIF, BMP, WebP, TIFF, MP4, MOV, AVI, MKV, WebM. The user can paste file paths directly in chat."
+
+# CHCODE.md 维护指引（记忆开启时注入；记忆内容由 inject_project_memory
+# 以 <system-reminder> 元消息前置注入，会话内字节稳定以保前缀缓存）
+_MEMORY_GUIDE_PROMPT = """
+
+Project Memory (CHCODE.md):
+- CHCODE.md is the persistent project memory; its contents are provided in the conversation context. Whenever you learn a durable, reusable fact about this project — common commands, package manager type, build/test/verify steps, coding conventions, prohibitions, pitfalls encountered — save it immediately with the update_memory tool.
+- Every entry MUST be brief, action-related, and phrased as a constraint (MUST / NEVER / ALWAYS), never a vague suggestion.
+- When an entry becomes outdated or wrong, fix it with mode="replace"; remove entries that no longer apply.
+- NEVER save: complete API documentation, session history or changelogs, empty slogans, expired rules, or temporary task state."""
+
+
+@before_agent
+def seed_memory_flag(state: State, runtime) -> dict[str, Any] | None:
+    """线程首次运行把配置值播种为会话记忆开关；已有值不动（不可变）。
+
+    /memory 只改配置值并提示新会话生效：/new、/workdir 等产生的新线程
+    首次运行经此处取当前配置；同线程后续运行返回 None，开关随
+    checkpoint 持久化保持不变。
+    """
+    if state.get("memory_enabled") is None:
+        return {"memory_enabled": get_memory_enabled()}
+    return None
+
+
+@wrap_model_call
+async def filter_memory_tools(
+    request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
+) -> ModelResponse:
+    """记忆关闭的会话按请求过滤掉 update_memory（工具始终全量绑定）。
+
+    与提示词工具行、记忆注入读同一个 state 键，三方同源；按请求
+    过滤无需重建 agent，新旧会话形状自然一致。
+    """
+    if request.state.get("memory_enabled", True):
+        return await handler(request)
+    return await handler(
+        request.override(
+            tools=[
+                t for t in request.tools if getattr(t, "name", "") != "update_memory"
+            ]
+        )
+    )
 
 
 @dynamic_prompt
@@ -381,9 +433,15 @@ async def load_skills(request: ModelRequest) -> str:
 
     native_vision = is_multimodal_model(model_name)
 
+    memory_enabled = request.state.get("memory_enabled", True)
+    tools_prompt = (
+        _TOOLS_PROMPT_HEAD
+        + (_UPDATE_MEMORY_PROMPT_LINE if memory_enabled else "")
+        + _TOOLS_PROMPT_TAIL
+    )
     base_prompt = (
         f"You are a coding assistant. OS: {os_name}. CWD: {request.runtime.context.working_directory}.\n\n"
-        f"{_BASE_TOOLS_PROMPT}"
+        f"{tools_prompt}"
     )
     if native_vision:
         base_prompt += (
@@ -407,15 +465,9 @@ async def load_skills(request: ModelRequest) -> str:
         agents_section += "\n- general-purpose: full-capability tasks including reading, writing, and executing code"
     base_prompt += agents_section
 
-    # CHCODE.md 维护指引（静态文本；记忆内容由 inject_project_memory
-    # 以 <system-reminder> 元消息前置注入，会话内字节稳定以保前缀缓存）
-    base_prompt += """
-
-Project Memory (CHCODE.md):
-- CHCODE.md is the persistent project memory; its contents are provided in the conversation context. Whenever you learn a durable, reusable fact about this project — common commands, package manager type, build/test/verify steps, coding conventions, prohibitions, pitfalls encountered — save it immediately with the update_memory tool.
-- Every entry MUST be brief, action-related, and phrased as a constraint (MUST / NEVER / ALWAYS), never a vague suggestion.
-- When an entry becomes outdated or wrong, fix it with mode="replace"; remove entries that no longer apply.
-- NEVER save: complete API documentation, session history or changelogs, empty slogans, expired rules, or temporary task state."""
+    # CHCODE.md 维护指引 — 记忆关闭的会话整体省略（工具行同上条件注入）
+    if memory_enabled:
+        base_prompt += _MEMORY_GUIDE_PROMPT
 
     return await asyncio.to_thread(skill_loader.build_system_prompt, base_prompt)
 
@@ -435,7 +487,12 @@ async def inject_project_memory(
       进 API payload 造成内容重复传输
     - 子代理消息不携带 memory_note（轮询只在主循环发生），展开对其
       天然不生效
+    - 会话（线程）记忆开关关闭（state memory_enabled=False）时不做
+      任何注入，请求原样放行；子代理图经输入播种同一键
     """
+    if not request.state.get("memory_enabled", True):
+        return await handler(request)
+
     workdir = request.runtime.context.working_directory
     reminder = await asyncio.to_thread(build_memory_reminder, workdir)
 
@@ -684,6 +741,7 @@ def build_agent(
         model,
         _get_all_tools(),
         middleware=[
+            seed_memory_flag,
             restrict_agent_type,
             emit_tool_events,
             tool_call_storm_block,
@@ -693,6 +751,7 @@ def build_agent(
             detect_parallel_agents,
             tool_result_budget,
             load_skills,
+            filter_memory_tools,
             inject_project_memory,
             load_model,
             model_retry_with_backoff,
@@ -749,7 +808,11 @@ async def create_checkpointer(db_path: Path) -> AsyncSqliteSaver:
 
 
 def _get_all_tools() -> list:
-    """获取所有工具（延迟导入避免循环依赖）"""
+    """获取所有工具（延迟导入避免循环依赖）。
+
+    update_memory 始终全量绑定；记忆关闭的会话由 filter_memory_tools
+    中间件按线程 state 过滤，无需重建 agent。
+    """
     from chcode.utils.tools import ALL_TOOLS
 
     return ALL_TOOLS

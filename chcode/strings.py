@@ -914,6 +914,18 @@ MESSAGES = {
         "zh": "已将 CLAUDE.md 内容迁移到 {path}（原文件保留，此后以 CHCODE.md 为准）",
         "en": "Migrated CLAUDE.md content to {path} (original kept; CHCODE.md now takes precedence)",
     },
+    "chat.memory.on": {
+        "zh": "开启",
+        "en": "On",
+    },
+    "chat.memory.off": {
+        "zh": "关闭",
+        "en": "Off",
+    },
+    "chat.memory.switched": {
+        "zh": "项目记忆已切换为: {state}（新会话起生效）",
+        "en": "Project memory switched to: {state} (effective next session)",
+    },
     # ─── /search ───
     "cmd.search": {
         "zh": "配置 Tavily 搜索 API Key",
@@ -1173,6 +1185,10 @@ MESSAGES = {
     "cmd.danger": {
         "zh": "开关危险命令拦截",
         "en": "Toggle dangerous command guard",
+    },
+    "cmd.memory": {
+        "zh": "开关项目记忆",
+        "en": "Toggle project memory",
     },
     # ─── /danger ───
     "chat.danger.select": {

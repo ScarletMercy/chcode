@@ -79,8 +79,10 @@ from chcode.utils.project_memory import (
     begin_memory_session,
     check_memory_changed,
     diff_memory_lines,
+    get_memory_enabled,
     preview_memory_entry,
     reset_memory_session,
+    set_memory_enabled,
 )
 
 
@@ -104,6 +106,7 @@ SLASH_COMMANDS = {
     "/homepage": "cmd.homepage",
     "/help": "cmd.help",
     "/danger": "cmd.danger",
+    "/memory": "cmd.memory",
     "/quit": "cmd.quit",
 }
 
@@ -377,25 +380,40 @@ class ChatREPL:
             self.yolo,
         )
 
+    async def _thread_memory_enabled(self) -> bool:
+        """当前会话（线程）的记忆开关。
+
+        读线程 state 的 memory_enabled 键（seed_memory_flag 播种、
+        线程内不可变）；新线程尚未播种时回退配置值 —— 与播种将取的
+        值同源，语义自洽。
+        """
+        state = await self.agent.aget_state(self.session_mgr.config)
+        return state.values.get("memory_enabled", get_memory_enabled())
+
     # ─── 初始化 ────────────────────────────────────────
 
     async def initialize(self) -> bool:
         """初始化：加载配置、设置工作目录、构建 agent"""
         ensure_config_dir()  # 确保全局配置目录.chat存在
 
-        # 首次启动时把危险命令拦截的默认开关值写入 chagent.json（若缺失）
+        # 首次启动时把危险命令拦截/项目记忆的默认开关值写入 chagent.json（若缺失）
+        from chcode.utils.project_memory import ensure_memory_config_written
         from chcode.utils.shell import ensure_guard_config_written
 
         ensure_guard_config_written()
+        ensure_memory_config_written()
 
         self.workplace_path = Path.cwd()  # 获取当前目录路径
 
         self._ensure_chat_dir(self.workplace_path)  # 确保当前项目配置文件存在
 
         # 项目记忆会话起点：确保文件存在（首次创建 / CLAUDE.md 迁移），
-        # 清空冻结缓存并建立变更检测基线
+        # 清空冻结缓存并建立变更检测基线（新线程，开关取配置值，
+        # 与 seed_memory_flag 播种值同源）
         memory_status = await asyncio.to_thread(
-            begin_memory_session, self.workplace_path
+            begin_memory_session,
+            self.workplace_path,
+            get_memory_enabled(),
         )
         if memory_status == "created":
             console.print(
@@ -671,6 +689,7 @@ class ChatREPL:
             "/langsmith": self._cmd_langsmith,
             "/lang": self._cmd_lang,
             "/danger": self._cmd_danger,
+            "/memory": self._cmd_memory,
             "/messages": self._cmd_messages,
             "/homepage": self._cmd_homepage,
             "/help": self._cmd_help,
@@ -796,7 +815,7 @@ class ChatREPL:
 
     # 列出所有可用工具及其描述
     async def _cmd_tools(self, _arg: str) -> None:
-        from chcode.utils.tools import ALL_TOOLS  # 导入包含所有工具的列表
+        from chcode.utils.tools import get_available_tools  # 当前会话可用的工具
         from chcode.utils.multimodal import is_multimodal_model
 
         current_model = (self.model_config or {}).get("model", "")  # 安全获取模型配置
@@ -809,7 +828,7 @@ class ChatREPL:
         if native_vision:
             console.print(f"[dim]{t('chat.tools.native_vision')}[/dim]")
             console.print()
-        for tool in ALL_TOOLS:
+        for tool in get_available_tools(await self._thread_memory_enabled()):
             # 优先取当前语言的翻译描述，缺失时回退到英文 docstring 首行
             _desc_key = f"tool_desc.{tool.name}"
             _translated = t(_desc_key)
@@ -1208,7 +1227,10 @@ class ChatREPL:
         self._ensure_chat_dir(self.workplace_path)
 
         # 新目录同样启动记忆会话：确保 CHCODE.md 存在、失效冻结块重读
-        await asyncio.to_thread(begin_memory_session, self.workplace_path)
+        # （新线程，开关取配置值，与 seed_memory_flag 播种值同源）
+        await asyncio.to_thread(
+            begin_memory_session, self.workplace_path, get_memory_enabled()
+        )
 
         # 关闭旧 checkpointer（会话） 连接，重建会话和 agent
         await self._rebuild_agent(rebuild_session=True)
@@ -1283,6 +1305,16 @@ class ChatREPL:
         set_guard_enabled(bool(selected))
 
         render_success(t("chat.danger.switched"))
+
+    async def _cmd_memory(self, _arg: str) -> None:
+        enabled = not get_memory_enabled()  # 翻转持久化配置；当前会话保持原状态
+        set_memory_enabled(enabled)
+        render_success(
+            t(
+                "chat.memory.switched",
+                state=t("chat.memory.on" if enabled else "chat.memory.off"),
+            )
+        )
 
     async def _cmd_help(self, _arg: str) -> None:
         from rich.table import Table
@@ -1522,9 +1554,17 @@ class ChatREPL:
                 if need_messages:
                     await self.agent.aupdate_state(
                         self.session_mgr.config,
-                        {"messages": need_messages},
+                        {
+                            "messages": need_messages,
+                            # 开关随上下文走：有保留消息则连同开关一起继承
+                            "memory_enabled": state.values.get(
+                                "memory_enabled", get_memory_enabled()
+                            ),
+                        },
                         as_node="model",  # create_agent 的 graph 有 model/tools 多 writer，缺省时老会话状态触发 "Ambiguous update"
                     )
+                # 第 0 组之前 fork：无保留上下文，视作全新会话（同 /new），
+                # 开关由线程首次运行按当前配置播种
 
                 # 先初始化 git
                 await self._init_git()
@@ -1664,7 +1704,9 @@ class ChatREPL:
             # 传模型时由中间件展开（注入/剥离）
             # （单次 stat + 偶发小读，直接同步调用，避免挤占 to_thread 序列）
             if self.workplace_path:
-                memory_note = check_memory_changed(self.workplace_path)
+                memory_note = check_memory_changed(
+                    self.workplace_path, await self._thread_memory_enabled()
+                )
                 if memory_note:
                     input_data = _attach_memory_note(input_data, memory_note)
 
