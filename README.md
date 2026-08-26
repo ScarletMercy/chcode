@@ -88,7 +88,7 @@
 
 ### Rich 终端 UI
 
-- 实时**状态栏** — 上下文使用率、Git 状态指示
+- 实时**状态栏** — 上下文使用率、思考强度档位、Git 状态指示
 - **流式输出**，逐 token 渲染
 - 斜杠命令自动补全
 - 彩色工具审核界面，文件编辑显示**行内 diff 预览**
@@ -195,6 +195,7 @@ chcode config switch # 切换模型
 | `/langsmith` | 开关 LangSmith 追踪 |
 | `/danger` | 配置危险命令拦截 |
 | `/memory` | 开关项目记忆（新会话生效） |
+| `/reasoning-effort` | 切换思考强度（关闭/低/中/高/超高/最高） |
 | `/tools` | 列出内置工具 |
 | `/quit` | 退出 |
 
@@ -205,6 +206,7 @@ chcode config switch # 切换模型
 | `Enter` | 发送消息 |
 | `Ctrl+Enter` | 换行 |
 | `Tab` | 切换 Common/YOLO 模式（输入为空时） |
+| `Shift+Tab` | 循环切换思考强度（下一轮请求生效） |
 | `Ctrl+C` | 中断生成 |
 
 ## 为什么不用 MCP？

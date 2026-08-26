@@ -222,6 +222,58 @@ def save_language(lang: str) -> None:
     _update_setting(language=lang)
 
 
+# ─── 思考强度（reasoning effort）─────────────────────────
+
+# 6 档循环顺序。"off" 不发送 reasoning_effort，改为合并两套关闭参数：
+# enable_thinking=false（Qwen 系布尔开关）+ thinking.type=disabled（GLM 系
+# 字符串开关），端点各认各的、互不影响；DeepSeek 一般忽略未知参数。
+# xhigh/max 为模型相关取值（gpt-5.x 系新模型与部分网关支持），端点不识别时
+# 忽略或报 400。
+REASONING_EFFORT_LEVELS = ("off", "low", "medium", "high", "xhigh", "max")
+
+
+def effective_model_config(base_config: dict, level: str) -> dict:
+    """返回注入思考参数后的模型配置副本，不修改入参。
+
+    base_config 是 ChatOpenAI 构造参数（含 self.model_config / 预设），
+    注入只发生在每轮请求的临时副本上，避免泄漏进 model.json 持久化路径。
+    """
+    cfg = dict(base_config)
+    if level == "off":
+        # 剥掉 base 中可能残留的 reasoning_effort（如手改 model.json），
+        # 保证 off 档语义唯一：只发关闭参数，不发强度参数
+        cfg.pop("reasoning_effort", None)
+        extra = dict(cfg.get("extra_body") or {})
+        extra["enable_thinking"] = False  # Qwen/SiliconFlow：布尔开关
+        extra["thinking"] = {"type": "disabled"}  # GLM/豆包：字符串开关
+        cfg["extra_body"] = extra
+    elif level in REASONING_EFFORT_LEVELS:
+        cfg["reasoning_effort"] = level
+        # 对称剥掉 base extra_body 中可能手写的关闭参数（手改 model.json 残留）：
+        # 与 reasoning_effort 同发时，端点认得的关闭开关会静默压住档位
+        extra = cfg.get("extra_body") or {}
+        if "enable_thinking" in extra or "thinking" in extra:
+            extra = dict(extra)
+            extra.pop("enable_thinking", None)
+            extra.pop("thinking", None)
+            cfg["extra_body"] = extra
+    return cfg
+
+
+def load_reasoning_effort() -> str:
+    """读取持久化的思考强度，非法值回退 'off'。"""
+    data = _load_setting()
+    level = data.get("reasoning_effort")
+    return level if level in REASONING_EFFORT_LEVELS else "off"
+
+
+def save_reasoning_effort(level: str) -> None:
+    """持久化思考强度到 SETTING_JSON。"""
+    if level not in REASONING_EFFORT_LEVELS:
+        return
+    _update_setting(reasoning_effort=level)
+
+
 def get_default_model_config() -> dict | None:
     """获取当前默认模型配置"""
     data = load_model_json()

@@ -3415,3 +3415,213 @@ class TestModelSwitchCleansUpLastTurn:
             "to avoid resending the user message"
         )
         assert repl.model_config["model"] == "fallback"
+
+
+# ============================================================================
+# Test /reasoning-effort: thinking intensity switching (Shift+Tab + command)
+# ============================================================================
+
+
+class TestEffectiveModelConfig:
+    """chcode.config.effective_model_config — 纯函数：注入思考参数的临时副本"""
+
+    def test_off_injects_enable_thinking_false(self):
+        from chcode.config import effective_model_config
+
+        base = {"model": "m", "extra_body": {"stream": True, "top_k": 20}}
+        cfg = effective_model_config(base, "off")
+        assert cfg["extra_body"]["enable_thinking"] is False
+        assert cfg["extra_body"]["thinking"] == {"type": "disabled"}
+        # 保留已有 extra_body 键
+        assert cfg["extra_body"]["stream"] is True
+        assert cfg["extra_body"]["top_k"] == 20
+        # off 档不发送 reasoning_effort
+        assert "reasoning_effort" not in cfg
+
+    def test_off_creates_extra_body_when_missing(self):
+        from chcode.config import effective_model_config
+
+        cfg = effective_model_config({"model": "m"}, "off")
+        assert cfg["extra_body"] == {
+            "enable_thinking": False,
+            "thinking": {"type": "disabled"},
+        }
+
+    def test_level_sets_reasoning_effort(self):
+        from chcode.config import effective_model_config
+
+        base = {"model": "m", "extra_body": {"top_k": 20}}
+        for level in ("low", "medium", "high", "xhigh", "max"):
+            cfg = effective_model_config(base, level)
+            assert cfg["reasoning_effort"] == level
+            # 设定档位时不注入关闭参数
+            assert "enable_thinking" not in cfg.get("extra_body", {})
+            assert "thinking" not in cfg.get("extra_body", {})
+
+    def test_off_strips_stale_reasoning_effort(self):
+        """base 中残留的 reasoning_effort（手改 model.json）在 off 档必须被剥掉"""
+        from chcode.config import effective_model_config
+
+        base = {"model": "m", "reasoning_effort": "high"}
+        cfg = effective_model_config(base, "off")
+        assert "reasoning_effort" not in cfg
+        assert cfg["extra_body"]["enable_thinking"] is False
+        assert cfg["extra_body"]["thinking"] == {"type": "disabled"}
+        # base 本体不受影响
+        assert base["reasoning_effort"] == "high"
+
+    def test_level_strips_stale_disable_params(self):
+        """base extra_body 手写的关闭参数（手改 model.json 残留）在选档位时
+        必须被剥掉，否则端点认得的关闭开关会静默压住档位"""
+        from chcode.config import effective_model_config
+
+        base = {
+            "model": "m",
+            "extra_body": {
+                "enable_thinking": False,
+                "thinking": {"type": "disabled"},
+                "top_k": 20,
+            },
+        }
+        cfg = effective_model_config(base, "high")
+        assert cfg["reasoning_effort"] == "high"
+        assert "enable_thinking" not in cfg["extra_body"]
+        assert "thinking" not in cfg["extra_body"]
+        # 其余 extra_body 键保留
+        assert cfg["extra_body"]["top_k"] == 20
+        # base 本体不受影响
+        assert base["extra_body"]["enable_thinking"] is False
+
+    def test_level_no_stale_params_keeps_extra_body_absent(self):
+        """base 无 extra_body（或无残留键）时不新建空 extra_body 壳"""
+        from chcode.config import effective_model_config
+
+        cfg = effective_model_config({"model": "m"}, "low")
+        assert cfg == {"model": "m", "reasoning_effort": "low"}
+
+        cfg = effective_model_config({"model": "m", "extra_body": {"top_k": 20}}, "low")
+        assert cfg == {
+            "model": "m",
+            "reasoning_effort": "low",
+            "extra_body": {"top_k": 20},
+        }
+
+    def test_unknown_level_returns_plain_copy(self):
+        from chcode.config import effective_model_config
+
+        cfg = effective_model_config({"model": "m"}, "bogus")
+        assert cfg == {"model": "m"}
+        assert "reasoning_effort" not in cfg
+        assert "extra_body" not in cfg
+
+    def test_input_dict_not_mutated(self):
+        from chcode.config import effective_model_config
+
+        base = {"model": "m", "extra_body": {"stream": True}}
+        effective_model_config(base, "off")
+        effective_model_config(base, "high")
+        assert base == {"model": "m", "extra_body": {"stream": True}}
+
+
+class TestReasoningEffortCycle:
+    """ChatREPL._cycle_reasoning_effort — 循环顺序 + 持久化"""
+
+    def test_cycle_order(self):
+        repl = ChatREPL()
+        repl.reasoning_effort = "off"
+        order = []
+        with patch("chcode.chat.save_reasoning_effort") as mock_save:
+            for _ in range(7):  # off→low→medium→high→xhigh→max→off
+                order.append(repl._cycle_reasoning_effort())
+        assert order == ["low", "medium", "high", "xhigh", "max", "off", "low"]
+        assert mock_save.call_count == 7
+
+    def test_cycle_recovers_from_invalid_value(self):
+        repl = ChatREPL()
+        repl.reasoning_effort = "bogus"  # 手改 chagent.json 的残留值
+        with patch("chcode.chat.save_reasoning_effort"):
+            assert repl._cycle_reasoning_effort() == "off"
+
+
+class TestCmdReasoningEffort:
+    """ChatREPL._cmd_reasoning_effort — 命令分支"""
+
+    async def test_no_arg_cycles(self):
+        repl = ChatREPL()
+        repl.reasoning_effort = "medium"
+        with (
+            patch("chcode.chat.save_reasoning_effort"),
+            patch("chcode.chat.render_success") as mock_ok,
+        ):
+            await repl._cmd_reasoning_effort("")
+        assert repl.reasoning_effort == "high"
+        mock_ok.assert_called_once()
+
+    async def test_valid_arg_sets_directly(self):
+        repl = ChatREPL()
+        repl.reasoning_effort = "off"
+        with (
+            patch("chcode.chat.save_reasoning_effort") as mock_save,
+            patch("chcode.chat.render_success"),
+        ):
+            await repl._cmd_reasoning_effort("HIGH")  # 大小写不敏感
+        assert repl.reasoning_effort == "high"
+        mock_save.assert_called_once_with("high")
+
+    async def test_invalid_arg_warns_and_keeps_level(self):
+        repl = ChatREPL()
+        repl.reasoning_effort = "medium"
+        with (
+            patch("chcode.chat.save_reasoning_effort") as mock_save,
+            patch("chcode.chat.render_success") as mock_ok,
+            patch("chcode.chat.render_warning") as mock_warn,
+        ):
+            await repl._cmd_reasoning_effort("extreme")
+        assert repl.reasoning_effort == "medium"
+        mock_warn.assert_called_once()
+        mock_ok.assert_not_called()
+        mock_save.assert_not_called()
+
+
+class TestReasoningEffortToolbarAndBinding:
+    """底部工具栏思考段 + Shift+Tab 键绑定注册"""
+
+    async def test_toolbar_shows_reasoning_level(self):
+        repl = ChatREPL()
+        repl.model_config = {"model": "test"}
+        repl.reasoning_effort = "high"
+        repl._prompt_session = None
+
+        captured_toolbar_fn = None
+
+        def capture_session(**kwargs):
+            nonlocal captured_toolbar_fn
+            captured_toolbar_fn = kwargs.get("bottom_toolbar")
+            return _make_mock_session()
+
+        with patch("chcode.chat.PromptSession", side_effect=capture_session):
+            with patch(
+                "chcode.chat.shutil.get_terminal_size",
+                return_value=MagicMock(columns=80),
+            ):
+                await repl._get_input()
+
+        toolbar_output = str(captured_toolbar_fn())
+        assert "思考" in toolbar_output
+        assert "high" in toolbar_output
+
+    async def test_s_tab_binding_registered(self):
+        repl = ChatREPL()
+        repl._prompt_session = None
+
+        mock_session_cls = MagicMock(return_value=_make_mock_session())
+
+        with patch("chcode.chat.PromptSession", mock_session_cls):
+            with patch(
+                "chcode.chat.shutil.get_terminal_size",
+                return_value=MagicMock(columns=80),
+            ):
+                await repl._get_input()
+
+        kb = mock_session_cls.call_args[1]["key_bindings"]
+        assert kb.get_bindings_for_keys(("s-tab",)), "s-tab must be bound"

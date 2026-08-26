@@ -60,6 +60,10 @@ from chcode.config import (
     switch_model,
     ensure_config_dir,
     _DEFAULT_CONTEXT_WINDOW,
+    REASONING_EFFORT_LEVELS,
+    effective_model_config,
+    load_reasoning_effort,
+    save_reasoning_effort,
 )
 from chcode.utils.session import SessionManager
 from chcode.utils.skill_loader import SkillAgentContext, SkillLoader
@@ -107,7 +111,18 @@ SLASH_COMMANDS = {
     "/help": "cmd.help",
     "/danger": "cmd.danger",
     "/memory": "cmd.memory",
+    "/reasoning-effort": "cmd.reasoning_effort",
     "/quit": "cmd.quit",
+}
+
+# 思考强度工具栏配色：off 灰 / low 绿 / medium 黄 / high 橙 / xhigh 红橙 / max 红
+_REASONING_EFFORT_COLORS = {
+    "off": "#888888",
+    "low": "#00CC66",
+    "medium": "#FFCC00",
+    "high": "#FFA500",
+    "xhigh": "#FF7744",
+    "max": "#FF5555",
 }
 
 
@@ -306,6 +321,9 @@ class ChatREPL:
         self.workplace_path: Path | None = None  # 工作目录路径
         self.model_config: dict = {}  # 模型参数
         self.yolo = False  # Yolo模式
+        # 思考强度档位（off/low/medium/high/xhigh/max），initialize() 从 chagent.json 加载；
+        # 仅在每轮请求构建 context 时注入临时副本，self.model_config 本体不持有该状态
+        self.reasoning_effort = "off"
         self.agent = None  # agent实例
         self.checkpointer = None  # 检查点实例
         self.session_mgr: SessionManager | None = None  # 会话管理器
@@ -402,6 +420,8 @@ class ChatREPL:
 
         ensure_guard_config_written()
         ensure_memory_config_written()
+
+        self.reasoning_effort = load_reasoning_effort()  # 加载持久化的思考强度档位
 
         self.workplace_path = Path.cwd()  # 获取当前目录路径
 
@@ -547,6 +567,11 @@ class ChatREPL:
                 update_hitl_config(self.yolo)  # 构造agent前
                 event.app.renderer._last_rendered_width = 0  # 强制刷新 toolbar
 
+            @kb.add("s-tab")  # Shift+Tab → 循环切换思考强度（下一轮请求生效）
+            def _s_tab_cycle_reasoning(event):
+                self._cycle_reasoning_effort()
+                event.app.renderer._last_rendered_width = 0  # 强制刷新 toolbar
+
             _last_width = 0
             _last_width_time = 0.0
 
@@ -570,6 +595,11 @@ class ChatREPL:
                     t("chat.status.common_mode")
                     if not self.yolo
                     else f"<ansired>{t('chat.status.yolo_mode')}</ansired>"
+                )
+                _level = self.reasoning_effort
+                parts.append(
+                    f'<style fg="{_REASONING_EFFORT_COLORS.get(_level, "#888888")}">'
+                    f"{t('chat.status.thinking', level=_level)}</style>"
                 )
                 if self.git and self.git_manager:
                     parts.append('<style fg="#FFA500">Git</style>')
@@ -690,6 +720,7 @@ class ChatREPL:
             "/lang": self._cmd_lang,
             "/danger": self._cmd_danger,
             "/memory": self._cmd_memory,
+            "/reasoning-effort": self._cmd_reasoning_effort,
             "/messages": self._cmd_messages,
             "/homepage": self._cmd_homepage,
             "/help": self._cmd_help,
@@ -1316,6 +1347,31 @@ class ChatREPL:
             )
         )
 
+    def _cycle_reasoning_effort(self) -> str:
+        """循环切换到下一档思考强度并持久化，返回新档位。"""
+        try:
+            idx = REASONING_EFFORT_LEVELS.index(self.reasoning_effort)
+        except ValueError:  # 非法残留值（如手改 chagent.json）从 off 起步
+            idx = -1
+        self.reasoning_effort = REASONING_EFFORT_LEVELS[
+            (idx + 1) % len(REASONING_EFFORT_LEVELS)
+        ]
+        save_reasoning_effort(self.reasoning_effort)
+        return self.reasoning_effort
+
+    async def _cmd_reasoning_effort(self, arg: str) -> None:
+        """处理 /reasoning-effort：无参循环切换，带参（off/low/medium/high/xhigh/max）直接设置"""
+        level = arg.strip().lower()
+        if not level:
+            level = self._cycle_reasoning_effort()
+        elif level not in REASONING_EFFORT_LEVELS:
+            render_warning(t("chat.reasoning.invalid", value=arg.strip()))
+            return
+        else:
+            self.reasoning_effort = level
+            save_reasoning_effort(level)
+        render_success(t("chat.reasoning.switched", level=level))
+
     async def _cmd_help(self, _arg: str) -> None:
         from rich.table import Table
 
@@ -1726,7 +1782,9 @@ class ChatREPL:
             skill_agent_context = SkillAgentContext(
                 skill_loader=self._skill_loader,
                 working_directory=self.workplace_path,
-                model_config=self.model_config or INNER_MODEL_CONFIG,
+                model_config=effective_model_config(
+                    self.model_config or INNER_MODEL_CONFIG, self.reasoning_effort
+                ),
                 thread_id=self.session_mgr.thread_id,
                 yolo=self.yolo,
             )
@@ -1831,7 +1889,10 @@ class ChatREPL:
                             skill_agent_context = SkillAgentContext(
                                 skill_loader=self._skill_loader,
                                 working_directory=self.workplace_path,
-                                model_config=self.model_config or INNER_MODEL_CONFIG,
+                                model_config=effective_model_config(
+                                    self.model_config or INNER_MODEL_CONFIG,
+                                    self.reasoning_effort,
+                                ),
                                 thread_id=self.session_mgr.thread_id,
                                 yolo=self.yolo,
                             )

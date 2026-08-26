@@ -88,7 +88,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 
 ### Rich Terminal UI
 
-- Real-time **status bar** — context usage %, git status indicator
+- Real-time **status bar** — context usage %, thinking effort level, git status indicator
 - **Streaming output** with token-by-token rendering
 - Slash command auto-completion
 - Color-coded tool approval UI with **inline diff preview** for file edits
@@ -195,6 +195,7 @@ On first launch, ChCode will:
 | `/langsmith` | Toggle LangSmith tracing |
 | `/danger` | Configure dangerous command guard |
 | `/memory` | Toggle project memory (effective next session) |
+| `/reasoning-effort` | Switch thinking effort (off/low/medium/high/xhigh/max) |
 | `/tools` | List built-in tools |
 | `/quit` | Exit |
 
@@ -205,6 +206,7 @@ On first launch, ChCode will:
 | `Enter` | Send message |
 | `Ctrl+Enter` | New line |
 | `Tab` | Toggle Common/YOLO mode (when input empty) |
+| `Shift+Tab` | Cycle thinking effort (effective next request) |
 | `Ctrl+C` | Interrupt generation |
 
 ## Why No MCP?

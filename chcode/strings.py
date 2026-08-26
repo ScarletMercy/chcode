@@ -926,6 +926,19 @@ MESSAGES = {
         "zh": "项目记忆已切换为: {state}（新会话起生效）",
         "en": "Project memory switched to: {state} (effective next session)",
     },
+    # ─── /reasoning-effort ───
+    "chat.reasoning.switched": {
+        "zh": "思考强度已切换为: {level}",
+        "en": "Thinking effort switched to: {level}",
+    },
+    "chat.reasoning.invalid": {
+        "zh": "无效的思考强度: {value}（可选: off/low/medium/high/xhigh/max）",
+        "en": "Invalid thinking effort: {value} (options: off/low/medium/high/xhigh/max)",
+    },
+    "chat.status.thinking": {
+        "zh": "思考:{level}",
+        "en": "Think:{level}",
+    },
     # ─── /search ───
     "cmd.search": {
         "zh": "配置 Tavily 搜索 API Key",
@@ -1189,6 +1202,10 @@ MESSAGES = {
     "cmd.memory": {
         "zh": "开关项目记忆",
         "en": "Toggle project memory",
+    },
+    "cmd.reasoning_effort": {
+        "zh": "切换思考强度（关闭/低/中/高/超高/最高）",
+        "en": "Switch thinking effort (off/low/medium/high/xhigh/max)",
     },
     # ─── /danger ───
     "chat.danger.select": {
