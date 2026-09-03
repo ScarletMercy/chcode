@@ -3546,16 +3546,57 @@ class TestReasoningEffortCycle:
 class TestCmdReasoningEffort:
     """ChatREPL._cmd_reasoning_effort — 命令分支"""
 
-    async def test_no_arg_cycles(self):
+    async def test_no_arg_opens_select(self):
+        from chcode.config import REASONING_EFFORT_LEVELS
+
         repl = ChatREPL()
         repl.reasoning_effort = "medium"
         with (
-            patch("chcode.chat.save_reasoning_effort"),
+            patch("chcode.chat.save_reasoning_effort") as mock_save,
             patch("chcode.chat.render_success") as mock_ok,
+            patch(
+                "chcode.chat.select", new_callable=AsyncMock, return_value="xhigh"
+            ) as mock_select,
         ):
             await repl._cmd_reasoning_effort("")
-        assert repl.reasoning_effort == "high"
+        mock_select.assert_awaited_once()
+        # 选项为全部 6 档、默认选中当前档位
+        assert mock_select.await_args.args[1] == list(REASONING_EFFORT_LEVELS)
+        assert mock_select.await_args.kwargs["default"] == "medium"
+        assert repl.reasoning_effort == "xhigh"
+        mock_save.assert_called_once_with("xhigh")
         mock_ok.assert_called_once()
+
+    async def test_no_arg_cancel_keeps_level(self):
+        """下拉列表取消（ESC/Ctrl+C → None）时保持原档位、不持久化"""
+        repl = ChatREPL()
+        repl.reasoning_effort = "medium"
+        with (
+            patch("chcode.chat.save_reasoning_effort") as mock_save,
+            patch("chcode.chat.render_success") as mock_ok,
+            patch(
+                "chcode.chat.select", new_callable=AsyncMock, return_value=None
+            ),
+        ):
+            await repl._cmd_reasoning_effort("")
+        assert repl.reasoning_effort == "medium"
+        mock_save.assert_not_called()
+        mock_ok.assert_not_called()
+
+    async def test_no_arg_invalid_residual_passes_no_default(self):
+        """非法残留档位（手改 chagent.json）不出现在选项里，default 传 None"""
+        repl = ChatREPL()
+        repl.reasoning_effort = "bogus"
+        with (
+            patch("chcode.chat.save_reasoning_effort"),
+            patch("chcode.chat.render_success"),
+            patch(
+                "chcode.chat.select", new_callable=AsyncMock, return_value="off"
+            ) as mock_select,
+        ):
+            await repl._cmd_reasoning_effort("")
+        assert mock_select.await_args.kwargs["default"] is None
+        assert repl.reasoning_effort == "off"
 
     async def test_valid_arg_sets_directly(self):
         repl = ChatREPL()

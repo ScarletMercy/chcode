@@ -927,6 +927,10 @@ MESSAGES = {
         "en": "Project memory switched to: {state} (effective next session)",
     },
     # ─── /reasoning-effort ───
+    "chat.reasoning.select": {
+        "zh": "选择思考强度:",
+        "en": "Select thinking effort:",
+    },
     "chat.reasoning.switched": {
         "zh": "思考强度已切换为: {level}",
         "en": "Thinking effort switched to: {level}",
@@ -1204,8 +1208,8 @@ MESSAGES = {
         "en": "Toggle project memory",
     },
     "cmd.reasoning_effort": {
-        "zh": "切换思考强度（关闭/低/中/高/超高/最高）",
-        "en": "Switch thinking effort (off/low/medium/high/xhigh/max)",
+        "zh": "选择思考强度（列表选择：关闭/低/中/高/超高/最高）",
+        "en": "Select thinking effort (list picker: off/low/medium/high/xhigh/max)",
     },
     # ─── /danger ───
     "chat.danger.select": {
@@ -1378,8 +1382,8 @@ MESSAGES = {
         "en": "Terminal-based AI Coding Agent",
     },
     "display.welcome_hint": {
-        "zh": "Enter 发送 | Ctrl+Enter 换行 | /help 查看命令\nCtrl+C 中断生成 | Tab 切换模式 | /quit 退出",
-        "en": "Enter to send | Ctrl+Enter for newline | /help for commands\nCtrl+C to interrupt | Tab to toggle mode | /quit to exit",
+        "zh": "Enter 发送 | Ctrl+Enter 换行 | Ctrl+C 中断生成 |\nTab 切换模式 | Shift+Tab 切换思考档位 | /quit 退出",
+        "en": "Enter to send | Ctrl+Enter for newline | Ctrl+C to interrupt |\nTab to toggle mode | Shift+Tab to switch thinking effort | /quit to exit",
     },
     "display.organizing": {
         "zh": "正在整理结果...",

@@ -96,7 +96,7 @@
 ### 可观测性
 
 - **LangSmith 追踪** — 通过 `/langsmith` 命令开关
-- 遇到 429 限流时自动禁用追踪并通知用户
+- 静默抑制 LangSmith 限流 / 连接错误输出，保持终端 UI 干净
 
 ### 子代理系统
 
@@ -193,10 +193,13 @@ chcode config switch # 切换模型
 | `/mode` | 切换 Common / YOLO 模式 |
 | `/git` | 显示 Git 状态 |
 | `/langsmith` | 开关 LangSmith 追踪 |
+| `/lang` | 选择语言 |
 | `/danger` | 配置危险命令拦截 |
 | `/memory` | 开关项目记忆（新会话生效） |
-| `/reasoning-effort` | 切换思考强度（关闭/低/中/高/超高/最高） |
+| `/reasoning-effort` | 选择思考强度（列表选择：关闭/低/中/高/超高/最高） |
 | `/tools` | 列出内置工具 |
+| `/homepage` | 打开项目主页 |
+| `/help` | 显示帮助信息 |
 | `/quit` | 退出 |
 
 ## 快捷键
@@ -247,6 +250,7 @@ chcode/
     ├── tool_result_pipeline.py  # 输出截断与预算控制
     └── shell/
         ├── provider.py     # Shell 提供者抽象（Bash/PowerShell）
+        ├── guard.py        # 危险命令拦截中间件（bash/powershell/cmd）
         ├── session.py      # 交互式 Shell 会话
         ├── output.py       # 输出捕获与临时文件
         ├── result.py       # 执行结果数据类

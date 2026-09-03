@@ -96,7 +96,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 ### Observability
 
 - **LangSmith tracing** — toggle on/off via `/langsmith` command
-- Auto-disable tracing on 429 rate limit with user notification
+- Silently suppress LangSmith rate-limit / connection errors to keep the terminal UI clean
 
 ### Sub-Agent System
 
@@ -193,10 +193,13 @@ On first launch, ChCode will:
 | `/mode` | Toggle Common / YOLO mode |
 | `/git` | Show git status |
 | `/langsmith` | Toggle LangSmith tracing |
+| `/lang` | Select language |
 | `/danger` | Configure dangerous command guard |
 | `/memory` | Toggle project memory (effective next session) |
-| `/reasoning-effort` | Switch thinking effort (off/low/medium/high/xhigh/max) |
+| `/reasoning-effort` | Select thinking effort (list picker: off/low/medium/high/xhigh/max) |
 | `/tools` | List built-in tools |
+| `/homepage` | Open project homepage |
+| `/help` | Show help |
 | `/quit` | Exit |
 
 ## Keybindings
@@ -247,6 +250,7 @@ chcode/
     ├── tool_result_pipeline.py  # Output truncation and budget enforcement
     └── shell/
         ├── provider.py     # Shell provider abstraction (Bash/PowerShell)
+        ├── guard.py        # Dangerous command guard middleware (bash/powershell/cmd)
         ├── session.py      # Interactive shell session
         ├── output.py       # Output capture and temp files
         ├── result.py       # Execution result dataclass

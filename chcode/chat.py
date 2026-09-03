@@ -1360,16 +1360,27 @@ class ChatREPL:
         return self.reasoning_effort
 
     async def _cmd_reasoning_effort(self, arg: str) -> None:
-        """处理 /reasoning-effort：无参循环切换，带参（off/low/medium/high/xhigh/max）直接设置"""
+        """处理 /reasoning-effort：无参弹列表选择，带参（off/low/medium/high/xhigh/max）直接设置"""
         level = arg.strip().lower()
         if not level:
-            level = self._cycle_reasoning_effort()
+            # 非法残留值不在档位表内时 default 传 None，避免 questionary 报错
+            default = (
+                self.reasoning_effort
+                if self.reasoning_effort in REASONING_EFFORT_LEVELS
+                else None
+            )
+            level = await select(
+                t("chat.reasoning.select"),
+                list(REASONING_EFFORT_LEVELS),
+                default=default,
+            )
+            if level is None:  # ESC/Ctrl+C 取消，保持原档位
+                return
         elif level not in REASONING_EFFORT_LEVELS:
             render_warning(t("chat.reasoning.invalid", value=arg.strip()))
             return
-        else:
-            self.reasoning_effort = level
-            save_reasoning_effort(level)
+        self.reasoning_effort = level
+        save_reasoning_effort(level)
         render_success(t("chat.reasoning.switched", level=level))
 
     async def _cmd_help(self, _arg: str) -> None:
