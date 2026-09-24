@@ -39,6 +39,8 @@ _committed_text: str = ""  # 已落版的 stable 文本（单调递增）
 _unstable_text: str = ""  # 当前 unstable 块的文本
 _full_text: str = ""  # 完整累计文本（只增不减），分块基于此
 _live: Live | None = None  # 仅渲染 unstable 块的 Live
+_last_paint: float = 0.0
+_MIN_PAINT_INTERVAL = 0.08
 _md_parser = None  # 延迟初始化的 markdown-it 解析器
 
 
@@ -209,7 +211,7 @@ def render_ai_chunk(content: str) -> None:
     每收到一个 chunk 就重新分块：若 stable 增长了，把新增部分用 Markdown 落版
     （进滚动历史，永不重绘）；Live 只渲当前的 unstable 块（几行，不超屏）。
     """
-    global _unstable_text, _full_text
+    global _unstable_text, _full_text, _last_paint
     if _live is None:  # 子 agent 已被装饰器拦掉，此处防御
         console.print(content, end="", style="white")
         return
@@ -219,7 +221,12 @@ def render_ai_chunk(content: str) -> None:
     _commit_stable_increment(stable, unstable)
     _unstable_text = unstable
     # Live 只渲 unstable（几行），光标重绘不超屏
-    _live.update(Markdown(_unstable_text))
+    now = time.monotonic()
+    if now - _last_paint >= _MIN_PAINT_INTERVAL:
+        _last_paint = now
+        _live.update(Markdown(_unstable_text), refresh=True)
+    else:
+        _live.update(Markdown(_unstable_text))
 
 
 def _flush_unstable() -> None:
@@ -232,13 +239,15 @@ def _flush_unstable() -> None:
     """
     global _unstable_text, _full_text
     stable, unstable = _split_stable(_full_text)
+    if _live is not None:
+        _live.update(Markdown(unstable), refresh=True)
     _commit_stable_increment(stable, unstable)
     _unstable_text = unstable
 
 
 def render_ai_start():
     """AI 回复开始"""
-    global _subagent_parallel, _committed_text, _unstable_text, _full_text, _live
+    global _subagent_parallel, _committed_text, _unstable_text, _full_text, _live, _last_paint
     if _subagent_count == 0:
         _finalize_progress()
         with _agent_progress_lock:
@@ -250,12 +259,13 @@ def render_ai_start():
     _committed_text = ""
     _unstable_text = ""
     _full_text = ""
+    _last_paint = 0.0
     # Live 只渲 unstable 块（单个 markdown block，几行），ellipsis 兜底，
     # 绝不用 visible（超屏时光标回不到段首会崩成追加重复）。
     _live = Live(
         Markdown(""),
         console=console,
-        refresh_per_second=12,
+        auto_refresh=False,
         transient=False,
         vertical_overflow="ellipsis",
     )
@@ -297,7 +307,7 @@ def _start_progress():
     if _progress_live is None:
         _live_console = Console(file=console.file)
         _progress_live = Live(
-            "", transient=False, console=_live_console, refresh_per_second=12
+            "", transient=False, console=_live_console, auto_refresh=False
         )
         _progress_live.start()
 
@@ -307,7 +317,7 @@ def _update_progress():
         return
     with _agent_progress_lock:
         if not _agent_progress:
-            _progress_live.update("")
+            _progress_live.update("", refresh=True)
             return
         frame = _DOTS[int(time.time() * 1000 / _DOTS_MS) % len(_DOTS)]
         lines = []
@@ -320,7 +330,7 @@ def _update_progress():
                 lines.append(f"  [green]✓ {tag}[/green]{calls_str}")
             else:
                 lines.append(f"  [cyan]{frame}[/cyan] {tag}{calls_str}")
-    _progress_live.update("\n".join(lines))
+    _progress_live.update("\n".join(lines), refresh=True)
 
 
 async def _progress_updater():
@@ -341,7 +351,9 @@ async def _result_spinner_updater():
             if _progress_live is None:
                 break
             frame = _DOTS[int(time.time() * 1000 / _DOTS_MS) % len(_DOTS)]
-            _progress_live.update(f"  [cyan]{frame}[/cyan] {t('display.organizing')}")
+            _progress_live.update(
+                f"  [cyan]{frame}[/cyan] {t('display.organizing')}", refresh=True
+            )
     except asyncio.CancelledError:
         pass
 
@@ -352,7 +364,7 @@ def _start_result_spinner():
     if _progress_live is None:
         _live_console = Console(file=console.file)
         _progress_live = Live(
-            "", transient=False, console=_live_console, refresh_per_second=12
+            "", transient=False, console=_live_console, auto_refresh=False
         )
         _progress_live.start()
     if _progress_task is None or _progress_task.done():

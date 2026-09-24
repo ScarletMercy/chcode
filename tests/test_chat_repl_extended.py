@@ -3574,9 +3574,7 @@ class TestCmdReasoningEffort:
         with (
             patch("chcode.chat.save_reasoning_effort") as mock_save,
             patch("chcode.chat.render_success") as mock_ok,
-            patch(
-                "chcode.chat.select", new_callable=AsyncMock, return_value=None
-            ),
+            patch("chcode.chat.select", new_callable=AsyncMock, return_value=None),
         ):
             await repl._cmd_reasoning_effort("")
         assert repl.reasoning_effort == "medium"
