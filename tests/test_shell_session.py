@@ -1,4 +1,6 @@
 import asyncio
+import os
+import subprocess
 
 import pytest
 
@@ -26,21 +28,52 @@ class TestShellSessionIntegration:
         result, _ = session.execute("exit 1", timeout=5000)
         assert result.exit_code != 0
 
+    def test_stdin_is_closed_cat_exits_immediately(self):
+        session = _make_session()
+        result, _ = session.execute("cat", timeout=8000)
+        assert result.timed_out is False
+        assert result.stdout == ""
+        assert result.exit_code == 0
+
+    def test_interactive_prompt_fails_fast_without_echo(self):
+        session = _make_session()
+        result, _ = session.execute(
+            "echo '口令：' >&2; read -r pw && echo \"got:$pw\"", timeout=8000
+        )
+        assert result.timed_out is False
+        assert result.exit_code != 0
+        assert "got:" not in result.stdout
+
+
+class TestSpawnHardening:
+    class _FakeProc:
+        pid = 1234
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return b"", b""
+
+        def kill(self): ...
+
+    def test_spawn_never_exposes_terminal_input(self, monkeypatch):
+        captured = {}
+
+        def fake_popen(args, **kwargs):
+            captured.update(kwargs)
+            return TestSpawnHardening._FakeProc()
+
+        monkeypatch.setattr(
+            "chcode.utils.shell.session.subprocess.Popen", fake_popen
+        )
+        session = ShellSession(BashProvider())
+        session.execute("echo ok", timeout=5000)
+
+        assert captured["stdin"] == subprocess.DEVNULL
+        if os.name == "nt":
+            assert captured.get("creationflags", 0) & subprocess.DETACHED_PROCESS
+
     def test_cwd_tracking(self):
         session = _make_session()
-        import tempfile
-
-        tmpdir = tempfile.gettempdir()
-        result, _ = session.execute(f"cd {tmpdir} && pwd", timeout=5000)
-        tracked_cwd = session._provider.read_cwd_file(
-            session._provider.create_cwd_file()
-        )
-        provider = session._provider
-        cwd_file = provider.create_cwd_file()
-        result, _ = session.execute(f"cd {tmpdir} && pwd", timeout=5000)
-        tracked_cwd = provider.read_cwd_file(cwd_file)
-        if tracked_cwd:
-            assert (
-                tmpdir in tracked_cwd or tmpdir.lower() in (tracked_cwd or "").lower()
-            )
-        provider.cleanup_cwd_file(cwd_file)
+        target = os.path.dirname(os.path.realpath(__file__))
+        session.execute(f"cd '{target}'", timeout=5000)
+        assert os.path.normcase(session.cwd) == os.path.normcase(target)

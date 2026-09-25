@@ -44,6 +44,7 @@ class GitManager:
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                stdin=subprocess.DEVNULL,
                 timeout=timeout,
             )
 

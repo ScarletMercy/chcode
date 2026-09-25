@@ -22,6 +22,7 @@ def check_git_availability() -> tuple[bool, str, str | None]:
             ["git", "--version"],
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
             timeout=10,
         )
 

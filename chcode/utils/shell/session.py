@@ -70,6 +70,13 @@ class ShellSession:
         try:
             proc = subprocess.Popen(
                 [self._provider.shell_path, *spawn_args],
+                # 管道下回显关不掉，交互提示若继承终端，口令会进捕获输出
+                stdin=subprocess.DEVNULL,
+                # psql 等程序绕过 stdin 直开 CONIN$，无控制台才回退 stdin；
+                # CREATE_NO_WINDOW 下仍有隐藏控制台可用
+                # 已知残留：MSYS bash 自建隐藏控制台，CONIN$ 型程序经 bash
+                # 链路仍会等至超时（该控制台无键盘输入路径）
+                creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) if os.name == "nt" else 0,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=exec_cwd,

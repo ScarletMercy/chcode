@@ -808,9 +808,17 @@ def _persist_env_linux(name: str, value: str) -> None:
 def _persist_env(name: str, value: str) -> None:
     """写入环境变量到系统（Windows 注册表 / Linux shell 配置文件）"""
     if sys.platform == "win32":
-        r = subprocess.run(["setx", "/M", name, value], capture_output=True)
+        r = subprocess.run(
+            ["setx", "/M", name, value],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+        )
         if r.returncode != 0:
-            subprocess.run(["setx", name, value], capture_output=True)
+            subprocess.run(
+                ["setx", name, value],
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+            )
     else:
         _persist_env_linux(name, value)
 
