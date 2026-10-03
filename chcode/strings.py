@@ -1363,6 +1363,14 @@ MESSAGES = {
         "zh": "请求失败，无备用模型可用，放弃请求\n  {error}",
         "en": "Request failed, no fallback model available, giving up\n  {error}",
     },
+    "agent.non_retryable_switch": {
+        "zh": "错误不可重试，跳过退避直接切换备用模型...\n  {error}",
+        "en": "Error is not retryable, skipping backoff and switching to fallback model...\n  {error}",
+    },
+    "agent.non_retryable_giveup": {
+        "zh": "错误不可重试，无备用模型可用，放弃请求\n  {error}",
+        "en": "Error is not retryable, no fallback model available, giving up\n  {error}",
+    },
     "agent.retry_in": {
         "zh": "请求失败 ({count}/{max}), {delay}秒后重试...\n  {error}",
         "en": "Request failed ({count}/{max}), retrying in {delay}s...\n  {error}",

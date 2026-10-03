@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Annotated, Any, Awaitable, Callable, NotRequired, TypedDict
 
 import httpx
+import openai
 from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import (
     before_agent,
@@ -90,6 +91,13 @@ INNER_MODEL_CONFIG = {
 # ─── 重试配置 ──────────────────────────────────────────
 
 RETRY_DELAYS = [3, 10, 30, 60]
+NON_RETRYABLE_ERRORS = (
+    openai.AuthenticationError,
+    openai.PermissionDeniedError,
+    openai.NotFoundError,
+    openai.BadRequestError,
+    openai.UnprocessableEntityError,
+)
 _fallback_models: list[dict] = []
 _fallback_index: int = 0
 
@@ -329,7 +337,7 @@ async def filter_vision_tool(
 async def model_retry_with_backoff(
     request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
 ) -> ModelResponse:
-    """指数级退避重试中间件 — 每次调用独立计数"""
+    """指数级退避重试中间件 — 每次调用独立计数；不可重试错误跳过退避"""
     max_retries = 4
 
     retry_count = 0
@@ -339,14 +347,19 @@ async def model_retry_with_backoff(
             return await handler(request)
         except Exception as e:
             # retry_count = 已重试次数（不含首次失败），仅在进入重试时递增
-            if retry_count >= max_retries:
+            non_retryable = isinstance(e, NON_RETRYABLE_ERRORS)
+            if non_retryable or retry_count >= max_retries:
+                if non_retryable:
+                    switch_msg = t("agent.non_retryable_switch", error=e)
+                    giveup_msg = t("agent.non_retryable_giveup", error=e)
+                else:
+                    switch_msg = t("agent.switch_to_fallback", count=retry_count)
+                    giveup_msg = t("agent.no_fallback_giveup", error=e)
                 fallback = _load_fallback_config()
                 if fallback:
-                    console.print(
-                        f"[yellow]{t('agent.switch_to_fallback', count=retry_count)}[/yellow]"
-                    )
+                    console.print(f"[yellow]{switch_msg}[/yellow]")
                     raise ModelSwitchError(t("agent.switch_error"))
-                console.print(f"[red]{t('agent.no_fallback_giveup', error=e)}[/red]")
+                console.print(f"[red]{giveup_msg}[/red]")
                 raise
 
             delay_idx = min(retry_count, len(RETRY_DELAYS) - 1)

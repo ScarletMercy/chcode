@@ -36,7 +36,7 @@ Terminal-based AI coding agent, built with LangChain + Typer + Rich.
 - Native **reasoning/thinking model** support — thinking tokens displayed in real time
 - Create / edit / switch models at runtime
 - Per-model hyperparameter tuning (temperature, top_p, top_k, max_completion_tokens, etc.)
-- Automatic **retry with exponential backoff** (3/10/30/60s) and fallback model switching on persistent failure
+- Automatic **retry with exponential backoff** (3/10/30/60s); switches to a fallback model on persistent failure or non-retryable errors (auth/bad request)
 
 ### Vision & Multimodal
 

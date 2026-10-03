@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import openai
 import pytest
 
 from chcode.agent_setup import (
@@ -220,6 +221,92 @@ class TestModelRetryWithBackoff:
             )
         assert result == "ok"
         assert mock_sleep.await_count == 5
+
+    @staticmethod
+    def _status_error(exc_cls: type[openai.APIStatusError], status_code: int):
+        response = httpx.Response(
+            status_code, request=httpx.Request("POST", "http://t")
+        )
+        return exc_cls("boom", response=response, body=None)
+
+    async def test_non_retryable_error_switches_without_backoff(self):
+        """不可重试错误（401）不烧退避：1 次调用即抛 ModelSwitchError。"""
+        from chcode.agent_setup import _fallback_models
+
+        err = self._status_error(openai.AuthenticationError, 401)
+        old = _fallback_models[:]
+        _fallback_models[:] = [{"model": "fallback"}]
+        try:
+            mock_handler = AsyncMock(side_effect=err)
+            mock_request = MagicMock()
+            with (
+                patch(
+                    "chcode.agent_setup._load_fallback_config",
+                    return_value={"model": "fb"},
+                ),
+                patch("chcode.agent_setup.console") as mock_console,
+            ):
+                with pytest.raises(ModelSwitchError):
+                    await model_retry_with_backoff.awrap_model_call(
+                        mock_request, mock_handler
+                    )
+
+            assert mock_handler.call_count == 1
+
+            prints = [str(c.args[0]) for c in mock_console.print.call_args_list if c.args]
+            assert sum("不可重试" in p for p in prints) == 1
+            assert not any("请求失败" in p for p in prints)
+        finally:
+            _fallback_models[:] = old
+
+    async def test_non_retryable_error_no_fallback_gives_up(self):
+        """不可重试错误（404）且无备用模型：直接抛原异常，不重试。"""
+        from chcode.agent_setup import _fallback_models
+
+        err = self._status_error(openai.NotFoundError, 404)
+        old = _fallback_models[:]
+        _fallback_models.clear()
+        try:
+            mock_handler = AsyncMock(side_effect=err)
+            mock_request = MagicMock()
+            with (
+                patch("chcode.agent_setup._load_fallback_config", return_value=None),
+                patch("chcode.agent_setup.console"),
+            ):
+                with pytest.raises(openai.NotFoundError):
+                    await model_retry_with_backoff.awrap_model_call(
+                        mock_request, mock_handler
+                    )
+            assert mock_handler.call_count == 1
+        finally:
+            _fallback_models[:] = old
+
+    async def test_rate_limit_error_still_retries(self):
+        """429 是速率限制：照常走满 4 次退避重试（共 5 次调用）后才切换。"""
+        from chcode.agent_setup import _fallback_models
+
+        err = self._status_error(openai.RateLimitError, 429)
+        old = _fallback_models[:]
+        _fallback_models[:] = [{"model": "fallback"}]
+        try:
+            mock_handler = AsyncMock(side_effect=err)
+            mock_request = MagicMock()
+            with (
+                patch("chcode.agent_setup.RETRY_DELAYS", [0.01, 0.01, 0.01, 0.01]),
+                patch("chcode.agent_setup.asyncio.sleep", new_callable=AsyncMock),
+                patch(
+                    "chcode.agent_setup._load_fallback_config",
+                    return_value={"model": "fb"},
+                ),
+                patch("chcode.agent_setup.console"),
+            ):
+                with pytest.raises(ModelSwitchError):
+                    await model_retry_with_backoff.awrap_model_call(
+                        mock_request, mock_handler
+                    )
+            assert mock_handler.call_count == 5
+        finally:
+            _fallback_models[:] = old
 
 
 class TestLoadSkills:
