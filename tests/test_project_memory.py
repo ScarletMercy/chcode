@@ -779,9 +779,9 @@ class TestLoadSkillsPrompt:
             await load_skills.awrap_model_call(mock_request, handler)
 
         base_prompt = mock_loader.build_system_prompt.call_args[0][0]
-        # 静态维护指引与工具登记仍在
+        # 静态维护指引仍在（工具清单已由 schema 承载，指引中提及 update_memory 工具）
         assert "Project Memory (CHCODE.md)" in base_prompt
-        assert "update_memory:" in base_prompt
+        assert "update_memory tool" in base_prompt
         # 记忆内容本身不在 system prompt
         assert "NEVER use pip; use uv." not in base_prompt
         assert "# project_memory" not in base_prompt
@@ -807,38 +807,8 @@ class TestLoadSkillsPrompt:
         base_prompt = mock_loader.build_system_prompt.call_args[0][0]
         assert "update_memory" not in base_prompt
         assert "CHCODE.md" not in base_prompt
-        # 其余工具行不受影响
-        assert "- bash:" in base_prompt
-        assert "- load_skill:" in base_prompt
-
-    def test_enabled_tools_prompt_bytes_unchanged(self):
-        """开启态三段拼接与拆分前的整段字符串字节一致（保前缀缓存不回退）"""
-        from chcode.agent_setup import (
-            _TOOLS_PROMPT_HEAD,
-            _TOOLS_PROMPT_TAIL,
-            _UPDATE_MEMORY_PROMPT_LINE,
-        )
-
-        legacy = (
-            "Tools:\n"
-            "- bash: execute shell commands and scripts. Stop immediately if the user refuses.\n"
-            "- read_file: view file content; write_file: create or save files; edit: modify "
-            "existing files. Always read before write, prefer edit over write_file.\n"
-            "- update_memory: save durable project knowledge (commands, conventions, "
-            "prohibitions, pitfalls) to CHCODE.md; keep entries brief and constraint-style.\n"
-            "- glob: find files by name pattern; grep: search file contents with regex; "
-            "list_dir: browse directory structure.\n"
-            "- web_search: search the Internet; web_fetch: fetch and read a URL's content.\n"
-            "- ask_user: present choices to the user and collect their input or "
-            "confirmation.\n"
-            "- todo_write: create and manage a task list for complex multi-step work.\n"
-            "- load_skill: when a request matches a skill's description, load it first "
-            "to get detailed instructions."
-        )
-        assert (
-            _TOOLS_PROMPT_HEAD + _UPDATE_MEMORY_PROMPT_LINE + _TOOLS_PROMPT_TAIL
-            == legacy
-        )
+        # Guidelines 骨架仍在（工具清单已由 schema 承载）
+        assert "Guidelines" in base_prompt
 
 
 class TestMemoryToolFiltering:

@@ -20,12 +20,12 @@ import time
 from pathlib import Path
 
 import aiofiles
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
 from langchain.tools import tool, ToolRuntime
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import BaseModel, Field, field_validator
 from chcode.display import console, render_tool_call
 from chcode.i18n import t
 from rich.text import Text
@@ -88,7 +88,13 @@ def resolve_path(file_path: str, working_directory: Path) -> Path:  # type: igno
     return path
 
 
-@tool
+class LoadSkillInput(BaseModel):
+    skill_name: str = Field(
+        description="Name of the skill to load (e.g., 'news-extractor')"
+    )
+
+
+@tool(args_schema=LoadSkillInput)
 async def load_skill(skill_name: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     """
     Load a skill's detailed instructions.
@@ -99,9 +105,6 @@ async def load_skill(skill_name: str, runtime: ToolRuntime[SkillAgentContext]) -
 
     The skill's instructions will guide you on how to complete the task,
     which may include running scripts via the bash tool.
-
-    Args:
-        skill_name: Name of the skill to load (e.g., 'news-extractor')
     """
     loader = runtime.context.skill_loader
     render_tool_call("load_skill", skill_name)
@@ -178,7 +181,17 @@ def _get_shell_session(workdir: str) -> ShellSession:
     return None
 
 
-@tool
+class BashInput(BaseModel):
+    command: str = Field(description="The shell command to execute")
+    timeout: int = Field(
+        default=300, description="Timeout in seconds (default 300, max 600)"
+    )
+    workdir: str | None = Field(
+        default=None, description="Working directory override (default: project root)"
+    )
+
+
+@tool(args_schema=BashInput)
 async def bash(
     command: str,
     runtime: ToolRuntime[SkillAgentContext],
@@ -198,10 +211,8 @@ async def bash(
     Output is automatically truncated if it exceeds 2000 lines or 51200 bytes.
     Certain exit codes are interpreted semantically (e.g., grep exit 1 = no matches).
 
-    Args:
-        command: The shell command to execute
-        timeout: Timeout in seconds (default 300, max 600)
-        workdir: Working directory override (default: project root)
+    If the user refuses to run a command, stop the current task immediately;
+    do not retry it or try to work around the refusal.
     """
     cwd = str(runtime.context.working_directory)
     render_tool_call("bash", command)
@@ -252,7 +263,13 @@ async def bash(
     return "bash:\n" + "\n".join(parts)
 
 
-@tool
+class ReadFileInput(BaseModel):
+    file_path: str = Field(
+        description="Path to the file (absolute or relative to working directory)"
+    )
+
+
+@tool(args_schema=ReadFileInput)
 async def read_file(file_path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     """
     Read the contents of a file.
@@ -261,9 +278,6 @@ async def read_file(file_path: str, runtime: ToolRuntime[SkillAgentContext]) -> 
     - Read skill documentation files
     - View script output files
     - Inspect any text file
-
-    Args:
-        file_path: Path to the file (absolute or relative to working directory)
     """
     path = resolve_path(file_path, runtime.context.working_directory)
     render_tool_call("read_file", file_path)
@@ -297,21 +311,26 @@ async def read_file(file_path: str, runtime: ToolRuntime[SkillAgentContext]) -> 
         return f"read:\n[FAILED] Failed to read file: {str(e)}"
 
 
-@tool
+class WriteFileInput(BaseModel):
+    file_path: str = Field(
+        description="Path to the file (absolute or relative to working directory)"
+    )
+    content: str = Field(description="Content to write to the file")
+
+
+@tool(args_schema=WriteFileInput)
 async def write_file(
     file_path: str, content: str, runtime: ToolRuntime[SkillAgentContext]
 ) -> str:
     """
-    Write content to a file.
+    Write content to a file (overwrites existing content).
 
     Use this to:
-    - Save generated content
     - Create new files
-    - Modify existing files
+    - Save generated content
 
-    Args:
-        file_path: Path to the file (absolute or relative to working directory)
-        content: Content to write to the file
+    Always read a file before overwriting it. To modify an existing file,
+    prefer edit over write_file.
     """
     path = resolve_path(file_path, runtime.context.working_directory)
     render_tool_call("write_file", file_path)
@@ -327,7 +346,33 @@ async def write_file(
         return f"write:\n[FAILED] Failed to write file: {str(e)}"
 
 
-@tool
+class UpdateMemoryInput(BaseModel):
+    section: str = Field(
+        description=(
+            "Target section. Prefer canonical sections: Project Overview, "
+            "Development Style, Project Structure, Common Commands, Coding "
+            "Standards, Prohibitions, Verification Workflow, Pitfalls (Chinese "
+            "equivalents are accepted). An existing header in CHCODE.md also "
+            "works; unknown names create a new section."
+        )
+    )
+    content: str = Field(
+        description=(
+            'The entry. For mode="append", a short constraint-style '
+            'sentence (becomes one bullet). For mode="replace", the full new '
+            "body of the section."
+        )
+    )
+    mode: str = Field(
+        default="append",
+        description=(
+            '"append" adds an entry under the section; "replace" rewrites '
+            "the section body (use to update or clean outdated entries)."
+        ),
+    )
+
+
+@tool(args_schema=UpdateMemoryInput)
 async def update_memory(
     section: str,
     content: str,
@@ -350,18 +395,6 @@ async def update_memory(
       empty slogans, expired rules, or temporary task state.
     - When CHCODE.md is over capacity, append is rejected; clean it up with
       mode="replace" first (remove or merge outdated entries).
-
-    Args:
-        section: Target section. Prefer canonical sections: Project Overview,
-            Development Style, Project Structure, Common Commands, Coding
-            Standards, Prohibitions, Verification Workflow, Pitfalls (Chinese
-            equivalents are accepted). An existing header in CHCODE.md also
-            works; unknown names create a new section.
-        content: The entry. For mode="append", a short constraint-style
-            sentence (becomes one bullet). For mode="replace", the full new
-            body of the section.
-        mode: "append" adds an entry under the section; "replace" rewrites
-            the section body (use to update or clean outdated entries).
     """
     render_tool_call("update_memory", f"[{mode}] {section}")
 
@@ -387,7 +420,13 @@ async def update_memory(
         return f"update_memory:\n[FAILED] Failed to update CHCODE.md: {str(e)}"
 
 
-@tool
+class GlobInput(BaseModel):
+    pattern: str = Field(
+        description='Glob pattern (e.g., "**/*.py", "src/**/*.ts", "*.md")'
+    )
+
+
+@tool(args_schema=GlobInput)
 async def glob(pattern: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     """
     Find files matching a glob pattern.
@@ -396,9 +435,6 @@ async def glob(pattern: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     - Find files by name pattern (e.g., "**/*.py" for all Python files)
     - List files in a directory with wildcards
     - Discover project structure
-
-    Args:
-        pattern: Glob pattern (e.g., "**/*.py", "src/**/*.ts", "*.md")
     """
     cwd = runtime.context.working_directory
     render_tool_call("glob", pattern)
@@ -507,7 +543,16 @@ _GREP_BINARY_EXT = frozenset(
 _GREP_MAX_FILE_SIZE = 1 * 1024 * 1024
 
 
-@tool
+class GrepInput(BaseModel):
+    pattern: str = Field(description="Regular expression pattern to search for")
+    path: str = Field(
+        description=(
+            'File or directory path to search in (use "." for current directory)'
+        )
+    )
+
+
+@tool(args_schema=GrepInput)
 async def grep(pattern: str, path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     """
     Search for a pattern in files.
@@ -516,10 +561,6 @@ async def grep(pattern: str, path: str, runtime: ToolRuntime[SkillAgentContext])
     - Find code containing specific text or regex
     - Search for function/class definitions
     - Locate usages of variables or imports
-
-    Args:
-        pattern: Regular expression pattern to search for
-        path: File or directory path to search in (use "." for current directory)
     """
     cwd = runtime.context.working_directory
     render_tool_call("grep", pattern)
@@ -600,7 +641,13 @@ async def grep(pattern: str, path: str, runtime: ToolRuntime[SkillAgentContext])
     return f"grep:\n[OK] ({len(results)} matches in {files_searched} files)\n\n{output}"
 
 
-@tool
+class EditInput(BaseModel):
+    file_path: str = Field(description="Path to the file to edit")
+    old_string: str = Field(description="The exact text to find and replace")
+    new_string: str = Field(description="The text to replace it with")
+
+
+@tool(args_schema=EditInput)
 async def edit(
     file_path: str,
     old_string: str,
@@ -617,11 +664,6 @@ async def edit(
 
     The old_string must match exactly (including whitespace/indentation).
     For safety, the old_string must be unique in the file.
-
-    Args:
-        file_path: Path to the file to edit
-        old_string: The exact text to find and replace
-        new_string: The text to replace it with
     """
     path = resolve_path(file_path, runtime.context.working_directory)
     render_tool_call("edit", file_path)
@@ -660,7 +702,13 @@ async def edit(
         return f"edit:\n[FAILED] {str(e)}"
 
 
-@tool
+class ListDirInput(BaseModel):
+    path: str = Field(
+        description='Directory path (use "." for current directory)'
+    )
+
+
+@tool(args_schema=ListDirInput)
 async def list_dir(path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     """
     List contents of a directory.
@@ -669,9 +717,6 @@ async def list_dir(path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     - Explore directory structure
     - See what files exist in a folder
     - Check if files/folders exist
-
-    Args:
-        path: Directory path (use "." for current directory)
     """
     dir_path = resolve_path(path, runtime.context.working_directory)
     render_tool_call("list_dir", path)
@@ -718,15 +763,37 @@ async def list_dir(path: str, runtime: ToolRuntime[SkillAgentContext]) -> str:
     return f"ls:\n[OK] ({len(entries)} entries)\n\n{chr(10).join(result_lines)}"
 
 
-@tool
+class WebSearchInput(BaseModel):
+    query: str = Field(
+        description="The search query (keywords work better than long sentences)"
+    )
+    max_results: int = Field(
+        default=5, description="Number of results to return (default 5)"
+    )
+    topic: Literal["general", "news", "finance"] = Field(
+        default="general",
+        description='Search category: "general", "news" (recent events), or "finance"',
+    )
+    include_raw_content: bool = Field(
+        default=False, description="If True, also return each page's full text"
+    )
+
+
+@tool(args_schema=WebSearchInput)
 async def web_search(
     query: str,
-    runtime: ToolRuntime[SkillAgentContext],
     max_results: int = 5,
     topic: Literal["general", "news", "finance"] = "general",
     include_raw_content: bool = False,
 ):
-    """Run a web search"""
+    """
+    Search the web and return ranked results with snippets.
+
+    Use this to:
+    - Find up-to-date information beyond your training data
+    - Look up documentation, APIs, or solutions to error messages
+    - Research recent news or financial topics
+    """
     render_tool_call("web_search", query)
     client = get_tavily_client()
     if client is None:
@@ -783,7 +850,13 @@ def _is_binary_content_type(content_type: str) -> bool:
     return any(bt in content_type.lower() for bt in binary_types)
 
 
-@tool
+class WebFetchInput(BaseModel):
+    url: str = Field(
+        description="The URL to fetch (must start with http:// or https://)"
+    )
+
+
+@tool(args_schema=WebFetchInput)
 async def web_fetch(url: str) -> dict:
     """Fetches content from a specified URL and converts it to text."""
     render_tool_call("web_fetch", url)
@@ -1091,12 +1164,53 @@ def _coerce_json_list(v: Any) -> Any:
     return v
 
 
-@tool
+class AskUserQuestionSpec(BaseModel):
+    """Batch 模式下的单个问题"""
+
+    question: str = Field(description="The question text")
+    options: list[str] | None = Field(
+        default=None,
+        description="List of choices (optional; omit to fall back to text input)",
+    )
+    is_multiple: bool = Field(
+        default=False,
+        description="If True, allow selecting multiple options (checkboxes)",
+    )
+
+
+class AskUserInput(BaseModel):
+    question: str = Field(
+        default="", description="The question to ask (ignored if questions is provided)"
+    )
+    options: list[str] | None = Field(
+        default=None,
+        description=(
+            "List of options for single question mode (ignored if questions "
+            "is provided)"
+        ),
+    )
+    is_multiple: bool = Field(
+        default=False,
+        description="If True in single-question mode, allow selecting multiple options",
+    )
+    questions: list[AskUserQuestionSpec] | None = Field(
+        default=None,
+        description=(
+            "List of questions for batch mode; asked sequentially. "
+            "Overrides question/options."
+        ),
+    )
+
+    _coerce_options = field_validator("options", mode="before")(_coerce_json_list)
+    _coerce_questions = field_validator("questions", mode="before")(_coerce_json_list)
+
+
+@tool(args_schema=AskUserInput)
 async def ask_user(
     question: str = "",
-    options: Annotated[list[str] | None, BeforeValidator(_coerce_json_list)] = None,
+    options: list[str] | None = None,
     is_multiple: bool = False,
-    questions: Annotated[list[dict] | None, BeforeValidator(_coerce_json_list)] = None,
+    questions: list[AskUserQuestionSpec] | list[dict] | None = None,
 ) -> str:
     """
     Ask the user one or more questions interactively with predefined options.
@@ -1112,16 +1226,6 @@ async def ask_user(
             {"question": "What database?", "options": ["PostgreSQL", "MySQL"]},
             {"question": "What framework?", "options": ["React", "Vue"], "is_multiple": true},
         ])
-
-    Args:
-        question: The question to ask (ignored if questions is provided)
-        options: List of options for single question mode (ignored if questions is provided)
-        is_multiple: If True in single-question mode, allow selecting multiple options
-        questions: List of question dicts for batch mode. Each dict must have:
-                   - "question": the question text (required)
-                   - "options": list of choices (optional, falls back to text input)
-                   - "is_multiple": bool for checkbox vs single select (default: false)
-                   When provided, all questions are asked sequentially. Overrides question/options.
     """
     import questionary
 
@@ -1161,6 +1265,11 @@ async def _ask_multi_questions(questions: list[dict]) -> str:
         Formatted string with all answers
     """
     import questionary
+
+    # ask_user 经 schema 校验后传入的是 AskUserQuestionSpec 实例；直接调用时可能是 dict
+    questions = [
+        q.model_dump() if isinstance(q, AskUserQuestionSpec) else q for q in questions
+    ]
 
     console.print()
     console.print(
@@ -1217,32 +1326,19 @@ _AGENT_DESC_NORMAL = """Launch a sub-agent to perform a task autonomously.
 
 Available sub-agent types:
 - "Explore": For codebase exploration, searching code, finding files.
-- "Plan": For designing implementation plans and architectural analysis.
-
-Args:
-    prompt: The task description for the sub-agent.
-    subagent_type: Type of sub-agent to launch ("Explore", "Plan", or a custom agent name).
-    description: Short description of what this sub-agent invocation does (for display purposes).
-    timeout_seconds: Maximum seconds the sub-agent can run before being terminated. Default 300 (5 minutes). Must be greater than 300 (5 minutes) to allow sufficient execution time.
-"""
+- "Plan": For designing implementation plans and architectural analysis."""
 
 _AGENT_DESC_YOLO = """Launch a sub-agent to perform a task autonomously.
 
 Available sub-agent types:
 - "Explore": For codebase exploration, searching code, finding files.
 - "Plan": For designing implementation plans and architectural analysis.
-- "general-purpose": For full-capability tasks including reading, writing, and executing code.
-
-Args:
-    prompt: The task description for the sub-agent.
-    subagent_type: Type of sub-agent to launch ("Explore", "Plan", "general-purpose", or a custom agent name).
-    description: Short description of what this sub-agent invocation does (for display purposes).
-    timeout_seconds: Maximum seconds the sub-agent can run before being terminated. Default 300 (5 minutes). Must be greater than 300 (5 minutes) to allow sufficient execution time.
-"""
+- "general-purpose": For full-capability tasks including reading, writing, and executing code."""
 
 
 def update_agent_tool_desc(yolo: bool) -> None:
-    agent.__doc__ = _AGENT_DESC_YOLO if yolo else _AGENT_DESC_NORMAL
+    # StructuredTool.description 在构造时固化，改 __doc__ 不生效，须直接赋值
+    agent.description = _AGENT_DESC_YOLO if yolo else _AGENT_DESC_NORMAL
 
 
 def _collect_memory_notes(messages: list, enabled: bool = True) -> list[str]:
@@ -1263,7 +1359,31 @@ def _collect_memory_notes(messages: list, enabled: bool = True) -> list[str]:
     ]
 
 
-@tool
+class AgentInput(BaseModel):
+    prompt: str = Field(description="The task description for the sub-agent")
+    subagent_type: str = Field(
+        default="Explore",
+        description=(
+            "Type of sub-agent to launch (see available types in the tool description)"
+        ),
+    )
+    description: str = Field(
+        default="",
+        description=(
+            "Short description of what this sub-agent invocation does "
+            "(for display purposes)"
+        ),
+    )
+    timeout_seconds: int = Field(
+        default=300,
+        description=(
+            "Maximum seconds the sub-agent can run before being terminated "
+            "(default 300; increase for long-running tasks)"
+        ),
+    )
+
+
+@tool(args_schema=AgentInput, description=_AGENT_DESC_NORMAL)
 async def agent(
     prompt: str,
     subagent_type: str = "Explore",
@@ -1271,19 +1391,6 @@ async def agent(
     timeout_seconds: int = 300,
     runtime: ToolRuntime[SkillAgentContext] = None,
 ) -> str:
-    """
-    Launch a sub-agent to perform a task autonomously.
-
-    Available sub-agent types:
-    - "Explore": For codebase exploration, searching code, finding files.
-    - "Plan": For designing implementation plans and architectural analysis.
-
-    Args:
-        prompt: The task description for the sub-agent.
-        subagent_type: Type of sub-agent to launch ("Explore", "Plan", or a custom agent name).
-        description: Short description of what this sub-agent invocation does (for display purposes).
-        timeout_seconds: Maximum seconds the sub-agent can run before being terminated. Default 300 (5 minutes). Must be greater than 300 (5 minutes) to allow sufficient execution time.
-    """
     import chcode.display as _display
     from chcode.agents.loader import load_agents
     from chcode.agents.runner import run_subagent
@@ -1420,7 +1527,16 @@ async def _save_todos(session_id: str, todos: list[dict]) -> None:
         await f.write(json.dumps(todos, ensure_ascii=False, indent=2))
 
 
-@tool
+class TodoWriteInput(BaseModel):
+    todos: list[TodoItem] = Field(
+        description=(
+            "The updated todo list (replaces the previous list). Each item has "
+            "content, status, and priority."
+        )
+    )
+
+
+@tool(args_schema=TodoWriteInput)
 async def todo_write(
     todos: list[TodoItem],
     runtime: ToolRuntime[SkillAgentContext],
@@ -1441,11 +1557,7 @@ When NOT to use:
 
 Task states: pending, in_progress, completed, cancelled
 Priority levels: high, medium, low
-Only ONE task should be in_progress at any time. Mark tasks complete immediately after finishing.
-
-Args:
-        todos: The updated todo list. Each item has content (str), status (str), and priority (str).
-    """
+Only ONE task should be in_progress at any time. Mark tasks complete immediately after finishing."""
     session_id = runtime.context.thread_id or "default"
 
     # Convert Pydantic models to dicts
@@ -1502,7 +1614,17 @@ Args:
 _VISION_SUPPORTED_EXTS = _ALL_MEDIA_EXTS
 
 
-@tool
+class VisionInput(BaseModel):
+    image_path: str = Field(
+        description="Path to the image or video file (absolute or relative to working directory)"
+    )
+    prompt: str = Field(
+        default="请详细描述这张图片的内容。",
+        description="What to ask about the media (default: describe the content)",
+    )
+
+
+@tool(args_schema=VisionInput)
 async def vision(
     image_path: str,
     prompt: str = "请详细描述这张图片的内容。",
@@ -1513,14 +1635,10 @@ async def vision(
 
     Use this tool when the user provides an image/video file path
     and wants to understand, describe, or extract information from it.
+    The user may paste file paths directly in chat.
 
     The tool supports common image formats: PNG, JPG, JPEG, GIF, BMP, WebP, TIFF
-    and video formats: MP4, MOV, AVI, MKV, WebM.
-
-    Args:
-        image_path: Path to the image or video file (absolute or relative to working directory)
-        prompt: What to ask about the media (default: describe the content)
-    """
+    and video formats: MP4, MOV, AVI, MKV, WebM."""
     path = resolve_path(image_path, runtime.context.working_directory)
     render_tool_call("vision", image_path)
 

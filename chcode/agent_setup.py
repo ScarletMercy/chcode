@@ -374,24 +374,6 @@ async def model_retry_with_backoff(
                 await asyncio.sleep(1)
 
 
-# 工具清单提示（vision 两分支共用 — 文本单一事实源，字节稳定保前缀缓存）。
-# update_memory 行按会话开关条件注入：开关会话内固定，故会话内字节仍稳定。
-_TOOLS_PROMPT_HEAD = """Tools:
-- bash: execute shell commands and scripts. Stop immediately if the user refuses.
-- read_file: view file content; write_file: create or save files; edit: modify existing files. Always read before write, prefer edit over write_file.
-"""
-
-_UPDATE_MEMORY_PROMPT_LINE = "- update_memory: save durable project knowledge (commands, conventions, prohibitions, pitfalls) to CHCODE.md; keep entries brief and constraint-style.\n"
-
-_TOOLS_PROMPT_TAIL = """- glob: find files by name pattern; grep: search file contents with regex; list_dir: browse directory structure.
-- web_search: search the Internet; web_fetch: fetch and read a URL's content.
-- ask_user: present choices to the user and collect their input or confirmation.
-- todo_write: create and manage a task list for complex multi-step work.
-- load_skill: when a request matches a skill's description, load it first to get detailed instructions."""
-
-# 无原生视觉能力的模型追加的 vision 工具行
-_VISION_TOOL_PROMPT = "- vision: analyze an image or video file using a vision model. Use when the user provides an image/video path or asks about visual content. Supports PNG, JPG, GIF, BMP, WebP, TIFF, MP4, MOV, AVI, MKV, WebM. The user can paste file paths directly in chat."
-
 # CHCODE.md 维护指引（记忆开启时注入；记忆内容由 inject_project_memory
 # 以 <system-reminder> 元消息前置注入，会话内字节稳定以保前缀缓存）
 _MEMORY_GUIDE_PROMPT = """
@@ -422,7 +404,7 @@ async def filter_memory_tools(
 ) -> ModelResponse:
     """记忆关闭的会话按请求过滤掉 update_memory（工具始终全量绑定）。
 
-    与提示词工具行、记忆注入读同一个 state 键，三方同源；按请求
+    与记忆指引段、记忆注入读同一个 state 键，三方同源；按请求
     过滤无需重建 agent，新旧会话形状自然一致。
     """
     if request.state.get("memory_enabled", True):
@@ -447,27 +429,21 @@ async def load_skills(request: ModelRequest) -> str:
     native_vision = is_multimodal_model(model_name)
 
     memory_enabled = request.state.get("memory_enabled", True)
-    tools_prompt = (
-        _TOOLS_PROMPT_HEAD
-        + (_UPDATE_MEMORY_PROMPT_LINE if memory_enabled else "")
-        + _TOOLS_PROMPT_TAIL
-    )
+    # 工具的用途/参数说明由工具 schema（description + Field）随 tools 数组下发，
+    # 提示词不维护工具清单；vision 两分支仅 Guidelines 末行不同，模型能力
+    # 会话内固定，字节稳定保前缀缓存。
     base_prompt = (
         f"You are a coding assistant. OS: {os_name}. CWD: {request.runtime.context.working_directory}.\n\n"
-        f"{tools_prompt}"
+        "Guidelines:\n"
+        "- Never create .md/README files unless explicitly asked.\n"
     )
     if native_vision:
         base_prompt += (
-            "\n\n Guidelines:\n"
-            "- Never create .md/README files unless explicitly asked.\n"
             "- You have native vision capability. When the user sends an image or video file path, the "
             "image/video is already embedded in the message — analyze it directly. Do NOT call the vision tool."
         )
     else:
         base_prompt += (
-            f"\n{_VISION_TOOL_PROMPT}\n\n"
-            " Guidelines:\n"
-            "- Never create .md/README files unless explicitly asked.\n"
             "- When the user sends an image or video file path, use vision to understand it before responding."
         )
 
@@ -478,7 +454,7 @@ async def load_skills(request: ModelRequest) -> str:
         agents_section += "\n- general-purpose: full-capability tasks including reading, writing, and executing code"
     base_prompt += agents_section
 
-    # CHCODE.md 维护指引 — 记忆关闭的会话整体省略（工具行同上条件注入）
+    # CHCODE.md 维护指引 — 记忆关闭的会话整体省略（update_memory 工具由 filter_memory_tools 同条件过滤）
     if memory_enabled:
         base_prompt += _MEMORY_GUIDE_PROMPT
 

@@ -1189,12 +1189,11 @@ class TestWebSearchNoClient:
         """Lines 698-699: get_tavily_client returns None."""
         from chcode.utils.tools import web_search
 
-        rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
         with (
             patch("chcode.utils.tools.render_tool_call"),
             patch("chcode.utils.tools.get_tavily_client", return_value=None),
         ):
-            out = await web_search.coroutine("query", runtime=rt)
+            out = await web_search.coroutine("query")
         assert "Tavily API Key 未配置" in out
 
 
@@ -2465,7 +2464,6 @@ class TestWebSearchWithClient:
             "results": [{"title": "test", "url": "http://x.com", "content": "result"}]
         }
 
-        rt = _make_runtime(working_directory=Path("/w"), thread_id="t1")
         with (
             patch("chcode.utils.tools.render_tool_call"),
             patch("chcode.utils.tools.get_tavily_client", return_value=mock_client),
@@ -2475,7 +2473,7 @@ class TestWebSearchWithClient:
                 return_value=search_result,
             ) as mock_to_thread,
         ):
-            out = await web_search.coroutine("test query", runtime=rt)
+            out = await web_search.coroutine("test query")
 
         assert "results" in out
         # asyncio.to_thread(client.search, query, ...) should have been called
@@ -2728,22 +2726,22 @@ class TestUpdateAgentToolDesc:
         from chcode.utils.tools import agent, update_agent_tool_desc
 
         update_agent_tool_desc(False)
-        assert "general-purpose" not in agent.__doc__
-        assert "Explore" in agent.__doc__
-        assert "Plan" in agent.__doc__
+        assert "general-purpose" not in agent.description
+        assert "Explore" in agent.description
+        assert "Plan" in agent.description
 
     def test_yolo_mode_desc(self):
         from chcode.utils.tools import agent, update_agent_tool_desc
 
         update_agent_tool_desc(True)
-        assert "general-purpose" in agent.__doc__
-        assert "Explore" in agent.__doc__
-        assert "Plan" in agent.__doc__
+        assert "general-purpose" in agent.description
+        assert "Explore" in agent.description
+        assert "Plan" in agent.description
 
     def test_toggle_back_and_forth(self):
         from chcode.utils.tools import agent, update_agent_tool_desc
 
         update_agent_tool_desc(True)
-        assert "general-purpose" in agent.__doc__
+        assert "general-purpose" in agent.description
         update_agent_tool_desc(False)
-        assert "general-purpose" not in agent.__doc__
+        assert "general-purpose" not in agent.description
