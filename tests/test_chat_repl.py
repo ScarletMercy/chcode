@@ -1397,6 +1397,153 @@ class TestChatREPLCmdCompress:
 
 
 # ============================================================================
+# Test injected-media boundary（vision 原生注入不构成轮次边界）
+# ============================================================================
+
+
+def _injected_media_msg(msg_id: str) -> HumanMessage:
+    """构造一条带 injected_media 标记的注入消息。"""
+    from chcode.utils.multimodal import INJECTED_MEDIA_FLAG
+
+    return HumanMessage(
+        content=[{"type": "text", "text": f"[vision] content of {msg_id}:"}],
+        additional_kwargs={INJECTED_MEDIA_FLAG: True},
+        id=msg_id,
+    )
+
+
+class TestInjectedMediaBoundary:
+    @pytest.mark.asyncio
+    async def test_cleanup_keeps_injection_with_its_turn(self):
+        """中途失败（注入后、本轮 AIMessage 完成前）：不删消息，图与回执同进退。"""
+        repl = ChatREPL()
+        user = HumanMessage(content="看图", id="m-user")
+        ai = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "vision",
+                    "args": {"image_path": "a.png"},
+                    "id": "t1",
+                    "type": "tool_call",
+                }
+            ],
+            id="m-ai",
+        )
+        tool = ToolMessage(
+            content="vision:\n[OK] a.png — embedded below",
+            tool_call_id="t1",
+            id="m-tool",
+        )
+        injected = _injected_media_msg("m-inject")
+
+        state = Mock()
+        state.values = {"messages": [user, ai, tool, injected]}
+        repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=state)
+        repl.agent.aupdate_state = AsyncMock()
+        repl.session_mgr = Mock()
+        repl.session_mgr.config = {}
+        repl._delete_messages = AsyncMock()
+
+        await repl._cleanup_last_turn("error")
+
+        repl._delete_messages.assert_not_awaited()
+        repl.agent.aupdate_state.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_deletes_failed_turn_with_its_injections(self):
+        """整组删除时，注入消息随所在组一起删除（不残留）。"""
+        repl = ChatREPL()
+        user = HumanMessage(content="看图", id="m-user")
+        injected = _injected_media_msg("m-inject")
+
+        state = Mock()
+        state.values = {"messages": [user, injected]}
+        repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=state)
+        repl.agent.aupdate_state = AsyncMock()
+        repl.session_mgr = Mock()
+        repl.session_mgr.config = {}
+        repl._delete_messages = AsyncMock()
+
+        await repl._cleanup_last_turn("error")
+
+        repl._delete_messages.assert_awaited_once_with(["m-user", "m-inject"])
+
+    @pytest.mark.asyncio
+    async def test_cmd_compress_keeps_user_message_with_injections(self):
+        """最后一轮含 2 次注入时，真实用户消息不被挤出保留区（不进压缩、不加 composed）。"""
+        repl = ChatREPL()
+        repl.model_config = {"model": "gpt-4"}
+        repl.agent = Mock()
+        repl.agent.aget_state = AsyncMock(return_value=Mock(values={}))
+
+        user = HumanMessage(content="对比这两张图", id="m-user")
+        messages = [user]
+        for index in range(2):
+            call_id = f"t{index}"
+            messages.append(
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "vision",
+                            "args": {"image_path": f"{index}.png"},
+                            "id": call_id,
+                            "type": "tool_call",
+                        }
+                    ],
+                    id=f"m-ai{index}",
+                )
+            )
+            messages.append(
+                ToolMessage(content="[OK]", tool_call_id=call_id, id=f"m-tool{index}")
+            )
+            messages.append(_injected_media_msg(f"m-inject{index}"))
+        messages.append(AIMessage(content="结论", id="m-ai-final"))
+
+        state = Mock()
+        state.values = {"messages": messages}
+        repl.agent.aget_state.return_value = state
+        repl.agent.aupdate_state = AsyncMock()
+        repl.session_mgr = Mock()
+        repl.session_mgr.config = {}
+
+        captured_pre_messages = None
+
+        def capture_invoke(func, msgs, *args):
+            nonlocal captured_pre_messages
+            captured_pre_messages = msgs
+            mock_resp = Mock()
+            mock_resp.content = '{"summary": "ok"}'
+            return mock_resp
+
+        with patch("chcode.chat.confirm", new_callable=AsyncMock, return_value=True):
+            with patch("chcode.chat.render_info"):
+                with patch(
+                    "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+                ) as mock_llm:
+                    mock_inst = Mock()
+                    mock_inst.invoke = Mock(side_effect=capture_invoke)
+                    mock_llm.return_value = mock_inst
+                    with patch(
+                        "chcode.chat.asyncio.to_thread",
+                        new_callable=AsyncMock,
+                        side_effect=capture_invoke,
+                    ):
+                        with patch.object(
+                            repl, "_load_conversation", new_callable=AsyncMock
+                        ):
+                            with patch("chcode.chat.render_success"):
+                                await repl._cmd_compress("")
+
+        # 用户消息留在保留区：未被标记为已压缩，也不发给摘要模型
+        assert not user.additional_kwargs.get("composed")
+        assert user not in captured_pre_messages
+
+
+# ============================================================================
 # Test ChatREPL._cmd_messages
 # ============================================================================
 

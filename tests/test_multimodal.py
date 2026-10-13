@@ -421,3 +421,26 @@ class TestBuildMultimodalMessage:
 
         types = [block["type"] for block in msg.content]
         assert types.count("image_url") == 2
+
+
+class TestIsInjectedMedia:
+    def test_flagged_message(self):
+        from chcode.utils.multimodal import INJECTED_MEDIA_FLAG, is_injected_media
+
+        msg = HumanMessage(
+            content=[{"type": "text", "text": "[vision] a.png"}],
+            additional_kwargs={INJECTED_MEDIA_FLAG: True},
+        )
+        assert is_injected_media(msg) is True
+
+    def test_plain_message(self):
+        from chcode.utils.multimodal import is_injected_media
+
+        assert is_injected_media(HumanMessage(content="hi")) is False
+
+    def test_non_message_object(self):
+        """无 additional_kwargs 的对象一律视为非注入（兼容 MagicMock 测试替身）。"""
+        from chcode.utils.multimodal import is_injected_media
+
+        assert is_injected_media(object()) is False
+        assert is_injected_media("not a message") is False

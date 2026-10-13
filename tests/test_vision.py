@@ -686,6 +686,10 @@ class TestVisionNativeMode:
         image_block = messages[1].content[1]
         assert image_block["type"] == "image_url"
         assert image_block["image_url"]["url"].startswith("data:image/png;base64,")
+        # 注入消息带 injected_media 标记（轮次边界判定据此跳过）
+        from chcode.utils.multimodal import INJECTED_MEDIA_FLAG
+
+        assert messages[1].additional_kwargs.get(INJECTED_MEDIA_FLAG) is True
 
     @pytest.mark.asyncio
     async def test_non_multimodal_skips_native_injection(

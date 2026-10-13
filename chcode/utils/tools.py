@@ -40,7 +40,12 @@ from chcode.utils.shell import (
 )
 from chcode.utils.skill_loader import SkillAgentContext
 from chcode.utils.project_memory import save_memory_entry
-from chcode.utils.multimodal import _ALL_MEDIA_EXTS, build_media_block, is_multimodal_model
+from chcode.utils.multimodal import (
+    _ALL_MEDIA_EXTS,
+    INJECTED_MEDIA_FLAG,
+    build_media_block,
+    is_multimodal_model,
+)
 from tavily import TavilyClient
 
 _tavily_client: TavilyClient | None = None
@@ -1692,7 +1697,9 @@ async def vision(
                         content=[
                             {"type": "text", "text": f"[vision] content of {path}:"},
                             media_block,
-                        ]
+                        ],
+                        # 非用户发言：标记供轮次边界判定（分组/清理/压缩）跳过
+                        additional_kwargs={INJECTED_MEDIA_FLAG: True},
                     ),
                 ]
             }

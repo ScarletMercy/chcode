@@ -83,6 +83,25 @@ class TestGroupMessagesByTurn:
     def test_empty_helpers(self):
         assert _group_messages_by_turn([]) == []
 
+    def test_injected_media_does_not_start_new_group(self):
+        """vision 原生注入的媒体消息不是用户发言：不开启新组，归入当前组。"""
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        from chcode.utils.multimodal import INJECTED_MEDIA_FLAG
+
+        user = HumanMessage(content="看图", id="m-user")
+        injected = HumanMessage(
+            content=[{"type": "text", "text": "[vision] a.png"}],
+            additional_kwargs={INJECTED_MEDIA_FLAG: True},
+            id="m-inject",
+        )
+        ai = AIMessage(content="结论", id="m-ai")
+
+        groups = _group_messages_by_turn([user, injected, ai])
+
+        assert len(groups) == 1
+        assert [m.id for m in groups[0]] == ["m-user", "m-inject", "m-ai"]
+
 
 class TestGetGroupDisplay:
     def _msg(self, msg_type, content="hi"):

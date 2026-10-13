@@ -7,6 +7,7 @@ Provides:
 - extract_media_paths(): Detect image/video file paths in user text
 - build_media_block(): Construct an image_url/video_url content block
 - build_multimodal_message(): Construct a HumanMessage with embedded media
+- is_injected_media(): Check if a message is a vision-injected media message
 """
 
 from __future__ import annotations
@@ -231,6 +232,19 @@ def build_media_block(b64_data: str, mime_type: str) -> dict:
     if mime_type.startswith("video/"):
         return {"type": "video_url", "video_url": {"url": data_url}}
     return {"type": "image_url", "image_url": {"url": data_url}}
+
+
+# vision 原生注入的媒体消息标记：这类 HumanMessage 不是用户发言，
+# 不构成对话轮次边界（历史分组/失败清理/压缩计数均应跳过）。
+# 仅本地使用：langchain-openai 构建请求时只白名单个别 additional_kwargs
+# 键，该标记不会进入 API payload，无需发送前剥离。
+INJECTED_MEDIA_FLAG = "injected_media"
+
+
+def is_injected_media(message: object) -> bool:
+    """判断消息是否为 vision 原生注入的媒体消息（非用户发言）。"""
+    kwargs = getattr(message, "additional_kwargs", None)
+    return isinstance(kwargs, dict) and bool(kwargs.get(INJECTED_MEDIA_FLAG))
 
 
 def build_multimodal_message(

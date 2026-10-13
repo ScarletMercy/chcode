@@ -66,6 +66,7 @@ from chcode.config import (
     save_reasoning_effort,
 )
 from chcode.utils.session import SessionManager
+from chcode.utils.multimodal import is_injected_media
 from chcode.utils.skill_loader import SkillAgentContext, SkillLoader
 from chcode.agent_setup import (
     build_agent,
@@ -213,13 +214,15 @@ def find_and_slice_from_end(lst, x):
 def _group_messages_by_turn(messages: list) -> list[list]:
     """
     将消息按轮次分组（参考 chagent 逻辑）
-    从一个 HumanMessage 开始，到下一个 HumanMessage 之前为一组
+    从一个真实用户发言开始，到下一个真实用户发言之前为一组；
+    vision 注入的媒体消息不构成边界，归入当前组
     """
     groups = []
     current_group = []
 
     for msg in messages:
-        if msg.type == "human":  # 下一组消息的第一个消息：HumanMessage
+        # 真实用户发言开启新组；注入的媒体消息不是用户发言，归入当前组
+        if msg.type == "human" and not is_injected_media(msg):
             if current_group:  # 当前消息组
                 groups.append(current_group)
             current_group = [
@@ -991,7 +994,8 @@ class ChatREPL:
             for msg in reversed(messages):  # 倒着遍历 消息列表
                 recent_messages.append(msg)
                 recent_message_ids.append(msg.id)
-                if isinstance(msg, HumanMessage):
+                # 注入的媒体消息不算独立一轮（否则会把真实用户消息挤出保留区）
+                if isinstance(msg, HumanMessage) and not is_injected_media(msg):
                     recent_count += 1
                     if recent_count == 2:  # 只取最后两组消息
                         break
@@ -1667,7 +1671,9 @@ class ChatREPL:
 
             last_human_idx = -1
             for i, msg in enumerate(messages):
-                if isinstance(msg, HumanMessage):
+                # 注入的媒体消息不是轮次边界：清理时与所在组同进退，
+                # 避免只删图片留下"图在下面"的悬空回执
+                if isinstance(msg, HumanMessage) and not is_injected_media(msg):
                     last_human_idx = i
 
             if last_human_idx >= 0:

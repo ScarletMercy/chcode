@@ -345,6 +345,23 @@ class TestRenderConversation:
             # Should not print for hidden message
             assert mock_console.print.call_count == 1  # Only final newline
 
+    def test_render_conversation_injected_media(self):
+        """Vision-injected media messages are not rendered as user speech"""
+        from chcode.utils.multimodal import INJECTED_MEDIA_FLAG
+
+        msg = HumanMessage(
+            content=[
+                {"type": "text", "text": "[vision] content of a.png:"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,x"}},
+            ],
+            additional_kwargs={INJECTED_MEDIA_FLAG: True},
+        )
+        mock_console = MagicMock()
+        with patch("chcode.display.console", mock_console):
+            display.render_conversation([msg])
+            # Should not print for injected media message
+            assert mock_console.print.call_count == 1  # Only final newline
+
     def test_render_conversation_multiple(self):
         """Multiple messages with separators"""
         messages = [

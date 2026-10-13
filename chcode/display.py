@@ -15,6 +15,7 @@ from rich.live import Live
 from rich._spinners import SPINNERS
 
 from chcode.i18n import t
+from chcode.utils.multimodal import is_injected_media
 
 import asyncio
 import contextvars
@@ -500,6 +501,10 @@ def render_conversation(messages: list) -> None:
     top_flag = True
     for i, message in enumerate(messages):
         if message.additional_kwargs.get("hide", ""):
+            continue
+        # vision 注入的媒体消息不是用户发言：不回显（直播时本就不可见，
+        # 可见痕迹由其前面的 ToolMessage 回执承担）
+        if is_injected_media(message):
             continue
         msg_type = message.type
         content = message.content
