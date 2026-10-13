@@ -5,6 +5,7 @@ Provides:
 - is_multimodal_model(): Check if a model name indicates native vision capability
 - encode_media_as_base64(): Read and base64-encode an image or video
 - extract_media_paths(): Detect image/video file paths in user text
+- build_media_block(): Construct an image_url/video_url content block
 - build_multimodal_message(): Construct a HumanMessage with embedded media
 """
 
@@ -221,6 +222,17 @@ def extract_media_paths(text: str, working_directory: Path) -> list[Path]:
 # ─── Multimodal message builder ─────────────────────────────────
 
 
+def build_media_block(b64_data: str, mime_type: str) -> dict:
+    """Build an image_url/video_url content block from base64 data.
+
+    图片/视频由 mime 前缀判定（_MIME_MAP 中视频均为 video/*）。
+    """
+    data_url = f"data:{mime_type};base64,{b64_data}"
+    if mime_type.startswith("video/"):
+        return {"type": "video_url", "video_url": {"url": data_url}}
+    return {"type": "image_url", "image_url": {"url": data_url}}
+
+
 def build_multimodal_message(
     text: str,
     media_paths: list[Path],
@@ -265,21 +277,6 @@ def build_multimodal_message(
 
     for media_path in media_paths:
         b64, mime = encode_media_as_base64(media_path, max_side=max_side)
-        data_url = f"data:{mime};base64,{b64}"
-
-        if media_path.suffix.lower() in _VIDEO_EXTS:
-            content_blocks.append(
-                {
-                    "type": "video_url",
-                    "video_url": {"url": data_url},
-                }
-            )
-        else:
-            content_blocks.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": data_url},
-                }
-            )
+        content_blocks.append(build_media_block(b64, mime))
 
     return HumanMessage(content=content_blocks)

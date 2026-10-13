@@ -336,16 +336,91 @@ async def test_converted_tool_errors_are_counted_and_then_blocked():
     assert blocked.update["tool_storm"] is None
 
 
-# ─── Command 透传（native command 不参与风暴计数）──────────
+# ─── Command 结果（dict update 计数；跨 graph/非 dict 透传）──
 
 
-async def test_native_command_is_returned_unchanged():
-    """工具返回 Command（控制流指令）：原样透传，不更新 tracker。"""
+async def _call_guard_command(
+    state: dict,
+    *,
+    name: str,
+    args: dict,
+    command: Command,
+) -> Command:
+    """通过中间件执行一次返回 Command 的工具调用，并把 tracker 写回 state。"""
+    handler = AsyncMock(return_value=command)
+    request = _make_request(state, name=name, args=args)
+    result = await tool_call_storm_block.awrap_tool_call(request, handler)
+
+    assert isinstance(result, Command)
+    state["tool_storm"] = result.update["tool_storm"]
+    return result
+
+
+def _vision_command() -> Command:
+    """模拟 vision 原生嵌图返回的 Command（dict update 含 messages）。"""
+    return Command(
+        update={"messages": [ToolMessage(content="vision ok", tool_call_id="call")]}
+    )
+
+
+async def test_command_updates_tracker_with_name_and_args():
+    """dict update 的 Command（如 vision 原生嵌图）：按工具名+参数计入 tracker，
+    update 原有内容保留（包成新 Command 而非原样透传）。"""
+    state: dict = {}
+    command = _vision_command()
+
+    result = await _call_guard_command(
+        state, name="vision", args={"image_path": "a.png"}, command=command
+    )
+
+    assert result is not command
+    assert result.update["messages"] == command.update["messages"]
+    tracker = state["tool_storm"]
+    assert tracker["previous"]["name"] == "vision"
+    assert tracker["previous"]["args_key"] == _dump({"image_path": "a.png"})
+    assert tracker["exact_streak"] == 1
+
+
+async def test_repeated_command_calls_accumulate_exact_streak_and_block():
+    """同工具同参的连续 Command 调用：exact_streak 累积，第 4 次被阻断。"""
+    state: dict = {}
+    for _ in range(3):
+        await _call_guard_command(
+            state,
+            name="vision",
+            args={"image_path": "a.png"},
+            command=_vision_command(),
+        )
+
+    blocked = await _call_guard_command(
+        state,
+        name="vision",
+        args={"image_path": "a.png"},
+        command=_vision_command(),
+    )
+
+    assert _blocked_message(blocked).status == "error"
+    assert blocked.update["tool_storm"] is None
+
+
+async def test_cross_graph_command_is_returned_unchanged():
+    """跨 graph 指令（graph=Command.PARENT）：无法合并 tracker，原样透传。"""
     command = Command(
         graph=Command.PARENT,
         update={"custom": "preserve"},
         goto="next",
     )
+    handler = AsyncMock(return_value=command)
+    request = _make_request({}, name="custom", args={})
+
+    result = await tool_call_storm_block.awrap_tool_call(request, handler)
+
+    assert result is command
+
+
+async def test_command_without_dict_update_is_returned_unchanged():
+    """无 dict update 的 Command（纯控制流）：无法合并 tracker，原样透传。"""
+    command = Command(goto="next")
     handler = AsyncMock(return_value=command)
     request = _make_request({}, name="custom", args={})
 
@@ -641,4 +716,68 @@ async def test_real_agent_graph_blocks_fourth_identical_tool_call():
         "success",
         "error",
     ]
+    assert result["tool_storm"] is None
+
+
+async def test_real_agent_graph_counts_command_tool_results():
+    """真实 agent graph：Command 返回型工具（vision 原生嵌图同款）同样计入风暴，
+    第 4 次同参调用被阻断，前 3 次注入的消息正常进入对话。"""
+    from langchain.tools import ToolRuntime
+
+    executions = 0
+
+    @tool
+    def embed_media(image_path: str, runtime: ToolRuntime = None) -> Command:
+        """Embed media into the conversation and return a Command."""
+        nonlocal executions
+        executions += 1
+        return Command(
+            update={
+                "messages": [
+                    ToolMessage(content="embedded", tool_call_id=runtime.tool_call_id),
+                    HumanMessage(content=[{"type": "text", "text": "media"}]),
+                ]
+            }
+        )
+
+    responses = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "embed_media",
+                    "args": {"image_path": "same.png"},
+                    "id": f"call-{index}",
+                    "type": "tool_call",
+                }
+            ],
+        )
+        for index in range(4)
+    ]
+    responses.append(AIMessage(content="done"))
+    agent = create_agent(
+        _ToolCallingFakeModel(responses=responses),
+        [embed_media],
+        middleware=[tool_call_storm_block],
+        state_schema=State,
+    )
+
+    result = await agent.ainvoke({"messages": [HumanMessage(content="view it")]})
+
+    tool_messages = [
+        message for message in result["messages"] if isinstance(message, ToolMessage)
+    ]
+    human_messages = [
+        message for message in result["messages"] if isinstance(message, HumanMessage)
+    ]
+    assert executions == 3
+    assert len(tool_messages) == 4
+    assert [message.status for message in tool_messages] == [
+        "success",
+        "success",
+        "success",
+        "error",
+    ]
+    # 初始用户消息 1 条 + 放行的 3 次注入
+    assert len(human_messages) == 4
     assert result["tool_storm"] is None

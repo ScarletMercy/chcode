@@ -1351,10 +1351,6 @@ MESSAGES = {
         "en": "vision:\n[FAILED] All vision models failed\nLast error: {error}",
     },
     # ─── agent_setup 重试/回退 ───
-    "agent.vision_native_filter": {
-        "zh": "当前模型支持原生视觉，图片/视频已直接嵌入消息，无需调用 vision 工具。请直接分析消息中的图片/视频内容。",
-        "en": "The current model supports native vision; image/video is already embedded in the message, so the vision tool is not needed. Please analyze the image/video content in the message directly.",
-    },
     "agent.switch_to_fallback": {
         "zh": "主模型重试{count}次失败，切换到备用模型...",
         "en": "Main model failed after {count} retries, switching to fallback model...",

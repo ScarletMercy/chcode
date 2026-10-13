@@ -25,6 +25,8 @@ from urllib.parse import urlparse
 
 import httpx
 from langchain.tools import tool, ToolRuntime
+from langchain_core.messages import HumanMessage, ToolMessage
+from langgraph.types import Command
 from pydantic import BaseModel, Field, field_validator
 from chcode.display import console, render_tool_call
 from chcode.i18n import t
@@ -38,7 +40,7 @@ from chcode.utils.shell import (
 )
 from chcode.utils.skill_loader import SkillAgentContext
 from chcode.utils.project_memory import save_memory_entry
-from chcode.utils.multimodal import _ALL_MEDIA_EXTS
+from chcode.utils.multimodal import _ALL_MEDIA_EXTS, build_media_block, is_multimodal_model
 from tavily import TavilyClient
 
 _tavily_client: TavilyClient | None = None
@@ -1619,7 +1621,7 @@ class VisionInput(BaseModel):
         description="Path to the image or video file (absolute or relative to working directory)"
     )
     prompt: str = Field(
-        default="请详细描述这张图片的内容。",
+        default="请详细描述这个媒体文件的内容。",
         description="What to ask about the media (default: describe the content)",
     )
 
@@ -1627,18 +1629,19 @@ class VisionInput(BaseModel):
 @tool(args_schema=VisionInput)
 async def vision(
     image_path: str,
-    prompt: str = "请详细描述这张图片的内容。",
+    prompt: str = "请详细描述这个媒体文件的内容。",
     runtime: ToolRuntime[SkillAgentContext] = None,
-) -> str:
+) -> str | Command:
     """\
-    Analyze an image or video using a vision model.
+    View an image or video file on disk — e.g., a chart/screenshot you
+    just created, or one found while exploring the codebase.
 
-    Use this tool when the user provides an image/video file path
-    and wants to understand, describe, or extract information from it.
-    The user may paste file paths directly in chat.
+    Call this whenever you need to inspect a media file that is not
+    already visible in the conversation; media already embedded in a
+    message should be analyzed directly, without this tool.
 
-    The tool supports common image formats: PNG, JPG, JPEG, GIF, BMP, WebP, TIFF
-    and video formats: MP4, MOV, AVI, MKV, WebM."""
+    Supports PNG, JPG, JPEG, GIF, BMP, WebP, TIFF images and
+    MP4, MOV, AVI, MKV, WebM videos."""
     path = resolve_path(image_path, runtime.context.working_directory)
     render_tool_call("vision", image_path)
 
@@ -1668,9 +1671,34 @@ async def vision(
             f"vision:\n[FAILED] Failed to read {'video' if is_video else 'image'}: {e}"
         )
 
-    # 获取视觉模型配置 + 构建消息 + 调用模型
-    from langchain_core.messages import HumanMessage
+    # 多模态主模型：原图注入对话（原生视觉），不经外部视觉模型转述。
+    # 图片块走 HumanMessage —— 各家 OpenAI 兼容 API 均不支持 tool 消息带图。
+    model_name = runtime.context.model_config.get("model", "")
+    if is_multimodal_model(model_name):
+        # 回执需绑定本次调用的 tool_call_id（Command 返回时不由框架代填，
+        # ToolNode 校验要求恰好一条匹配的 ToolMessage）；ID 由 ToolRuntime 携带
+        tool_call_id = runtime.tool_call_id
+        media_block = build_media_block(b64_image, mime_type)
+        # prompt 不写入注入文本：发起调用的主模型在自己 tool_call 的 args 里
+        # 已能看到提问，重复注入只多占 token（该参数仍供下方非多模态路径使用）
+        return Command(
+            update={
+                "messages": [
+                    ToolMessage(
+                        content=f"vision:\n[OK] {path} — embedded below, analyze it directly.",
+                        tool_call_id=tool_call_id,
+                    ),
+                    HumanMessage(
+                        content=[
+                            {"type": "text", "text": f"[vision] content of {path}:"},
+                            media_block,
+                        ]
+                    ),
+                ]
+            }
+        )
 
+    # 获取视觉模型配置 + 构建消息 + 调用模型
     from chcode.utils.enhanced_chat_openai import EnhancedChatOpenAI
     from chcode.vision_config import (
         auto_configure_vision,
@@ -1678,17 +1706,7 @@ async def vision(
         get_vision_fallback_models,
     )
 
-    media_url = f"data:{mime_type};base64,{b64_image}"
-    if is_video:  # pragma: no cover
-        media_content = {  # pragma: no cover
-            "type": "video_url",  # pragma: no cover
-            "video_url": {"url": media_url},  # pragma: no cover
-        }  # pragma: no cover
-    else:
-        media_content = {
-            "type": "image_url",
-            "image_url": {"url": media_url},
-        }
+    media_content = build_media_block(b64_image, mime_type)
     messages = [HumanMessage(content=[media_content, {"type": "text", "text": prompt}])]
 
     models_to_try = []

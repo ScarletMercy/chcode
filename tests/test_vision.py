@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from langchain_core.messages import AIMessage
+from langgraph.types import Command
 
 
 @pytest.fixture
@@ -648,3 +649,72 @@ class TestVisionSkipEmptyApiKey:
             result = await vision.coroutine("test.png", runtime=mock_runtime)
             assert "[OK]" in result
             assert invoke_count == 1
+
+
+class TestVisionNativeMode:
+    """多模态主模型：vision 原生嵌入（Command 注入），不经外部视觉模型转述"""
+
+    @pytest.mark.asyncio
+    async def test_multimodal_embeds_image_natively(
+        self, mock_runtime, temp_image_file
+    ):
+        from chcode.utils import tools as tools_mod
+        from chcode.utils.tools import vision
+
+        mock_runtime.context.model_config = {"model": "moonshotai/Kimi-K2.5"}
+        mock_runtime.tool_call_id = "tc-1"
+
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch.object(tools_mod, "is_multimodal_model", return_value=True),
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
+            mock_resolve.return_value = temp_image_file
+
+            result = await vision.coroutine("test.png", runtime=mock_runtime)
+
+        # 不调外部视觉模型，返回 Command 注入 ToolMessage 回执 + HumanMessage 嵌图
+        mock_llm_cls.assert_not_called()
+        assert isinstance(result, Command)
+        messages = result.update["messages"]
+        assert messages[0].tool_call_id == "tc-1"
+        assert "[OK]" in messages[0].content
+        assert messages[1].content[0]["type"] == "text"
+        assert "[vision]" in messages[1].content[0]["text"]
+        image_block = messages[1].content[1]
+        assert image_block["type"] == "image_url"
+        assert image_block["image_url"]["url"].startswith("data:image/png;base64,")
+
+    @pytest.mark.asyncio
+    async def test_non_multimodal_skips_native_injection(
+        self, mock_runtime, temp_image_file
+    ):
+        """非多模态模型照旧走外部视觉模型转述，不返回 Command"""
+        from chcode.utils import tools as tools_mod
+        from chcode.utils.tools import vision
+
+        with (
+            patch("chcode.utils.tools.resolve_path") as mock_resolve,
+            patch.object(tools_mod, "is_multimodal_model", return_value=False),
+            patch("chcode.vision_config.get_vision_default_model") as mock_get_default,
+            patch("chcode.vision_config.get_vision_fallback_models") as mock_get_fb,
+            patch(
+                "chcode.utils.enhanced_chat_openai.EnhancedChatOpenAI"
+            ) as mock_llm_cls,
+        ):
+            mock_resolve.return_value = temp_image_file
+            mock_get_default.return_value = {
+                "model": "test-model",
+                "api_key": "key",
+                "base_url": "http://x.com",
+            }
+            mock_get_fb.return_value = []
+            mock_llm_cls.return_value = _mock_llm_ainvoke("Image description")
+
+            result = await vision.coroutine("test.png", runtime=mock_runtime)
+
+        assert isinstance(result, str)
+        assert "[OK]" in result
+        assert "Image description" in result

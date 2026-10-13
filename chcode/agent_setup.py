@@ -5,6 +5,7 @@ Agent 构建 — 中间件注册、checkpointer 初始化
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import socket
 import sys
@@ -313,26 +314,6 @@ class ModelSwitchError(Exception):
     pass
 
 
-@wrap_tool_call
-async def filter_vision_tool(
-    request: ToolCallRequest,
-    handler: Callable[[ToolCallRequest], Command],
-) -> Command | ToolMessage:
-    """多模态模型时屏蔽 vision 工具 — 模型自带视觉能力"""
-    tool_name = request.tool_call.get("name", "")
-    if tool_name == "vision":
-        model_config = request.runtime.context.model_config
-        model_name = model_config.get("model", "")
-
-        if is_multimodal_model(model_name):
-            return ToolMessage(
-                content=t("agent.vision_native_filter"),
-                tool_call_id=request.tool_call["id"],
-                status="error",
-            )
-    return await handler(request)
-
-
 @wrap_model_call
 async def model_retry_with_backoff(
     request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
@@ -440,7 +421,9 @@ async def load_skills(request: ModelRequest) -> str:
     if native_vision:
         base_prompt += (
             "- You have native vision capability. When the user sends an image or video file path, the "
-            "image/video is already embedded in the message — analyze it directly. Do NOT call the vision tool."
+            "image/video is already embedded in the message — analyze it directly. Use the vision tool "
+            "only to view media files that are not yet in the conversation (e.g., ones you created or "
+            "found on disk)."
         )
     else:
         base_prompt += (
@@ -622,24 +605,28 @@ async def tool_call_storm_block(
         return Command(update={"tool_storm": None, "messages": [message]})
 
     result = await handler(request)
-    if isinstance(result, Command):
-        # 控制流指令（如 native command）：原样透传，不参与风暴计数。
-        # 注意：tracker 在此既不更新也不重置，理论上若模型连续 N 次同工具同参后
-        # 插入一个返回 Command 的操作、再重复同一调用，会基于过期 streak 误阻断。
-        # 实际不触发：当前所有工具都返回 ToolMessage，无工具返回 Command。
-        return result
 
-    # 更新 storm tracker：与上次快照比对，累加命中的 streak（其余重置为 1）
-    current: ToolCallSnapshot = {
-        "name": name,
-        "args_key": args_key,
-        "result_key": json.dumps(
+    # Command 结果（如 vision 原生嵌图）无统一结果文本：result_key 以固定占位值
+    # 参与计数，同工具同参的连续 Command 调用同样累积 exact_streak；
+    # 跨 graph 指令或非 dict update 无法安全合并 tracker，原样透传。
+    if isinstance(result, Command):
+        if result.graph is not None or not isinstance(result.update, dict):
+            return result
+        result_key = "<command>"
+    else:
+        result_key = json.dumps(
             {"content": result.content, "status": result.status},
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
             default=str,
-        ),
+        )
+
+    # 更新 storm tracker：与上次快照比对，累加命中的 streak（其余重置为 1）
+    current: ToolCallSnapshot = {
+        "name": name,
+        "args_key": args_key,
+        "result_key": result_key,
     }
     next_tracker: ToolStormTracker = {
         "previous": current,
@@ -660,7 +647,11 @@ async def tool_call_storm_block(
         elif same_name:
             next_tracker["varying_args_streak"] = tracker["varying_args_streak"] + 1
 
-    return Command(update={"tool_storm": next_tracker, "messages": [result]})
+    if isinstance(result, ToolMessage):
+        return Command(update={"tool_storm": next_tracker, "messages": [result]})
+    return dataclasses.replace(
+        result, update={**result.update, "tool_storm": next_tracker}
+    )
 
 
 # ─── Agent 构建 ──────────────────────────────────────────
@@ -735,7 +726,6 @@ def build_agent(
             emit_tool_events,
             tool_call_storm_block,
             handle_tool_errors,
-            filter_vision_tool,
             emit_thinking_events,
             detect_parallel_agents,
             tool_result_budget,
